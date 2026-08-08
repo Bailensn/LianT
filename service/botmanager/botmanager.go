@@ -1,4 +1,4 @@
-package bot
+package botmanager
 
 import (
 	"database/sql"
@@ -157,6 +157,65 @@ WHERE bot_id=?
 }
 
 // ==========================
+// 列出Bot
+// ==========================
+func listBot() {
+	db := openBotDB()
+	defer db.Close()
+
+	rows, err := db.Query(
+		`
+SELECT bot_id, username, first_name
+FROM bots
+ORDER BY bot_id
+`,
+	)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer rows.Close()
+	found := false
+	for rows.Next() {
+		var (
+			id int64
+			username string
+			firstName string
+		)
+		err := rows.Scan(
+			&id,
+			&username,
+			&firstName,
+		)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		found = true
+		fmt.Printf("ID: %d 用户名: @%s\n", id, username)
+	}
+	if !found {
+		fmt.Println("没有保存任何Bot")
+	}
+}
+
+func getNum() int {
+	db := openBotDB()
+	defer db.Close()
+	var count int
+	err := db.QueryRow(
+		`
+SELECT COUNT(*)
+FROM bots
+`,
+	).Scan(&count)
+	if err != nil {
+		return 0
+	}
+	return count
+}
+
+// ==========================
 // 隐式输入
 // ==========================
 func inputHidden(prompt string) string {
@@ -180,7 +239,7 @@ func BotmanagerCommand(
 ){
 	if len(args)<1{
 		fmt.Println(
-			"用法: LianT bot add/remove",
+			"用法: LianT botmanager add/remove/list",
 		)
 		return
 	}
@@ -188,7 +247,7 @@ func BotmanagerCommand(
 	case "add":
 		if len(args) != 2 {
 			fmt.Println(
-				"LianT bot add <bot_id>",
+				"LianT botmanager add <bot_id>",
 			)
 			return
 		}
@@ -280,6 +339,11 @@ func BotmanagerCommand(
 			return
 		}
 		removeBot(id)
+	case "list":
+		listBot()
+	case "num":
+		num := getNum()
+		fmt.Println(num)
 	default:
 		fmt.Println(
 			"未知bot命令",

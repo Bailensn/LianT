@@ -6,8 +6,9 @@ import (
 )
 
 import (
-	"LianT/bot"
+	"LianT/botmanager"
 	"LianT/config"
+	"LianT/service"
 )
 
 func main() {
@@ -21,9 +22,9 @@ func main() {
 	case "init":
 		initCommand()
 	case "service":
-		serviceCommand(args[2:])
+		service.ServiceCommand(args[2:])
 	case "botmanager":
-		bot.BotmanagerCommand(args[2:])
+		botmanager.BotmanagerCommand(args[2:])
 	case "config":
 		config.ConfigCommand(args[2:])
 	default:

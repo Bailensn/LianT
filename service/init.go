@@ -6,7 +6,7 @@ import (
 )
 
 import (
-	"LianT/bot"
+	"LianT/botmanager"
 	"LianT/config"
 )
 
@@ -36,7 +36,7 @@ func initCommand() {
 	/*==botmanager.go==*/
 
 	// 3. 初始化数据库
-	bot.InitDatabase()
+	botmanager.InitDatabase()
 
 	fmt.Println(
 		"初始化完成",
