@@ -1,7 +1,6 @@
 # LianT data
 LianT*
 data/
-config
 *.enc
 build.sh
 
