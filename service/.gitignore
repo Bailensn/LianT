@@ -1,0 +1,17 @@
+# LianT data
+LianT*
+data/
+config
+*.enc
+build.sh
+
+# Logs
+logs/
+
+# Environment
+.env
+
+# Go
+go.mod
+go.sum
+*.exe
