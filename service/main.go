@@ -21,12 +21,12 @@ func main() {
 	switch args[1] {
 	case "init":
 		initCommand()
+	case "config":
+		config.ConfigCommand(args[2:])
 	case "service":
 		service.ServiceCommand(args[2:])
 	case "botmanager":
 		botmanager.BotmanagerCommand(args[2:])
-	case "config":
-		config.ConfigCommand(args[2:])
 	default:
 		fmt.Println("未知命令")
 	}

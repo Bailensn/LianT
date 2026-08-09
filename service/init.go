@@ -13,10 +13,7 @@ import (
 func initCommand() {
 	/*==config.go==*/
 
-	// 1. 生成 master.key
-	config.InitMasterKey()
-
-	// 2. 创建默认配置
+	// 创建默认配置
 	_,err:=os.ReadFile(
 		config.ConfigPath(),
 	)
@@ -37,7 +34,7 @@ func initCommand() {
 
 	/*==botmanager.go==*/
 
-	// 3. 初始化data数据库
+	// 初始化data数据库
 	botmanager.InitDatabase()
 
 	fmt.Println(

@@ -6,7 +6,6 @@ import (
 	"os"
 	"strconv"
 	"path/filepath"
-	"github.com/fernet/fernet-go"
 )
 
 import (
@@ -44,51 +43,6 @@ func DefaultKeyPath() string {
 }
 
 // ==========================
-// master.key
-// ==========================
-func InitMasterKey(){
-	os.MkdirAll(
-		"data",
-		0700,
-	)
-	_,err:=os.Stat(
-		defaultKeyPath,
-	)
-	if os.IsNotExist(err){
-		key:=fernet.Key{}
-		err:=key.Generate()
-		if err!=nil{
-			panic(err)
-		}
-		err=os.WriteFile(
-			defaultKeyPath,
-			[]byte(key.Encode()),
-			0600,
-		)
-		if err!=nil{
-			panic(err)
-		}
-	}
-}
-
-func getFernetKey()*fernet.Key{
-	InitMasterKey()
-	data,err:=os.ReadFile(
-		defaultKeyPath,
-	)
-	if err!=nil{
-		panic(err)
-	}
-	key,err:=fernet.DecodeKey(
-		string(data),
-	)
-	if err!=nil{
-		panic(err)
-	}
-	return key
-}
-
-// ==========================
 // 保存配置
 // ==========================
 func SaveConfig(
@@ -114,7 +68,6 @@ func SaveConfig(
 		panic(err)
 	}
 }
-
 // ==========================
 // 读取配置
 // ==========================
@@ -165,7 +118,7 @@ func ConfigCommand(
 	case "set":
 		if len(args)!=3{
 			fmt.Println(
-				"用法: LianT config set key value",
+				"LianT config set key value",
 			)
 			return
 		}
@@ -185,6 +138,8 @@ func ConfigCommand(
 			cfg.Proxy.URL=args[2]
 		case "storage.database":
 			cfg.Storage.Database=args[2]
+		case "storage.key":
+			cfg.Storage.Key=args[2]
 		case "connect.url":
 			cfg.Connect.Url=args[2]
 		default:

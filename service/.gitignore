@@ -3,6 +3,7 @@ LianT*
 data/
 *.enc
 build.sh
+*.tar.gz
 
 # Logs
 logs/
