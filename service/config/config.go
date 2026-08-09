@@ -186,7 +186,7 @@ func ConfigCommand(
 		case "storage.database":
 			cfg.Storage.Database=args[2]
 		case "connect.url":
-			cfg.Connect.url=args[2]
+			cfg.Connect.Url=args[2]
 		default:
 			fmt.Println(
 				"未知配置",
