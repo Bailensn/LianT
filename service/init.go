@@ -28,6 +28,8 @@ func initCommand() {
 			"data/bots.db"
 		cfg.Storage.Key=
 			"data/master.key"
+		cfg.Connect.yrl=
+			"https://api.telegram.org"
 		config.SaveConfig(
 			cfg,
 		)

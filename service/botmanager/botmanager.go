@@ -70,6 +70,9 @@ func checkBot(
 	settings:=telebot.Settings{
 		Token: token,
 	}
+	if cfg.Connect.Url != "" {
+		settings.URL = cfg.Connect.Url
+	}
 	if cfg.Proxy.Enabled {
 		proxy,err:=url.Parse(
 			cfg.Proxy.URL,

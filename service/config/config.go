@@ -30,6 +30,9 @@ type Config struct {
 		Database string `json:"database"`
 		Key string `json:"key"`
 	} `json:"storage"`
+	Connect struct {
+		Url string `json:"url"`
+	} `json:"connect"`
 }
 
 func ConfigPath() string {
@@ -182,6 +185,8 @@ func ConfigCommand(
 			cfg.Proxy.URL=args[2]
 		case "storage.database":
 			cfg.Storage.Database=args[2]
+		case "connect.url":
+			cfg.Connect.url=args[2]
 		default:
 			fmt.Println(
 				"未知配置",
