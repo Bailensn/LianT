@@ -37,7 +37,7 @@ func initCommand() {
 
 	/*==botmanager.go==*/
 
-	// 3. 初始化数据库
+	// 3. 初始化data数据库
 	botmanager.InitDatabase()
 
 	fmt.Println(
