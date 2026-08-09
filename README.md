@@ -1,6 +1,6 @@
 # 联T
 
-一款使用Telegram Bot API的移动端管理器，服务器自备
+一款使用Telegram Bot API的管理器，服务器自备
 
 ## License
 
