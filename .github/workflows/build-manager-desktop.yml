@@ -203,7 +203,6 @@ jobs:
           find ${RPMTOP}/RPMS -name "*.rpm" -exec cp {} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm" \;
           echo "✅ Generated .rpm: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm"
 
-          # 将生成的安装包移动到仓库根目录，以便上传
           mv *.deb *.rpm ${{ env.OUTPUT_DIR }}/
 
       - name: Upload packages (release)
@@ -429,7 +428,10 @@ jobs:
       - name: Install NSIS (release)
         if: ${{ inputs.build_mode == 'release' }}
         shell: pwsh
-        run: choco install nsis -y
+        run: |
+          choco install nsis -y
+          # 刷新环境变量，使 makensis 在当前会话可用
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 
       - name: Package Windows .exe installer (release)
         if: ${{ inputs.build_mode == 'release' }}
@@ -522,8 +524,27 @@ jobs:
           Write-Host "📦 Package contents:"
           Get-ChildItem $PKG | ForEach-Object { Write-Host "  $($_.Name)  ($($_.Length) bytes)" }
 
+          # 动态查找 makensis.exe
+          $makensis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source
+          if (-not $makensis) {
+            # 尝试常见安装路径
+            $candidates = @(
+              "$env:ProgramFiles\NSIS\makensis.exe",
+              "${env:ProgramFiles(x86)}\NSIS\makensis.exe",
+              "$env:LOCALAPPDATA\Programs\NSIS\makensis.exe",
+              "C:\tools\NSIS\makensis.exe"
+            )
+            foreach ($candidate in $candidates) {
+              if (Test-Path $candidate) { $makensis = $candidate; break }
+            }
+          }
+          if (-not $makensis) {
+            throw "makensis.exe not found. Installed NSIS but cannot locate executable."
+          }
+          Write-Host "Using makensis: $makensis"
+
           Push-Location $PKG
-          & "C:\Program Files (x86)\NSIS\makensis.exe" installer.nsi
+          & $makensis installer.nsi
           if ($LASTEXITCODE -ne 0) { throw "NSIS 打包失败" }
           Pop-Location
 
@@ -649,7 +670,6 @@ jobs:
 
           echo "✅ Generated .dmg: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg"
 
-          # 移动到仓库根目录
           mv "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg" ${{ env.OUTPUT_DIR }}/
 
       - name: Upload packages (release)
