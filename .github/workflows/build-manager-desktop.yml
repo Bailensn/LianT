@@ -62,10 +62,10 @@ jobs:
         if: ${{ inputs.linux_amd64 }}
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \ 
+            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
               go build -ldflags="-s -w" -trimpath -o manager-desktop-linux-amd64 .
           else
-            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \ 
+            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
               go build -o manager-desktop-linux-amd64 .
           fi
       - name: Upload Linux amd64
@@ -80,10 +80,10 @@ jobs:
         if: ${{ inputs.linux_arm64 }}
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \ 
+            CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \
               go build -ldflags="-s -w" -trimpath -o manager-desktop-linux-arm64 .
           else
-            CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \ 
+            CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \
               go build -o manager-desktop-linux-arm64 .
           fi
       - name: Upload Linux arm64
