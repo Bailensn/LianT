@@ -10,12 +10,29 @@ on:
           - debug
           - release
         default: release
+      linux_amd64:
+        description: 'Linux amd64'
+        type: boolean
+        default: false
+      linux_arm64:
+        description: 'Linux arm64'
+        type: boolean
+        default: false
+      windows_amd64:
+        description: 'Windows amd64 (.exe)'
+        type: boolean
+        default: false
+      darwin_arm64:
+        description: 'macOS arm64 (Apple Silicon)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   linux-amd64:
+    if: ${{ inputs.linux_amd64 }}
     name: Linux amd64
     runs-on: ubuntu-latest
     env:
@@ -51,6 +68,7 @@ jobs:
           path: manager/desktop/manager-desktop-linux-amd64
 
   linux-arm64:
+    if: ${{ inputs.linux_arm64 }}
     name: Linux arm64
     runs-on: ubuntu-24.04-arm
     env:
@@ -86,6 +104,7 @@ jobs:
           path: manager/desktop/manager-desktop-linux-arm64
 
   windows-amd64:
+    if: ${{ inputs.windows_amd64 }}
     name: Windows amd64
     runs-on: windows-latest
     env:
@@ -114,6 +133,7 @@ jobs:
           path: manager/desktop/manager-desktop-windows-amd64.exe
 
   macos-arm64:
+    if: ${{ inputs.darwin_arm64 }}
     name: macOS arm64 (Apple Silicon)
     runs-on: macos-14
     env:

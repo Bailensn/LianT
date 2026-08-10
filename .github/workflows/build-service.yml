@@ -30,26 +30,26 @@ on:
 permissions:
   contents: read
 
-defaults:
-  run:
-    working-directory: service
-
 jobs:
-  build:
+  # ============================================================
+  # Linux amd64
+  # ============================================================
+  linux-amd64:
+    if: ${{ inputs.linux_amd64 }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: service
     env:
       BUILD_MODE: ${{ inputs.build_mode }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
           cache: true
           cache-dependency-path: service/go.sum
-
-      - name: Build Linux amd64 (${{ env.BUILD_MODE }})
-        if: ${{ inputs.linux_amd64 }}
+      - name: Build
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
@@ -58,15 +58,30 @@ jobs:
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
               go build -o service-linux-amd64 .
           fi
-      - name: Upload Linux amd64
-        if: ${{ inputs.linux_amd64 }}
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: service-linux-amd64
           path: service/service-linux-amd64
 
-      - name: Build Linux arm64 (${{ env.BUILD_MODE }})
-        if: ${{ inputs.linux_arm64 }}
+  # ============================================================
+  # Linux arm64
+  # ============================================================
+  linux-arm64:
+    if: ${{ inputs.linux_arm64 }}
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        working-directory: service
+    env:
+      BUILD_MODE: ${{ inputs.build_mode }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+          cache-dependency-path: service/go.sum
+      - name: Build
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
@@ -75,32 +90,61 @@ jobs:
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
               go build -o service-linux-arm64 .
           fi
-      - name: Upload Linux arm64
-        if: ${{ inputs.linux_arm64 }}
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: service-linux-arm64
           path: service/service-linux-arm64
 
-      - name: Build Windows amd64 (${{ env.BUILD_MODE }})
-        if: ${{ inputs.windows_amd64 }}
+  # ============================================================
+  # Windows amd64
+  # ============================================================
+  windows-amd64:
+    if: ${{ inputs.windows_amd64 }}
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: service
+    env:
+      BUILD_MODE: ${{ inputs.build_mode }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+          cache-dependency-path: service/go.sum
+      - name: Build
+        shell: pwsh
         run: |
-          if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
-              go build -ldflags="-s -w" -trimpath -o service-windows-amd64.exe .
-          else
-            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
-              go build -o service-windows-amd64.exe .
-          fi
-      - name: Upload Windows amd64
-        if: ${{ inputs.windows_amd64 }}
-        uses: actions/upload-artifact@v4
+          if ($env:BUILD_MODE -eq "release") {
+            go build -ldflags="-s -w" -trimpath -o service-windows-amd64.exe .
+          } else {
+            go build -o service-windows-amd64.exe .
+          }
+      - uses: actions/upload-artifact@v4
         with:
           name: service-windows-amd64
           path: service/service-windows-amd64.exe
 
-      - name: Build macOS arm64 (${{ env.BUILD_MODE }})
-        if: ${{ inputs.darwin_arm64 }}
+  # ============================================================
+  # macOS arm64
+  # ============================================================
+  darwin-arm64:
+    if: ${{ inputs.darwin_arm64 }}
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: service
+    env:
+      BUILD_MODE: ${{ inputs.build_mode }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+          cache-dependency-path: service/go.sum
+      - name: Build
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
             CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
@@ -109,9 +153,7 @@ jobs:
             CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
               go build -o service-darwin-arm64 .
           fi
-      - name: Upload macOS arm64
-        if: ${{ inputs.darwin_arm64 }}
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: service-darwin-arm64
           path: service/service-darwin-arm64

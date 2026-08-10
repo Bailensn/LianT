@@ -6,27 +6,27 @@ on:
       linux_deb_arm64:
         description: 'Linux arm64 .deb'
         type: boolean
-        default: true
+        default: false
       linux_rpm_arm64:
         description: 'Linux arm64 .rpm'
         type: boolean
-        default: true
+        default: false
       linux_deb_amd64:
         description: 'Linux amd64 .deb'
         type: boolean
-        default: true
+        default: false
       linux_rpm_amd64:
         description: 'Linux amd64 .rpm'
         type: boolean
-        default: true
+        default: false
       windows_exe:
         description: 'Windows amd64 .exe 安装器'
         type: boolean
-        default: true
+        default: false
       darwin_dmg:
-        description: 'macOS arm64 .dmg'
+        description: 'MacOS arm64 .dmg'
         type: boolean
-        default: true
+        default: false
 
 env:
   APP_NAME: LianT
