@@ -356,14 +356,31 @@ jobs:
           $PKG     = "pkg_win"
           $VERSION = "${{ env.APP_VERSION }}"
 
-          New-Item -ItemType Directory -Force -Path $PKG | Out-Null
-          Copy-Item "$BUILD/${{ env.APP_NAME }}.exe" "$PKG/${{ env.APP_NAME }}.exe" -Force
+          # 校验二进制存在
+          $exeSrc = "$BUILD/${{ env.APP_NAME }}.exe"
+          if (-not (Test-Path $exeSrc)) { throw "Binary not found at $exeSrc" }
 
-          if (Test-Path $RES) {
-            Get-ChildItem $RES -File | ForEach-Object {
-              Copy-Item $_.FullName "$PKG/" -Force
-            }
+          New-Item -ItemType Directory -Force -Path $PKG | Out-Null
+          Copy-Item $exeSrc "$PKG/${{ env.APP_NAME }}.exe" -Force
+
+          # 把图标资源复制进包目录（如果存在）
+          $extraFiles = ""
+          if (Test-Path "$RES/*.ico") {
+            Copy-Item "$RES/*.ico" $PKG -Force
+            $extraFiles += "  File `"*.ico`"`r`n"
           }
+          if (Test-Path "$RES/*.png") {
+            Copy-Item "$RES/*.png" $PKG -Force
+            $extraFiles += "  File `"*.png`"`r`n"
+          }
+          if (Test-Path "$RES/*.bmp") {
+            Copy-Item "$RES/*.bmp" $PKG -Force
+            $extraFiles += "  File `"*.bmp`"`r`n"
+          }
+
+          # 列出 PKG 里实际有哪些文件，方便排错
+          Write-Host "📦 Package contents:"
+          Get-ChildItem $PKG | Format-Table Name, Length -AutoSize
 
           $nsi = @"
           !define APP_NAME "${{ env.APP_NAME }}"
@@ -371,9 +388,9 @@ jobs:
           !define COMPANY   "LianT Team"
           RequestExecutionLevel admin
           SetCompressor /SOLID lzma
-          Name "\${APP_NAME}"
-          OutFile "${{ env.APP_NAME }}_\${APP_VERSION}_amd64.exe"
-          InstallDir "\$PROGRAMFILES64\${{ env.APP_NAME }}"
+          Name "`${APP_NAME}"
+          OutFile "${{ env.APP_NAME }}_`${APP_VERSION}_amd64.exe"
+          InstallDir "`$PROGRAMFILES64\${{ env.APP_NAME }}"
           ShowInstDetails show
           !include "MUI2.nsh"
           !insertmacro MUI_PAGE_WELCOME
@@ -386,38 +403,47 @@ jobs:
           !insertmacro MUI_LANGUAGE "English"
 
           Section "Main"
-            SetOutPath "\$INSTDIR"
+            SetOutPath "`$INSTDIR"
             File "${{ env.APP_NAME }}.exe"
-            if exist "*.ico" File "*.ico"
-            if exist "*.png" File "*.png"
-            CreateDirectory "\$SMPROGRAMS\${{ env.APP_NAME }}"
-            CreateShortcut  "\$SMPROGRAMS\${{ env.APP_NAME }}\${{ env.APP_NAME }}.lnk" "\$INSTDIR\${{ env.APP_NAME }}.exe"
-            CreateShortcut  "\$DESKTOP\${{ env.APP_NAME }}.lnk"          "\$INSTDIR\${{ env.APP_NAME }}.exe"
-            WriteUninstaller "\$INSTDIR\Uninstall.exe"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "DisplayName"     "\${APP_NAME}"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "UninstallString" "\$INSTDIR\Uninstall.exe"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "DisplayVersion"  "\${APP_VERSION}"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "Publisher"       "\${COMPANY}"
+          ${ExtraFiles}
+            CreateDirectory "`$SMPROGRAMS\${{ env.APP_NAME }}"
+            CreateShortcut  "`$SMPROGRAMS\${{ env.APP_NAME }}\${{ env.APP_NAME }}.lnk" "`$INSTDIR\${{ env.APP_NAME }}.exe"
+            CreateShortcut  "`$DESKTOP\${{ env.APP_NAME }}.lnk"          "`$INSTDIR\${{ env.APP_NAME }}.exe"
+            WriteUninstaller "`$INSTDIR\Uninstall.exe"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "DisplayName"     "`${APP_NAME}"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "UninstallString" "`$INSTDIR\Uninstall.exe"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "DisplayVersion"  "`${APP_VERSION}"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "Publisher"       "`${COMPANY}"
           SectionEnd
 
           Section "Uninstall"
-            Delete "\$INSTDIR\${{ env.APP_NAME }}.exe"
-            Delete "\$INSTDIR\Uninstall.exe"
-            RMDir  "\$INSTDIR"
-            Delete "\$SMPROGRAMS\${{ env.APP_NAME }}\${{ env.APP_NAME }}.lnk"
-            RMDir  "\$SMPROGRAMS\${{ env.APP_NAME }}"
-            Delete "\$DESKTOP\${{ env.APP_NAME }}.lnk"
+            Delete "`$INSTDIR\${{ env.APP_NAME }}.exe"
+            Delete "`$INSTDIR\Uninstall.exe"
+            RMDir  "`$INSTDIR"
+            Delete "`$SMPROGRAMS\${{ env.APP_NAME }}\${{ env.APP_NAME }}.lnk"
+            RMDir  "`$SMPROGRAMS\${{ env.APP_NAME }}"
+            Delete "`$DESKTOP\${{ env.APP_NAME }}.lnk"
             DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}"
           SectionEnd
-          "@
-          $nsi | Out-File "$PKG/installer.nsi" -Encoding ASCII
+"@
+          # 把动态拼出来的 File 行注入到 NSIS 脚本
+          $nsi = $nsi -replace '\$\{ExtraFiles\}', $extraFiles
+
+          # 写文件时统一用 CRLF，避免 NSIS 解析警告
+          $nsi | Out-File "$PKG/installer.nsi" -Encoding ASCII -NoNewline
+          (Get-Content "$PKG/installer.nsi") -join "`r`n" | Out-File "$PKG/installer.nsi" -Encoding ASCII
+
+          Write-Host "📝 installer.nsi contents:"
+          Get-Content "$PKG/installer.nsi" | Write-Host
 
           Push-Location $PKG
           & "C:\Program Files (x86)\NSIS\makensis.exe" installer.nsi
           if ($LASTEXITCODE -ne 0) { throw "NSIS 打包失败" }
           Pop-Location
 
-          Move-Item "$PKG/${{ env.APP_NAME }}_${VERSION}_amd64.exe" "./${{ env.APP_NAME }}_${VERSION}_amd64.exe" -Force
+          $outExe = "$PKG\${{ env.APP_NAME }}_${VERSION}_amd64.exe"
+          if (-not (Test-Path $outExe)) { throw "Expected installer not found: $outExe" }
+          Move-Item $outExe "./${{ env.APP_NAME }}_${VERSION}_amd64.exe" -Force
           Write-Host "✅ Generated Windows installer: ${{ env.APP_NAME }}_${VERSION}_amd64.exe"
 
       # ---- macOS .dmg ----
