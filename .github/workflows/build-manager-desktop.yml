@@ -51,7 +51,7 @@ jobs:
             libxcursor-dev libxfixes-dev
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.26'
+          go-version: '1.26.5'
           cache: true
           cache-dependency-path: manager/desktop/go.sum
       - name: Build
@@ -87,7 +87,7 @@ jobs:
             libxcursor-dev libxfixes-dev
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.26'
+          go-version: '1.26.5'
           cache: true
           cache-dependency-path: manager/desktop/go.sum
       - name: Build
@@ -116,7 +116,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.26'
+          go-version: '1.26.5'
           cache: true
           cache-dependency-path: manager/desktop/go.sum
       - name: Build
@@ -145,7 +145,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.26'
+          go-version: '1.26.5'
           cache: true
           cache-dependency-path: manager/desktop/go.sum
       - name: Build
