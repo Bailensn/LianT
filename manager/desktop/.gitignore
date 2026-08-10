@@ -6,8 +6,3 @@ logs/
 
 # Environment
 .env
-
-# Go
-go.mod
-go.sum
-*.exe
