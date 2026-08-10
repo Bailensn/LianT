@@ -9,6 +9,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+var toggleBtn *widget.Button
+
 func main() {
 	myApp := app.New()
 	myWindow := myApp.NewWindow("LianT Manager")
