@@ -54,7 +54,12 @@ jobs:
             libxkbcommon-dev \
             libwayland-dev \
             libx11-dev \
-            libegl1-mesa-dev
+            libegl1-mesa-dev \
+            libxkbcommon-x11-dev \
+            libx11-xcb-dev \
+            libxcursor-dev \
+            libxfixes-dev
+
 
       - uses: actions/setup-go@v5
         with:
