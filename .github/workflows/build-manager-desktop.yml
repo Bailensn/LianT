@@ -37,7 +37,6 @@ permissions:
 env:
   APP_NAME: LianT
   APP_VERSION: ${{ inputs.version }}
-  # 所有路径以仓库根目录为锚点，避免 working-directory 引发的相对路径混乱
   BUILD_ROOT: ${{ github.workspace }}/build
   SRC_ROOT: ${{ github.workspace }}/manager/desktop
 
@@ -299,8 +298,10 @@ jobs:
           Summary:        LianT Manager
           License:        Proprietary
           BuildArch:      ${RPM_ARCH}
+
           %description
           Cross-platform manager tool.
+
           %install
           mkdir -p %{buildroot}/usr/bin
           cp ${BR}/usr/bin/LianT %{buildroot}/usr/bin/LianT
@@ -313,6 +314,7 @@ jobs:
           for s in 16 32 48 64 128 256 512; do
             cp ${BR}/usr/share/icons/hicolor/${s}x${s}/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/\${s}x\${s}/apps/LianT.png
           done
+
           %files
           /usr/bin/LianT
           /usr/share/applications/LianT.desktop
@@ -323,10 +325,12 @@ jobs:
           /usr/share/icons/hicolor/128x128/apps/LianT.png
           /usr/share/icons/hicolor/256x256/apps/LianT.png
           /usr/share/icons/hicolor/512x512/apps/LianT.png
+
           %post
           /bin/touch --no-create /usr/share/icons/hicolor 2>/dev/null || true
           [ -x /usr/bin/gtk-update-icon-cache ] && /usr/bin/gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
           [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
+
           %postun
           [ -x /usr/bin/gtk-update-icon-cache ] && /usr/bin/gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
           [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
@@ -337,13 +341,18 @@ jobs:
           echo "✅ Generated .rpm: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_${RPM_ARCH}.rpm"
 
       # ---- Windows .exe installer ----
+      - name: Install NSIS
+        if: matrix.platform == 'windows-amd64' && steps.dl.outcome == 'success'
+        shell: pwsh
+        run: choco install nsis -y
+
       - name: Package Windows .exe installer
         if: matrix.platform == 'windows-amd64' && steps.dl.outcome == 'success'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $BUILD   = "${{ env.BUILD_ROOT }}/windows/amd64"
-          $RES     = "${{ github.workspace }}/manager/resources/windows"
+          $RES     = "${{ github.workspace }}/manager/release/windows"
           $PKG     = "pkg_win"
           $VERSION = "${{ env.APP_VERSION }}"
 
@@ -418,7 +427,7 @@ jobs:
         run: |
           set -e
           BUILD="${{ env.BUILD_ROOT }}/darwin/arm64"
-          RES="${{ github.workspace }}/manager/resources/darwin"
+          RES="${{ github.workspace }}/manager/release/darwin"
           APP="${{ env.APP_NAME }}.app"
 
           test -f "$BUILD/${{ env.APP_NAME }}" || { echo "Binary not found at $BUILD/${{ env.APP_NAME }}"; exit 1; }

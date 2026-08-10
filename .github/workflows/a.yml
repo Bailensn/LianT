@@ -1,0 +1,79 @@
+# ---- Windows .exe installer ----
+- name: Install NSIS
+  if: matrix.platform == 'windows-amd64'
+  shell: pwsh
+  run: choco install nsis -y
+
+- name: Package Windows .exe installer
+  if: matrix.platform == 'windows-amd64'
+  shell: pwsh
+  run: |
+    $ErrorActionPreference = "Stop"
+    $BUILD   = "${{ env.BUILD_ROOT }}/windows/amd64"
+    $RES     = "${{ github.workspace }}/manager/release/windows"
+    $PKG     = "pkg_win"
+    $VERSION = "${env:APP_VERSION}"
+
+    New-Item -ItemType Directory -Force -Path $PKG | Out-Null
+    Copy-Item "$BUILD/${{ env.APP_NAME }}.exe" "$PKG/${{ env.APP_NAME }}.exe" -Force
+
+    if (Test-Path $RES) {
+      Get-ChildItem $RES -File | ForEach-Object {
+        Copy-Item $_.FullName "$PKG/" -Force
+      }
+    }
+
+    $nsi = @"
+    !define APP_NAME "${{ env.APP_NAME }}"
+    !define APP_VERSION "$VERSION"
+    !define COMPANY   "LianT Team"
+    RequestExecutionLevel admin
+    SetCompressor /SOLID lzma
+    Name "\${APP_NAME}"
+    OutFile "${{ env.APP_NAME }}_\${APP_VERSION}_amd64.exe"
+    InstallDir "\$PROGRAMFILES64\${{ env.APP_NAME }}"
+    ShowInstDetails show
+    !include "MUI2.nsh"
+    !insertmacro MUI_PAGE_WELCOME
+    !insertmacro MUI_PAGE_DIRECTORY
+    !insertmacro MUI_PAGE_INSTFILES
+    !insertmacro MUI_PAGE_FINISH
+    !insertmacro MUI_UNPAGE_CONFIRM
+    !insertmacro MUI_UNPAGE_INSTFILES
+    !insertmacro MUI_LANGUAGE "SimpChinese"
+    !insertmacro MUI_LANGUAGE "English"
+
+    Section "Main"
+      SetOutPath "\$INSTDIR"
+      File "${{ env.APP_NAME }}.exe"
+      if exist "*.ico" File "*.ico"
+      if exist "*.png" File "*.png"
+      CreateDirectory "\$SMPROGRAMS\${{ env.APP_NAME }}"
+      CreateShortcut  "\$SMPROGRAMS\${{ env.APP_NAME }}\${{ env.APP_NAME }}.lnk" "\$INSTDIR\${{ env.APP_NAME }}.exe"
+      CreateShortcut  "\$DESKTOP\${{ env.APP_NAME }}.lnk"          "\$INSTDIR\${{ env.APP_NAME }}.exe"
+      WriteUninstaller "\$INSTDIR\Uninstall.exe"
+      WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "DisplayName"     "\${APP_NAME}"
+      WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "UninstallString" "\$INSTDIR\Uninstall.exe"
+      WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "DisplayVersion"  "\${APP_VERSION}"
+      WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "Publisher"       "\${COMPANY}"
+    SectionEnd
+
+    Section "Uninstall"
+      Delete "\$INSTDIR\${{ env.APP_NAME }}.exe"
+      Delete "\$INSTDIR\Uninstall.exe"
+      RMDir  "\$INSTDIR"
+      Delete "\$SMPROGRAMS\${{ env.APP_NAME }}\${{ env.APP_NAME }}.lnk"
+      RMDir  "\$SMPROGRAMS\${{ env.APP_NAME }}"
+      Delete "\$DESKTOP\${{ env.APP_NAME }}.lnk"
+      DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}"
+    SectionEnd
+    "@
+    $nsi | Out-File "$PKG/installer.nsi" -Encoding ASCII
+
+    Push-Location $PKG
+    & "C:\Program Files (x86)\NSIS\makensis.exe" installer.nsi
+    if ($LASTEXITCODE -ne 0) { throw "NSIS 打包失败" }
+    Pop-Location
+
+    Move-Item "$PKG/${{ env.APP_NAME }}_${VERSION}_amd64.exe" "./${{ env.APP_NAME }}_${VERSION}_amd64.exe" -Force
+    Write-Host "✅ Generated Windows installer: ${{ env.APP_NAME }}_${VERSION}_amd64.exe"
