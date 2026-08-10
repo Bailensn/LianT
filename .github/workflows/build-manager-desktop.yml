@@ -391,7 +391,7 @@ jobs:
           retention-days: 30
 
   # ======================================================================
-  # Windows amd64
+  # Windows amd64 — Inno Setup
   # ======================================================================
   windows-amd64:
     if: ${{ inputs.windows_amd64 }}
@@ -407,6 +407,7 @@ jobs:
           go-version: '1.26.5'
           cache: true
           cache-dependency-path: go.sum
+
       - name: Build binary
         shell: pwsh
         run: |
@@ -425,142 +426,187 @@ jobs:
           path: ${{ env.BUILD_ROOT }}/windows/amd64/${{ env.APP_NAME }}.exe
           retention-days: 7
 
-      - name: Install NSIS (release)
+      # ---------- release 模式：Inno Setup 打包 ----------
+      - name: Install Inno Setup (release)
         if: ${{ inputs.build_mode == 'release' }}
         shell: pwsh
         run: |
-          choco install nsis -y
-          # 刷新环境变量，使 makensis 在当前会话可用
+          choco install innosetup -y --no-progress
+          # 刷新当前会话的 PATH，使 iscc 可用
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          # 验证安装
+          $iscc = Get-Command iscc -ErrorAction SilentlyContinue
+          if ($iscc) {
+            Write-Host "✅ Inno Setup installed: $($iscc.Source)"
+          } else {
+            Write-Host "⚠️ iscc not in PATH, will search manually"
+          }
 
-      - name: Package Windows .exe installer (release)
+      - name: Package Windows installer with Inno Setup (release)
         if: ${{ inputs.build_mode == 'release' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          $APP     = "${{ env.APP_NAME }}"
+          $VERSION = "${{ env.APP_VERSION }}"
           $BUILD   = "${{ env.BUILD_ROOT }}\windows\amd64"
           $RES     = "${{ github.workspace }}\manager\resources\windows"
           $PKG     = "pkg_win"
-          $VERSION = "${{ env.APP_VERSION }}"
-          $APP     = "${{ env.APP_NAME }}"
+          $OUT     = "${{ env.OUTPUT_DIR }}"
 
-          Write-Host "🔍 BUILD=$BUILD"
           Write-Host "🔍 APP=$APP  VERSION=$VERSION"
+          Write-Host "🔍 BUILD=$BUILD"
+          Write-Host "🔍 RES=$RES"
 
-          if (-not (Test-Path "$BUILD\$APP.exe")) {
-            throw "❌ Binary not found at $BUILD\$APP.exe"
+          # 校验二进制
+          $exePath = "$BUILD\$APP.exe"
+          if (-not (Test-Path $exePath)) {
+            throw "❌ Binary not found at $exePath"
           }
+          Write-Host "✅ Binary found: $exePath ($([math]::Round((Get-Item $exePath).Length/1MB,2)) MB)"
 
-          New-Item -ItemType Directory -Force -Path $PKG | Out-Null
-          Copy-Item "$BUILD\$APP.exe" "$PKG\$APP.exe" -Force
-          Write-Host "✅ Copied $APP.exe into $PKG/"
-
-          if (Test-Path $RES) {
-            Get-ChildItem $RES -File | ForEach-Object {
-              Copy-Item $_.FullName "$PKG\" -Force
-            }
-            Write-Host "✅ Copied resources from $RES"
+          # 确定图标文件
+          $iconFile = ""
+          if (Test-Path "$RES\$APP.ico") {
+            $iconFile = "$RES\$APP.ico"
+          } elseif (Test-Path "$RES\LianT.ico") {
+            $iconFile = "$RES\LianT.ico"
           } else {
-            Write-Host "⚠️ No resources dir at $RES, skipping"
+            # 搜索任意 ico
+            $found = Get-ChildItem $RES -Filter "*.ico" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) { $iconFile = $found.FullName }
+          }
+          if ($iconFile) {
+            Write-Host "✅ Using icon: $iconFile"
+          } else {
+            Write-Host "⚠️ No .ico found in $RES, installer will use default icon"
           }
 
-          $extraFiles = ""
-          if (Test-Path "$PKG\*.ico") { $extraFiles += '  File "*.ico"' + "`r`n" }
-          if (Test-Path "$PKG\*.png") { $extraFiles += '  File "*.png"' + "`r`n" }
-          Write-Host "📦 extraFiles: $extraFiles"
+          # 准备打包目录
+          New-Item -ItemType Directory -Force -Path $PKG | Out-Null
+          Copy-Item $exePath "$PKG\$APP.exe" -Force
+          Write-Host "✅ Copied $APP.exe into $PKG\"
 
-          $outFile = "${APP}_${VERSION}_amd64.exe"
-          $installDir = '$PROGRAMFILES64\' + $APP
+          # 复制图标到打包目录（供 installer 内引用）
+          if ($iconFile) {
+            Copy-Item $iconFile "$PKG\app.ico" -Force
+            Write-Host "✅ Copied icon into $PKG\app.ico"
+          }
 
-          $nsi = @"
-          !define APP_NAME "$APP"
-          !define APP_VERSION "$VERSION"
-          !define COMPANY   "LianT Team"
-          RequestExecutionLevel admin
-          SetCompressor /SOLID lzma
-          Name "$APP"
-          OutFile "$outFile"
-          InstallDir "$installDir"
-          ShowInstDetails show
-          !include "MUI2.nsh"
-          !insertmacro MUI_PAGE_WELCOME
-          !insertmacro MUI_PAGE_DIRECTORY
-          !insertmacro MUI_PAGE_INSTFILES
-          !insertmacro MUI_PAGE_FINISH
-          !insertmacro MUI_UNPAGE_CONFIRM
-          !insertmacro MUI_UNPAGE_INSTFILES
-          !insertmacro MUI_LANGUAGE "SimpChinese"
-          !insertmacro MUI_LANGUAGE "English"
+          # 复制其他资源文件（如有）
+          if (Test-Path $RES) {
+            Get-ChildItem $RES -File | Where-Object { $_.Extension -ne ".ico" } | ForEach-Object {
+              Copy-Item $_.FullName "$PKG\" -Force
+              Write-Host "  + $($_.Name)"
+            }
+          }
 
-          Section "Main"
-            SetOutPath "`$INSTDIR"
-            File "$APP.exe"
-          $extraFiles
-            CreateDirectory "`$SMPROGRAMS\$APP"
-            CreateShortcut  "`$SMPROGRAMS\$APP\$APP.lnk" "`$INSTDIR\$APP.exe"
-            CreateShortcut  "`$DESKTOP\$APP.lnk"          "`$INSTDIR\$APP.exe"
-            WriteUninstaller "`$INSTDIR\Uninstall.exe"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\$APP" "DisplayName"     "$APP"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\$APP" "UninstallString" "`$INSTDIR\Uninstall.exe"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\$APP" "DisplayVersion"  "$VERSION"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\$APP" "Publisher"       "LianT Team"
-          SectionEnd
+          # 确定 SetupIconFile 行（如果没图标就注释掉）
+          if ($iconFile) {
+            $setupIconLine = 'SetupIconFile: "{app}\app.ico"'
+          } else {
+            $setupIconLine = '# SetupIconFile not available'
+          }
 
-          Section "Uninstall"
-            Delete "`$INSTDIR\$APP.exe"
-            Delete "`$INSTDIR\Uninstall.exe"
-            RMDir  "`$INSTDIR"
-            Delete "`$SMPROGRAMS\$APP\$APP.lnk"
-            RMDir  "`$SMPROGRAMS\$APP"
-            Delete "`$DESKTOP\$APP.lnk"
-            DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\$APP"
-          SectionEnd
+          # 生成 Inno Setup 脚本 (.iss)
+          $issPath = "$PKG\installer.iss"
+          $iss = @"
+          ; -- Inno Setup Script for $APP $VERSION --
+          ; Generated by GitHub Actions workflow
+
+          [Setup]
+          AppName=$APP
+          AppVersion=$VERSION
+          AppPublisher=LianT Team
+          DefaultDirName={pf}\$APP
+          DefaultGroupName=$APP
+          OutputDir=$OUT
+          OutputBaseFilename=$APP`_$VERSION`_amd64
+          Compression=lzma
+          SolidCompression=yes
+          PrivilegesRequired=admin
+          UninstallDisplayIcon={app}\app.ico
+          $setupIconLine
+
+          [Languages]
+          Name: "english"; MessagesFile: "compiler:Default.isl"
+          Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+
+          [Files]
+          Source: "$PKG\$APP.exe"; DestDir: "{app}"; Flags: ignoreversion
+          Source: "$PKG\app.ico"; DestDir: "{app}"; Flags: ignoreversion
           "@
 
-          $nsi | Out-File "$PKG\installer.nsi" -Encoding ASCII
-          Write-Host "📝 installer.nsi contents:"
-          Get-Content "$PKG\installer.nsi" | ForEach-Object { Write-Host "  $_" }
+          # 如果有额外文件，追加到 [Files] 段
+          $extraFiles = Get-ChildItem "$PKG\*" -File | Where-Object { $_.Name -notin @("$APP.exe","app.ico","installer.iss") }
+          if ($extraFiles) {
+            foreach ($f in $extraFiles) {
+              $iss += "Source: `"$PKG\$($f.Name)`"; DestDir: `"{app}`"; Flags: ignoreversion`r`n"
+            }
+          }
 
+          $iss += @"
+
+          [Icons]
+          Name: "{group}\$APP"; Filename: "{app}\$APP.exe"; IconFilename: "{app}\app.ico"
+          Name: "{commondesktop}\$APP"; Filename: "{app}\$APP.exe"; IconFilename: "{app}\app.ico"; Tasks: desktopicon
+
+          [Tasks]
+          Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"
+
+          [Run]
+          Filename: "{app}\$APP.exe"; Description: "Launch $APP"; Flags: nowait postinstall skipifsilent
+          "@
+
+          $iss | Out-File $issPath -Encoding UTF8
+          Write-Host "📝 installer.iss written to $issPath"
+
+          # 显示脚本内容便于排查
+          Write-Host "📝 installer.iss contents:"
+          Get-Content $issPath | ForEach-Object { Write-Host "  $_" }
+
+          # 确认包目录内容
           Write-Host "📦 Package contents:"
           Get-ChildItem $PKG | ForEach-Object { Write-Host "  $($_.Name)  ($($_.Length) bytes)" }
 
-          # 动态查找 makensis.exe
-          $makensis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source
-          if (-not $makensis) {
-            # 尝试常见安装路径
+          # 查找 iscc 编译器
+          $iscc = Get-Command iscc -ErrorAction SilentlyContinue
+          if (-not $iscc) {
             $candidates = @(
-              "$env:ProgramFiles\NSIS\makensis.exe",
-              "${env:ProgramFiles(x86)}\NSIS\makensis.exe",
-              "$env:LOCALAPPDATA\Programs\NSIS\makensis.exe",
-              "C:\tools\NSIS\makensis.exe"
+              "$env:ProgramFiles\Inno Setup 6\iscc.exe",
+              "${env:ProgramFiles(x86)}\Inno Setup 6\iscc.exe",
+              "$env:LOCALAPPDATA\Programs\Inno Setup 6\iscc.exe",
+              "C:\tools\Inno Setup 6\iscc.exe"
             )
-            foreach ($candidate in $candidates) {
-              if (Test-Path $candidate) { $makensis = $candidate; break }
+            foreach ($c in $candidates) {
+              if (Test-Path $c) { $iscc = $c; break }
             }
           }
-          if (-not $makensis) {
-            throw "makensis.exe not found. Installed NSIS but cannot locate executable."
+          if (-not $iscc) {
+            throw "❌ iscc.exe not found after Inno Setup installation"
           }
-          Write-Host "Using makensis: $makensis"
+          Write-Host "🔧 Using iscc: $iscc"
 
-          Push-Location $PKG
-          & $makensis installer.nsi
-          if ($LASTEXITCODE -ne 0) { throw "NSIS 打包失败" }
-          Pop-Location
+          # 编译
+          & $iscc $issPath
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup 编译失败 (exit code $LASTEXITCODE)" }
 
-          # 找到生成的 exe 并移动到仓库根目录
-          $generated = Get-ChildItem "$PKG\${APP}_*.exe" -File | Where-Object { $_.Name -match "^${APP}_\d+\.\d+\.\d+_amd64\.exe$" }
-          if (-not $generated) {
-            $generated = Get-ChildItem "$PKG\*.exe" -File | Where-Object { $_.Name -like '*_amd64.exe' -and $_.Name -ne "$APP.exe" } | Select-Object -First 1
+          # 确认输出文件
+          $outputFile = "$OUT\$APP`_$VERSION`_amd64.exe"
+          if (Test-Path $outputFile) {
+            $size = (Get-Item $outputFile).Length
+            Write-Host "✅ Generated installer: $outputFile ($([math]::Round($size/1MB,2)) MB)"
+          } else {
+            # 尝试通配符查找
+            $generated = Get-ChildItem "$OUT\*.exe" -File | Where-Object { $_.Name -match "^${APP}.*amd64\.exe$" } | Select-Object -First 1
+            if ($generated) {
+              Write-Host "✅ Generated installer: $($generated.FullName) ($([math]::Round($generated.Length/1MB,2)) MB)"
+            } else {
+              Write-Host "📁 OUTPUT_DIR contents:"
+              Get-ChildItem $OUT | ForEach-Object { Write-Host "  $($_.Name)" }
+              throw "❌ Installer output not found at expected path: $outputFile"
+            }
           }
-          if (-not $generated) {
-            throw "❌ NSIS 输出文件未找到，pkg_win 目录内容见上方日志"
-          }
-
-          $finalName = "${APP}_${VERSION}_amd64.exe"
-          $dest = "${{ env.OUTPUT_DIR }}\$finalName"
-          Move-Item $generated.FullName $dest -Force
-          Write-Host "✅ Moved installer to $dest ($($generated.Length) bytes)"
 
       - name: Upload packages (release)
         if: ${{ inputs.build_mode == 'release' }}
