@@ -737,17 +737,6 @@ jobs:
             go build -o ${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }} .
           fi
 
-      - name: Compress binary with UPX 5.2.0 (release)
-        if: ${{ inputs.build_mode == 'release' }}
-        run: |
-          set -e
-          BIN="${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }}"
-          echo "📦 Binary size before UPX: $(du -h "$BIN" | cut -f1)"
-          brew install upx
-          upx --version
-          upx "$BIN"
-          echo "📦 Binary size after UPX:  $(du -h "$BIN" | cut -f1)"
-
       - name: Upload binary (debug)
         if: ${{ inputs.build_mode == 'debug' }}
         uses: actions/upload-artifact@v7
@@ -865,17 +854,6 @@ jobs:
           else
             go build -o ${{ env.BUILD_ROOT }}/darwin/amd64/${{ env.APP_NAME }} .
           fi
-
-      - name: Compress binary with UPX 5.2.0 (release)
-        if: ${{ inputs.build_mode == 'release' }}
-        run: |
-          set -e
-          BIN="${{ env.BUILD_ROOT }}/darwin/amd64/${{ env.APP_NAME }}"
-          echo "📦 Binary size before UPX: $(du -h "$BIN" | cut -f1)"
-          brew install upx
-          upx --version
-          upx "$BIN"
-          echo "📦 Binary size after UPX:  $(du -h "$BIN" | cut -f1)"
 
       - name: Upload binary (debug)
         if: ${{ inputs.build_mode == 'debug' }}
