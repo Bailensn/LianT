@@ -63,7 +63,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libgl1-mesa-dev libx11-dev libxcursor-dev libxfixes-dev \
+            libgl1-mesa-dev libvulkan-dev libx11-dev libxcursor-dev libxfixes-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev \
             libxi-dev libxinerama-dev libxxf86vm-dev libxext-dev \
             pkg-config gcc libwayland-dev
@@ -261,7 +261,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libgl1-mesa-dev libx11-dev libxcursor-dev libxfixes-dev \
+            libgl1-mesa-dev libvulkan-dev libx11-dev libxcursor-dev libxfixes-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev \
             libxi-dev libxinerama-dev libxxf86vm-dev libxext-dev \
             pkg-config gcc libwayland-dev
@@ -294,9 +294,9 @@ jobs:
           set -e
           BIN="${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }}"
           echo "📦 Binary size before UPX: $(du -h "$BIN" | cut -f1)"
-          curl -fSL -o /tmp/upx.tar.xz https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-amd64_linux.tar.xz
+          curl -fSL -o /tmp/upx.tar.xz https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-arm64_linux.tar.xz
           tar -xf /tmp/upx.tar.xz -C /tmp/
-          UPX_BIN="/tmp/upx-5.2.0-amd64_linux/upx"
+          UPX_BIN="/tmp/upx-5.2.0-arm64_linux/upx"
           chmod +x "$UPX_BIN"
           "$UPX_BIN" --version
           "$UPX_BIN" "$BIN"
@@ -505,7 +505,7 @@ jobs:
 
           # Download UPX 5.2.0 for Windows
           $upxZip = "$env:TEMP\upx520.zip"
-          Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-amd64_windows.zip" -OutFile $upxZip
+          Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip" -OutFile $upxZip
           Expand-Archive -Path $upxZip -DestinationPath "$env:TEMP\upx520" -Force
           $upxExe = Get-ChildItem "$env:TEMP\upx520" -Recurse -Filter "upx.exe" | Select-Object -First 1
           if (-not $upxExe) { throw "❌ upx.exe not found in extracted archive" }
@@ -741,9 +741,9 @@ jobs:
           set -e
           BIN="${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }}"
           echo "📦 Binary size before UPX: $(du -h "$BIN" | cut -f1)"
-          curl -fSL -o /tmp/upx.tar.xz https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-amd64_darwin.tar.xz
+          curl -fSL -o /tmp/upx.tar.xz https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-arm64_darwin.tar.xz
           tar -xf /tmp/upx.tar.xz -C /tmp/
-          UPX_BIN="/tmp/upx-5.2.0-amd64_darwin/upx"
+          UPX_BIN="/tmp/upx-5.2.0-arm64_darwin/upx"
           chmod +x "$UPX_BIN"
           "$UPX_BIN" --version
           "$UPX_BIN" "$BIN"
