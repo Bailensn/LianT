@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       build_mode:
-        description: 'Build mode (release triggers packaging)'
+        description: 'Build mode'
         type: choice
         options:
           - debug
           - release
         default: release
       version:
-        description: 'Version number (used for package names)'
+        description: 'Version'
         type: string
         default: '1.0.0'
       linux_amd64:
