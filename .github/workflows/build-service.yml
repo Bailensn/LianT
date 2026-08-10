@@ -1,160 +1,258 @@
-name: Build Service (CLI)
+name: Build Service
+
 
 on:
+
+  # 手动构建
   workflow_dispatch:
+
     inputs:
-      build_mode:
-        description: 'Build mode'
+
+      mode:
+        description: "Build mode"
+        required: true
         type: choice
         options:
           - debug
           - release
-        default: release
+        default: debug
+
+
       linux_amd64:
-        description: 'Linux amd64'
-        type: boolean
-        default: true
-      linux_arm64:
-        description: 'Linux arm64'
-        type: boolean
-        default: true
-      windows_amd64:
-        description: 'Windows amd64 (.exe)'
-        type: boolean
-        default: false
-      darwin_amd64:
-        description: 'macOS amd64 (Intel)'
-        type: boolean
-        default: false
-      darwin_arm64:
-        description: 'macOS arm64 (Apple Silicon)'
+        description: "Build Linux amd64"
+        required: false
         type: boolean
         default: false
 
-permissions:
-  contents: write
+
+      linux_arm64:
+        description: "Build Linux arm64"
+        required: false
+        type: boolean
+        default: false
+
+
+      windows_amd64:
+        description: "Build Windows amd64"
+        required: false
+        type: boolean
+        default: false
+
+
+      darwin_amd64:
+        description: "Build macOS amd64"
+        required: false
+        type: boolean
+        default: false
+
+
+      darwin_arm64:
+        description: "Build macOS arm64"
+        required: false
+        type: boolean
+        default: false
+
+
+  # Tag 自动发布
+  push:
+    tags:
+      - "v*"
+
+
 
 defaults:
   run:
     working-directory: service
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    env:
-      IS_TAG_PUSH: ${{ github.event_name == 'push' }}
-      BUILD_MODE: ${{ github.event_name == 'push' && 'release' || inputs.build_mode }}
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+
+jobs:
+
+  build:
+
+    name: Build Service
+
+    runs-on: ubuntu-latest
+
+
+    strategy:
+
+      fail-fast: false
+
+      matrix:
+
+        include:
+
+          - name: linux-amd64
+            os: linux
+            arch: amd64
+            enabled: linux_amd64
+
+
+          - name: linux-arm64
+            os: linux
+            arch: arm64
+            enabled: linux_arm64
+
+
+          - name: windows-amd64
+            os: windows
+            arch: amd64
+            enabled: windows_amd64
+
+
+          - name: darwin-amd64
+            os: darwin
+            arch: amd64
+            enabled: darwin_amd64
+
+
+          - name: darwin-arm64
+            os: darwin
+            arch: arm64
+            enabled: darwin_arm64
+
+
+
+    # 手动：
+    #   根据 checkbox
+    #
+    # Tag：
+    #   全部构建
+    if: |
+      github.event_name == 'push' ||
+      github.event.inputs[matrix.enabled] == 'true'
+
+
+
+    steps:
+
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+
         with:
-          go-version: '1.22'
-          cache: true
+
+          go-version: stable
+
+          # 必须对应 service/go.sum
           cache-dependency-path: service/go.sum
 
-      - name: Install garble (release mode)
-        if: env.BUILD_MODE == 'release'
-        run: go install mvdan.cc/garble@latest
 
-      # ---------- Linux amd64 ----------
-      - name: Build Linux amd64 (${{ env.BUILD_MODE }})
-        if: ${{ env.IS_TAG_PUSH || inputs.linux_amd64 }}
+
+      - name: Download dependencies
+        run: go mod download
+
+
+
+      - name: Build
+
+        shell: bash
+
         run: |
-          if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-              garble build -ldflags="-s -w" -trimpath -o service-linux-amd64 .
-          else
-            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-              go build -o service-linux-amd64 .
-          fi
-      - name: Upload Linux amd64
-        if: ${{ env.IS_TAG_PUSH || inputs.linux_amd64 }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: service-linux-amd64
-          path: service/service-linux-amd64
 
-      # ---------- Linux arm64 ----------
-      - name: Build Linux arm64 (${{ env.BUILD_MODE }})
-        if: ${{ env.IS_TAG_PUSH || inputs.linux_arm64 }}
-        run: |
-          if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-              garble build -ldflags="-s -w" -trimpath -o service-linux-arm64 .
-          else
-            CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-              go build -o service-linux-arm64 .
-          fi
-      - name: Upload Linux arm64
-        if: ${{ env.IS_TAG_PUSH || inputs.linux_arm64 }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: service-linux-arm64
-          path: service/service-linux-arm64
+          mkdir -p output
 
-      # ---------- Windows amd64 ----------
-      - name: Build Windows amd64 (${{ env.BUILD_MODE }})
-        if: ${{ env.IS_TAG_PUSH || inputs.windows_amd64 }}
-        run: |
-          if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
-              garble build -ldflags="-s -w" -trimpath -o service-windows-amd64.exe .
-          else
-            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
-              go build -o service-windows-amd64.exe .
-          fi
-      - name: Upload Windows amd64
-        if: ${{ env.IS_TAG_PUSH || inputs.windows_amd64 }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: service-windows-amd64
-          path: service/service-windows-amd64.exe
 
-      # ---------- macOS amd64 ----------
-      - name: Build macOS amd64 (${{ env.BUILD_MODE }})
-        if: ${{ env.IS_TAG_PUSH || inputs.darwin_amd64 }}
-        run: |
-          if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 \
-              garble build -ldflags="-s -w" -trimpath -o service-darwin-amd64 .
-          else
-            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 \
-              go build -o service-darwin-amd64 .
-          fi
-      - name: Upload macOS amd64
-        if: ${{ env.IS_TAG_PUSH || inputs.darwin_amd64 }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: service-darwin-amd64
-          path: service/service-darwin-amd64
+          # Tag 永远 release
+          if [ "${{ github.event_name }}" = "push" ]; then
 
-      # ---------- macOS arm64 ----------
-      - name: Build macOS arm64 (${{ env.BUILD_MODE }})
-        if: ${{ env.IS_TAG_PUSH || inputs.darwin_arm64 }}
-        run: |
-          if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
-              garble build -ldflags="-s -w" -trimpath -o service-darwin-arm64 .
-          else
-            CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
-              go build -o service-darwin-arm64 .
-          fi
-      - name: Upload macOS arm64
-        if: ${{ env.IS_TAG_PUSH || inputs.darwin_arm64 }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: service-darwin-arm64
-          path: service/service-darwin-arm64
+            FLAGS="-ldflags=-s -w -trimpath"
 
-      # ---------- Release ----------
-      - name: Create Release
-        if: env.IS_TAG_PUSH
+          elif [ "${{ github.event.inputs.mode }}" = "release" ]; then
+
+            FLAGS="-ldflags=-s -w -trimpath"
+
+          else
+
+            FLAGS=""
+
+          fi
+
+
+
+          export CGO_ENABLED=0
+          export GOOS=${{ matrix.os }}
+          export GOARCH=${{ matrix.arch }}
+
+
+
+          NAME="service-${{ matrix.name }}"
+
+
+          EXT=""
+
+          if [ "${{ matrix.os }}" = "windows" ]; then
+
+            EXT=".exe"
+
+          fi
+
+
+
+          go build \
+            $FLAGS \
+            -o "output/${NAME}${EXT}" \
+            .
+
+
+
+      - name: Upload artifact
+
+        uses: actions/upload-artifact@v4
+
+        with:
+
+          name: service-${{ matrix.name }}
+
+          path: service/output/*
+
+
+
+
+
+  release:
+
+
+    # 只有 Tag 才创建 Release
+    if: github.event_name == 'push'
+
+
+    needs: build
+
+
+    runs-on: ubuntu-latest
+
+
+
+    steps:
+
+
+      - name: Download all artifacts
+
+        uses: actions/download-artifact@v4
+
+        with:
+
+          path: release
+
+
+
+      - name: Create GitHub Release
+
         uses: softprops/action-gh-release@v2
+
         with:
+
+          tag_name: ${{ github.ref_name }}
+
+          name: Service ${{ github.ref_name }}
+
           files: |
-            service/service-linux-amd64
-            service/service-linux-arm64
-            service/service-windows-amd64.exe
-            service/service-darwin-amd64
-            service/service-darwin-arm64
+
+            release/**/*
