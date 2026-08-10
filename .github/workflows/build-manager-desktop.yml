@@ -63,9 +63,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libgl1-mesa-dev libvulkan-dev libx11-dev libxcursor-dev libxfixes-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev \
-            libxi-dev libxinerama-dev libxxf86vm-dev libxext-dev \
+            libgl1-mesa-dev libvulkan-dev libx11-dev libx11-xcb-dev \
+            libxcursor-dev libxfixes-dev libxkbcommon-dev \
+            libxkbcommon-x11-dev libxrandr-dev libxi-dev \
+            libxinerama-dev libxxf86vm-dev libxext-dev \
             pkg-config gcc libwayland-dev
 
       - uses: actions/setup-go@v7
@@ -261,9 +262,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libgl1-mesa-dev libvulkan-dev libx11-dev libxcursor-dev libxfixes-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev \
-            libxi-dev libxinerama-dev libxxf86vm-dev libxext-dev \
+            libgl1-mesa-dev libvulkan-dev libx11-dev libx11-xcb-dev \
+            libxcursor-dev libxfixes-dev libxkbcommon-dev \
+            libxkbcommon-x11-dev libxrandr-dev libxi-dev \
+            libxinerama-dev libxxf86vm-dev libxext-dev \
             pkg-config gcc libwayland-dev
 
       - uses: actions/setup-go@v7
@@ -741,12 +743,9 @@ jobs:
           set -e
           BIN="${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }}"
           echo "📦 Binary size before UPX: $(du -h "$BIN" | cut -f1)"
-          curl -fSL -o /tmp/upx.tar.xz https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-arm64_darwin.tar.xz
-          tar -xf /tmp/upx.tar.xz -C /tmp/
-          UPX_BIN="/tmp/upx-5.2.0-arm64_darwin/upx"
-          chmod +x "$UPX_BIN"
-          "$UPX_BIN" --version
-          "$UPX_BIN" "$BIN"
+          brew install upx
+          upx --version
+          upx "$BIN"
           echo "📦 Binary size after UPX:  $(du -h "$BIN" | cut -f1)"
 
       - name: Upload binary (debug)
@@ -873,12 +872,9 @@ jobs:
           set -e
           BIN="${{ env.BUILD_ROOT }}/darwin/amd64/${{ env.APP_NAME }}"
           echo "📦 Binary size before UPX: $(du -h "$BIN" | cut -f1)"
-          curl -fSL -o /tmp/upx.tar.xz https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-amd64_darwin.tar.xz
-          tar -xf /tmp/upx.tar.xz -C /tmp/
-          UPX_BIN="/tmp/upx-5.2.0-amd64_darwin/upx"
-          chmod +x "$UPX_BIN"
-          "$UPX_BIN" --version
-          "$UPX_BIN" "$BIN"
+          brew install upx
+          upx --version
+          upx "$BIN"
           echo "📦 Binary size after UPX:  $(du -h "$BIN" | cut -f1)"
 
       - name: Upload binary (debug)
