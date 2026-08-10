@@ -377,7 +377,7 @@ jobs:
           find ${RPMTOP}/RPMS -name "*.rpm" -exec cp {} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm" \;
           echo "✅ Generated .rpm: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm"
 
-          mv *.deb *.rpm ${{ env.OPUTPUT_DIR }}/
+          mv *.deb *.rpm ${{ env.OUTPUT_DIR }}/
 
       - name: Upload packages (release)
         if: ${{ inputs.build_mode == 'release' }}
@@ -491,7 +491,7 @@ jobs:
           }
 
           # ---- 构建 Inno Setup 脚本 ----
-          # 完全不用 here-string，逐行拼接，避免所有转义问题
+          # 逐行拼接，所有路径使用反斜杠（Inno Setup 要求）
           $issPath = "$PKG\installer.iss"
 
           $lines = @()
@@ -502,14 +502,14 @@ jobs:
           $lines += "AppName=$APP"
           $lines += "AppVersion=$VERSION"
           $lines += "AppPublisher=LianT Team"
-          $lines += "DefaultDirName={pf}/$APP"
+          $lines += "DefaultDirName={pf}\$APP"
           $lines += "DefaultGroupName=$APP"
           $lines += "OutputDir=$OUT"
           $lines += "OutputBaseFilename=${APP}_${VERSION}_amd64"
           $lines += "Compression=lzma"
           $lines += "SolidCompression=yes"
           $lines += "PrivilegesRequired=admin"
-          $lines += "UninstallDisplayIcon={app}/app.ico"
+          $lines += "UninstallDisplayIcon={app}\app.ico"
           if ($iconFile) {
             $lines += "SetupIconFile=app.ico"
           }
@@ -528,14 +528,14 @@ jobs:
           }
           $lines += ""
           $lines += "[Icons]"
-          $lines += "Name: ""{group}/$APP""; Filename: ""{app}/$APP.exe""; IconFilename: ""{app}/app.ico"""
-          $lines += "Name: ""{commondesktop}/$APP""; Filename: ""{app}/$APP.exe""; IconFilename: ""{app}/app.ico""; Tasks: desktopicon"
+          $lines += "Name: ""{group}\$APP""; Filename: ""{app}\$APP.exe""; IconFilename: ""{app}\app.ico"""
+          $lines += "Name: ""{commondesktop}\$APP""; Filename: ""{app}\$APP.exe""; IconFilename: ""{app}\app.ico""; Tasks: desktopicon"
           $lines += ""
           $lines += "[Tasks]"
           $lines += 'Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"'
           $lines += ""
           $lines += "[Run]"
-          $lines += "Filename: ""{app}/$APP.exe""; Description: ""Launch $APP""; Flags: nowait postinstall skipifsilent"
+          $lines += "Filename: ""{app}\$APP.exe""; Description: ""Launch $APP""; Flags: nowait postinstall skipifsilent"
 
           # 写入文件（UTF8 无 BOM）
           $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -569,7 +569,6 @@ jobs:
           Write-Host "🔧 Using iscc: $iscc"
 
           # ---- 编译 ----
-          # Push-Location 到 $PKG，让脚本中的相对路径（app.ico, LianT.exe）正确解析
           Push-Location $PKG
           & $iscc "installer.iss"
           $exitCode = $LASTEXITCODE
