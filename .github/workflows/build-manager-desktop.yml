@@ -58,8 +58,8 @@ jobs:
             libxkbcommon-x11-dev \
             libx11-xcb-dev \
             libxcursor-dev \
-            libxfixes-dev
-
+            libxfixes-dev \
+            gcc-aarch64-linux-gnu
 
       - uses: actions/setup-go@v5
         with:
@@ -71,12 +71,11 @@ jobs:
       - name: Build Linux amd64 (${{ env.BUILD_MODE }})
         if: ${{ inputs.linux_amd64 }}
         run: |
+          export CGO_ENABLED=1 GOOS=linux GOARCH=amd64
           if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
-              go build -ldflags="-s -w" -trimpath -o manager-desktop-linux-amd64 .
+            go build -ldflags="-s -w" -trimpath -o manager-desktop-linux-amd64 .
           else
-            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
-              go build -o manager-desktop-linux-amd64 .
+            go build -o manager-desktop-linux-amd64 .
           fi
       - name: Upload Linux amd64
         if: ${{ inputs.linux_amd64 }}
@@ -89,12 +88,12 @@ jobs:
       - name: Build Linux arm64 (${{ env.BUILD_MODE }})
         if: ${{ inputs.linux_arm64 }}
         run: |
+          export CC=aarch64-linux-gnu-gcc
+          export CGO_ENABLED=1 GOOS=linux GOARCH=arm64
           if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \
-              go build -ldflags="-s -w" -trimpath -o manager-desktop-linux-arm64 .
+            go build -ldflags="-s -w" -trimpath -o manager-desktop-linux-arm64 .
           else
-            CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \
-              go build -o manager-desktop-linux-arm64 .
+            go build -o manager-desktop-linux-arm64 .
           fi
       - name: Upload Linux arm64
         if: ${{ inputs.linux_arm64 }}
