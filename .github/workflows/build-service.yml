@@ -1,258 +1,104 @@
 name: Build Service
-
-
 on:
-
-  # 手动构建
   workflow_dispatch:
-
     inputs:
-
       mode:
-        description: "Build mode"
+        description: Build mode
         required: true
         type: choice
         options:
           - debug
           - release
         default: debug
-
-
       linux_amd64:
-        description: "Build Linux amd64"
+        description: Linux amd64
         required: false
         type: boolean
         default: false
-
-
       linux_arm64:
-        description: "Build Linux arm64"
+        description: Linux arm64
         required: false
         type: boolean
         default: false
-
-
       windows_amd64:
-        description: "Build Windows amd64"
+        description: Windows amd64
         required: false
         type: boolean
         default: false
-
-
       darwin_amd64:
-        description: "Build macOS amd64"
+        description: macOS Intel amd64
         required: false
         type: boolean
         default: false
-
-
       darwin_arm64:
-        description: "Build macOS arm64"
+        description: macOS Apple Silicon arm64
         required: false
         type: boolean
         default: false
-
-
-  # Tag 自动发布
-  push:
-    tags:
-      - "v*"
-
-
-
 defaults:
   run:
     working-directory: service
-
-
-
 jobs:
-
   build:
-
     name: Build Service
-
     runs-on: ubuntu-latest
-
-
     strategy:
-
       fail-fast: false
-
       matrix:
-
         include:
-
-          - name: linux-amd64
-            os: linux
-            arch: amd64
-            enabled: linux_amd64
-
-
-          - name: linux-arm64
-            os: linux
-            arch: arm64
-            enabled: linux_arm64
-
-
-          - name: windows-amd64
-            os: windows
-            arch: amd64
-            enabled: windows_amd64
-
-
-          - name: darwin-amd64
-            os: darwin
-            arch: amd64
-            enabled: darwin_amd64
-
-
-          - name: darwin-arm64
-            os: darwin
-            arch: arm64
-            enabled: darwin_arm64
-
-
-
-    # 手动：
-    #   根据 checkbox
-    #
-    # Tag：
-    #   全部构建
+          - target: linux-amd64
+            goos: linux
+            goarch: amd64
+          - target: linux-arm64
+            goos: linux
+            goarch: arm64
+          - target: windows-amd64
+            goos: windows
+            goarch: amd64
+          - target: darwin-amd64
+            goos: darwin
+            goarch: amd64
+          - target: darwin-arm64
+            goos: darwin
+            goarch: arm64
     if: |
-      github.event_name == 'push' ||
-      github.event.inputs[matrix.enabled] == 'true'
-
-
-
+      (matrix.target == 'linux-amd64' && inputs.linux_amd64) ||
+      (matrix.target == 'linux-arm64' && inputs.linux_arm64) ||
+      (matrix.target == 'windows-amd64' && inputs.windows_amd64) ||
+      (matrix.target == 'darwin-amd64' && inputs.darwin_amd64) ||
+      (matrix.target == 'darwin-arm64' && inputs.darwin_arm64)
     steps:
-
-
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
-
-
-
       - name: Setup Go
         uses: actions/setup-go@v5
-
         with:
-
           go-version: stable
-
-          # 必须对应 service/go.sum
           cache-dependency-path: service/go.sum
-
-
-
-      - name: Download dependencies
+      - name: Download modules
         run: go mod download
-
-
-
       - name: Build
-
         shell: bash
-
         run: |
-
           mkdir -p output
-
-
-          # Tag 永远 release
-          if [ "${{ github.event_name }}" = "push" ]; then
-
-            FLAGS="-ldflags=-s -w -trimpath"
-
-          elif [ "${{ github.event.inputs.mode }}" = "release" ]; then
-
-            FLAGS="-ldflags=-s -w -trimpath"
-
-          else
-
-            FLAGS=""
-
-          fi
-
-
-
           export CGO_ENABLED=0
-          export GOOS=${{ matrix.os }}
-          export GOARCH=${{ matrix.arch }}
-
-
-
-          NAME="service-${{ matrix.name }}"
-
-
-          EXT=""
-
-          if [ "${{ matrix.os }}" = "windows" ]; then
-
-            EXT=".exe"
-
+          export GOOS=${{ matrix.goos }}
+          export GOARCH=${{ matrix.goarch }}
+          if [ "${{ inputs.mode }}" = "release" ]; then
+            FLAGS="-ldflags=-s -w -trimpath"
+          else
+            FLAGS=""
           fi
-
-
-
+          EXT=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            EXT=".exe"
+          fi
           go build \
             $FLAGS \
-            -o "output/${NAME}${EXT}" \
+            -o output/service-${{ matrix.target }}${EXT} \
             .
-
-
-
       - name: Upload artifact
-
         uses: actions/upload-artifact@v4
-
         with:
-
-          name: service-${{ matrix.name }}
-
+          name: service-${{ matrix.target }}
           path: service/output/*
-
-
-
-
-
-  release:
-
-
-    # 只有 Tag 才创建 Release
-    if: github.event_name == 'push'
-
-
-    needs: build
-
-
-    runs-on: ubuntu-latest
-
-
-
-    steps:
-
-
-      - name: Download all artifacts
-
-        uses: actions/download-artifact@v4
-
-        with:
-
-          path: release
-
-
-
-      - name: Create GitHub Release
-
-        uses: softprops/action-gh-release@v2
-
-        with:
-
-          tag_name: ${{ github.ref_name }}
-
-          name: Service ${{ github.ref_name }}
-
-          files: |
-
-            release/**/*
