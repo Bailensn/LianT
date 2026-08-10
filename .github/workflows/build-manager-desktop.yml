@@ -10,66 +10,34 @@ on:
           - debug
           - release
         default: release
-      linux_amd64:
-        description: 'Linux amd64'
-        type: boolean
-        default: false
-      linux_arm64:
-        description: 'Linux arm64'
-        type: boolean
-        default: false
-      windows_amd64:
-        description: 'Windows amd64 (.exe)'
-        type: boolean
-        default: false
-      darwin_amd64:
-        description: 'macOS amd64 (Intel)'
-        type: boolean
-        default: false
-      darwin_arm64:
-        description: 'macOS arm64 (Apple Silicon)'
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
-defaults:
-  run:
-    working-directory: manager/desktop
-
 jobs:
-  build:
+  linux-amd64:
+    name: Linux amd64
     runs-on: ubuntu-latest
     env:
       BUILD_MODE: ${{ inputs.build_mode }}
+    defaults:
+      run:
+        working-directory: manager/desktop
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Linux graphics dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libvulkan-dev \
-            libxkbcommon-dev \
-            libwayland-dev \
-            libx11-dev \
-            libegl1-mesa-dev \
-            libxkbcommon-x11-dev \
-            libx11-xcb-dev \
-            libxcursor-dev \
-            libxfixes-dev \
-            gcc-aarch64-linux-gnu
-
+            libvulkan-dev libxkbcommon-dev libwayland-dev libx11-dev \
+            libegl1-mesa-dev libxkbcommon-x11-dev libx11-xcb-dev \
+            libxcursor-dev libxfixes-dev
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.23'
           cache: true
           cache-dependency-path: manager/desktop/go.sum
-
-      # ---------- Linux amd64 ----------
-      - name: Build Linux amd64 (${{ env.BUILD_MODE }})
-        if: ${{ inputs.linux_amd64 }}
+      - name: Build
         run: |
           export CGO_ENABLED=1 GOOS=linux GOARCH=amd64
           if [ "$BUILD_MODE" = "release" ]; then
@@ -77,81 +45,126 @@ jobs:
           else
             go build -o manager-desktop-linux-amd64 .
           fi
-      - name: Upload Linux amd64
-        if: ${{ inputs.linux_amd64 }}
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: manager-desktop-linux-amd64
           path: manager/desktop/manager-desktop-linux-amd64
 
-      # ---------- Linux arm64 ----------
-      - name: Build Linux arm64 (${{ env.BUILD_MODE }})
-        if: ${{ inputs.linux_arm64 }}
+  linux-arm64:
+    name: Linux arm64
+    runs-on: ubuntu-24.04-arm
+    env:
+      BUILD_MODE: ${{ inputs.build_mode }}
+    defaults:
+      run:
+        working-directory: manager/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
         run: |
-          export CC=aarch64-linux-gnu-gcc
+          sudo apt-get update
+          sudo apt-get install -y \
+            libvulkan-dev libxkbcommon-dev libwayland-dev libx11-dev \
+            libegl1-mesa-dev libxkbcommon-x11-dev libx11-xcb-dev \
+            libxcursor-dev libxfixes-dev
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+          cache-dependency-path: manager/desktop/go.sum
+      - name: Build
+        run: |
           export CGO_ENABLED=1 GOOS=linux GOARCH=arm64
           if [ "$BUILD_MODE" = "release" ]; then
             go build -ldflags="-s -w" -trimpath -o manager-desktop-linux-arm64 .
           else
             go build -o manager-desktop-linux-arm64 .
           fi
-      - name: Upload Linux arm64
-        if: ${{ inputs.linux_arm64 }}
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: manager-desktop-linux-arm64
           path: manager/desktop/manager-desktop-linux-arm64
 
-      # ---------- Windows amd64（保持原样，CGO_ENABLED=0 即可）----------
-      - name: Build Windows amd64 (${{ env.BUILD_MODE }})
-        if: ${{ inputs.windows_amd64 }}
+  windows-amd64:
+    name: Windows amd64
+    runs-on: windows-latest
+    env:
+      BUILD_MODE: ${{ inputs.build_mode }}
+    defaults:
+      run:
+        working-directory: manager/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+          cache-dependency-path: manager/desktop/go.sum
+      - name: Build
+        shell: pwsh
         run: |
-          if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
-              go build -ldflags="-s -w -H=windowsgui" -trimpath -o manager-desktop-windows-amd64.exe .
-          else
-            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
-              go build -o manager-desktop-windows-amd64.exe .
-          fi
-      - name: Upload Windows amd64
-        if: ${{ inputs.windows_amd64 }}
-        uses: actions/upload-artifact@v4
+          if ($env:BUILD_MODE -eq "release") {
+            go build -ldflags="-s -w -H=windowsgui" -trimpath -o manager-desktop-windows-amd64.exe .
+          } else {
+            go build -o manager-desktop-windows-amd64.exe .
+          }
+      - uses: actions/upload-artifact@v4
         with:
           name: manager-desktop-windows-amd64
           path: manager/desktop/manager-desktop-windows-amd64.exe
 
-      # ---------- macOS amd64 ----------
-      - name: Build macOS amd64 (${{ env.BUILD_MODE }})
-        if: ${{ inputs.darwin_amd64 }}
+  macos-amd64:
+    name: macOS amd64 (Intel)
+    runs-on: macos-13
+    env:
+      BUILD_MODE: ${{ inputs.build_mode }}
+    defaults:
+      run:
+        working-directory: manager/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+          cache-dependency-path: manager/desktop/go.sum
+      - name: Build
         run: |
+          export CGO_ENABLED=1 GOOS=darwin GOARCH=amd64
           if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 \
-              go build -ldflags="-s -w" -trimpath -o manager-desktop-darwin-amd64 .
+            go build -ldflags="-s -w" -trimpath -o manager-desktop-darwin-amd64 .
           else
-            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 \
-              go build -o manager-desktop-darwin-amd64 .
+            go build -o manager-desktop-darwin-amd64 .
           fi
-      - name: Upload macOS amd64
-        if: ${{ inputs.darwin_amd64 }}
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: manager-desktop-darwin-amd64
           path: manager/desktop/manager-desktop-darwin-amd64
 
-      # ---------- macOS arm64 ----------
-      - name: Build macOS arm64 (${{ env.BUILD_MODE }})
-        if: ${{ inputs.darwin_arm64 }}
+  macos-arm64:
+    name: macOS arm64 (Apple Silicon)
+    runs-on: macos-14
+    env:
+      BUILD_MODE: ${{ inputs.build_mode }}
+    defaults:
+      run:
+        working-directory: manager/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+          cache-dependency-path: manager/desktop/go.sum
+      - name: Build
         run: |
+          export CGO_ENABLED=1 GOOS=darwin GOARCH=arm64
           if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
-              go build -ldflags="-s -w" -trimpath -o manager-desktop-darwin-arm64 .
+            go build -ldflags="-s -w" -trimpath -o manager-desktop-darwin-arm64 .
           else
-            CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
-              go build -o manager-desktop-darwin-arm64 .
+            go build -o manager-desktop-darwin-arm64 .
           fi
-      - name: Upload macOS arm64
-        if: ${{ inputs.darwin_arm64 }}
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: manager-desktop-darwin-arm64
           path: manager/desktop/manager-desktop-darwin-arm64
