@@ -1,0 +1,13 @@
+# LianT data
+LianT*
+
+# Logs
+logs/
+
+# Environment
+.env
+
+# Go
+go.mod
+go.sum
+*.exe
