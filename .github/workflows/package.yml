@@ -40,7 +40,7 @@ jobs:
     if: ${{ inputs.linux_deb_arm64 }}
     runs-on: ubuntu-22.04-arm
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install deb tools
         run: |
           sudo apt-get update
@@ -104,7 +104,7 @@ jobs:
     if: ${{ inputs.linux_rpm_arm64 }}
     runs-on: ubuntu-22.04-arm
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install rpm tools
         run: |
           sudo apt-get update
@@ -209,7 +209,7 @@ jobs:
     if: ${{ inputs.linux_deb_amd64 }}
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install deb tools
         run: |
           sudo apt-get update
@@ -273,7 +273,7 @@ jobs:
     if: ${{ inputs.linux_rpm_amd64 }}
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install rpm tools
         run: |
           sudo apt-get update
@@ -378,7 +378,7 @@ jobs:
     if: ${{ inputs.windows_exe }}
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build .exe installer (NSIS)
         shell: pwsh
         run: |
@@ -466,7 +466,7 @@ jobs:
     if: ${{ inputs.darwin_dmg }}
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build .dmg
         shell: bash
         run: |
