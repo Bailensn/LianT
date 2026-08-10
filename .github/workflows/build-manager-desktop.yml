@@ -48,12 +48,12 @@ jobs:
   linux-amd64:
     if: ${{ inputs.linux_amd64 }}
     name: Linux amd64
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: ${{ env.SRC_ROOT }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install dependencies (Fyne + OpenGL + X11)
         run: |
@@ -64,7 +64,7 @@ jobs:
             libxi-dev libxinerama-dev libxxf86vm-dev libxext-dev \
             pkg-config gcc libwayland-dev
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26.5'
           cache: true
@@ -88,7 +88,7 @@ jobs:
 
       - name: Upload binary (debug)
         if: ${{ inputs.build_mode == 'debug' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APP_NAME }}-linux-amd64
           path: ${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }}
@@ -217,7 +217,7 @@ jobs:
 
       - name: Upload packages (release)
         if: ${{ inputs.build_mode == 'release' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: packages-linux-amd64
           path: |
@@ -232,12 +232,12 @@ jobs:
   linux-arm64:
     if: ${{ inputs.linux_arm64 }}
     name: Linux arm64
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     defaults:
       run:
         working-directory: ${{ env.SRC_ROOT }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install dependencies (Fyne + OpenGL + X11)
         run: |
@@ -246,9 +246,9 @@ jobs:
             libgl1-mesa-dev libx11-dev libxcursor-dev libxfixes-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev \
             libxi-dev libxinerama-dev libxxf86vm-dev libxext-dev \
-            pkg-config gcc
+            pkg-config gcc libwayland-dev
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26.5'
           cache: true
@@ -272,7 +272,7 @@ jobs:
 
       - name: Upload binary (debug)
         if: ${{ inputs.build_mode == 'debug' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APP_NAME }}-linux-arm64
           path: ${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }}
@@ -401,7 +401,7 @@ jobs:
 
       - name: Upload packages (release)
         if: ${{ inputs.build_mode == 'release' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: packages-linux-arm64
           path: |
@@ -421,9 +421,9 @@ jobs:
       run:
         working-directory: ${{ env.SRC_ROOT }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26.5'
           cache: true
@@ -464,7 +464,7 @@ jobs:
 
       - name: Upload binary (debug)
         if: ${{ inputs.build_mode == 'debug' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APP_NAME }}-windows-amd64
           path: ${{ env.BUILD_ROOT }}/windows/amd64/${{ env.APP_NAME }}.exe
@@ -636,7 +636,7 @@ jobs:
 
       - name: Upload packages (release)
         if: ${{ inputs.build_mode == 'release' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: packages-windows-amd64
           path: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.exe
@@ -654,9 +654,9 @@ jobs:
       run:
         working-directory: ${{ env.SRC_ROOT }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26.5'
           cache: true
@@ -680,7 +680,7 @@ jobs:
 
       - name: Upload binary (debug)
         if: ${{ inputs.build_mode == 'debug' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APP_NAME }}-darwin-arm64
           path: ${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }}
@@ -754,7 +754,7 @@ jobs:
 
       - name: Upload packages (release)
         if: ${{ inputs.build_mode == 'release' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: packages-darwin-arm64
           path: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg
