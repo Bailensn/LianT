@@ -75,7 +75,6 @@ jobs:
             go build -o ${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }} .
           fi
 
-      # Debug: 直接上传二进制
       - name: Upload binary (debug)
         if: ${{ inputs.build_mode == 'debug' }}
         uses: actions/upload-artifact@v6
@@ -84,7 +83,6 @@ jobs:
           path: ${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }}
           retention-days: 7
 
-      # Release: 打包 deb + rpm 后上传
       - name: Package .deb & .rpm (release)
         if: ${{ inputs.build_mode == 'release' }}
         shell: bash
@@ -93,7 +91,6 @@ jobs:
           BIN="${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }}"
           test -f "$BIN" || { echo "❌ Binary not found at $BIN"; exit 1; }
 
-          # --- .deb ---
           sudo apt-get install -y dpkg-dev fakeroot rpm
           PKG="deb_pkg"
           mkdir -p ${PKG}/usr/bin
@@ -129,7 +126,6 @@ jobs:
           dpkg-deb --build --root-owner-group ${PKG} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.deb"
           echo "✅ Generated .deb: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.deb"
 
-          # --- .rpm ---
           RPMTOP="${HOME}/rpmbuild"
           mkdir -p ${RPMTOP}/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
           BR="${RPMTOP}/BUILDROOT"
@@ -454,6 +450,8 @@ jobs:
           if (Test-Path "$PKG\*.ico") { $extraFiles += "  File `"*.ico`"`r`n" }
           if (Test-Path "$PKG\*.png") { $extraFiles += "  File `"*.png`"`r`n" }
 
+          # 注意：在 here-string 中，所有 $ 开头的 NSIS 变量都需要用反引号转义，
+          # 以免被 PowerShell 展开。例如 `$INSTDIR 写入文件后变为 $INSTDIR。
           $nsi = @"
           !define APP_NAME "${{ env.APP_NAME }}"
           !define APP_VERSION "$VERSION"
@@ -462,7 +460,7 @@ jobs:
           SetCompressor /SOLID lzma
           Name "${APP_NAME}"
           OutFile "${{ env.APP_NAME }}_${APP_VERSION}_amd64.exe"
-          InstallDir "$$PROGRAMFILES64\${{ env.APP_NAME }}"
+          InstallDir "`$PROGRAMFILES64\${{ env.APP_NAME }}"
           ShowInstDetails show
           !include "MUI2.nsh"
           !insertmacro MUI_PAGE_WELCOME
@@ -475,26 +473,26 @@ jobs:
           !insertmacro MUI_LANGUAGE "English"
 
           Section "Main"
-            SetOutPath "$$INSTDIR"
+            SetOutPath "`$INSTDIR"
             File "${{ env.APP_NAME }}.exe"
             ${ExtraFiles}
-            CreateDirectory "$$SMPROGRAMS\${{ env.APP_NAME }}"
-            CreateShortcut  "$$SMPROGRAMS\${{ env.APP_NAME }}\${{ env.APP_NAME }}.lnk" "$$INSTDIR\${{ env.APP_NAME }}.exe"
-            CreateShortcut  "$$DESKTOP\${{ env.APP_NAME }}.lnk"          "$$INSTDIR\${{ env.APP_NAME }}.exe"
-            WriteUninstaller "$$INSTDIR\Uninstall.exe"
+            CreateDirectory "`$SMPROGRAMS\${{ env.APP_NAME }}"
+            CreateShortcut  "`$SMPROGRAMS\${{ env.APP_NAME }}\${{ env.APP_NAME }}.lnk" "`$INSTDIR\${{ env.APP_NAME }}.exe"
+            CreateShortcut  "`$DESKTOP\${{ env.APP_NAME }}.lnk"          "`$INSTDIR\${{ env.APP_NAME }}.exe"
+            WriteUninstaller "`$INSTDIR\Uninstall.exe"
             WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "DisplayName"     "${APP_NAME}"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "UninstallString" "$$INSTDIR\Uninstall.exe"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "UninstallString" "`$INSTDIR\Uninstall.exe"
             WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "DisplayVersion"  "${APP_VERSION}"
             WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "Publisher"       "${COMPANY}"
           SectionEnd
 
           Section "Uninstall"
-            Delete "$$INSTDIR\${{ env.APP_NAME }}.exe"
-            Delete "$$INSTDIR\Uninstall.exe"
-            RMDir  "$$INSTDIR"
-            Delete "$$SMPROGRAMS\${{ env.APP_NAME }}\${{ env.APP_NAME }}.lnk"
-            RMDir  "$$SMPROGRAMS\${{ env.APP_NAME }}"
-            Delete "$$DESKTOP\${{ env.APP_NAME }}.lnk"
+            Delete "`$INSTDIR\${{ env.APP_NAME }}.exe"
+            Delete "`$INSTDIR\Uninstall.exe"
+            RMDir  "`$INSTDIR"
+            Delete "`$SMPROGRAMS\${{ env.APP_NAME }}\${{ env.APP_NAME }}.lnk"
+            RMDir  "`$SMPROGRAMS\${{ env.APP_NAME }}"
+            Delete "`$DESKTOP\${{ env.APP_NAME }}.lnk"
             DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}"
           SectionEnd
           "@
