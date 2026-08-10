@@ -6,8 +6,8 @@ import (
 )
 
 import (
-	"LianT/botmanager"
-	"LianT/config"
+	"github.com/Bailensn/LianT/service/botmanager"
+	"github.com/Bailensn/LianT/service/config"
 )
 
 func initCommand() {

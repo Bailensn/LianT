@@ -13,8 +13,8 @@ import (
 )
 
 import (
-	"LianT/config"
-	"LianT/crypto"
+	"github.com/Bailensn/LianT/service/config"
+	"github.com/Bailensn/LianT/service/crypto"
 )
 
 type BotInfo struct {

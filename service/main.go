@@ -6,9 +6,9 @@ import (
 )
 
 import (
-	"LianT/botmanager"
-	"LianT/config"
-	"LianT/service"
+	"github.com/Bailensn/LianT/service/botmanager"
+	"github.com/Bailensn/LianT/service/config"
+	"github.com/Bailensn/LianT/service/service"
 )
 
 func main() {
