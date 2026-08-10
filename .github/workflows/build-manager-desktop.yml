@@ -1,4 +1,4 @@
-name: Build LianT (Compose Multiplatform)
+name: Build Manager Desktop
 
 on:
   workflow_dispatch:
@@ -42,6 +42,18 @@ env:
   OUTPUT_DIR: ${{ github.workspace }}/out
   MANAGER_DIR: ${{ github.workspace }}/manager
 
+# ======================================================================
+# 版本解析说明（每个 job 的 "Parse versions" 步骤都执行同样的逻辑）：
+#   awk 脚本只在 [versions] 段内匹配 key，避免误匹配 [libraries]/[plugins] 段
+#   输出示例：
+#     kotlin=2.4.10
+#     gradle=9.6.1
+#     agp=9.3.0
+#     compose=1.12.0-beta03
+#     jdk=21
+#     jvmTarget=17
+# ======================================================================
+
 jobs:
   # ======================================================================
   # Linux amd64
@@ -61,20 +73,28 @@ jobs:
         run: |
           set -e
           TOML="${{ env.MANAGER_DIR }}/libs.versions.toml"
-          echo "kotlin=$(grep '^kotlin ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "gradle=$(grep '^gradle ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "agp=$(grep '^agp ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "compose=$(grep '^compose-multiplatform ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "jdk=$(grep '^jdk ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
+          AWK_SCRIPT='
+            /^\[versions\]/ { in_v=1; next }
+            /^\[/ { in_v=0 }
+            in_v && /^[a-zA-Z_-]+[[:space:]]*=/ {
+              key=$1; sub(/[[:space:]]*=.*/,"",key)
+              val=""; in_q=0; ch=""
+              for(i=1;i<=length($0);i++){
+                c=substr($0,i,1)
+                if(c=="\""){ in_q=1-in_q; continue }
+                if(in_q) val=val c
+              }
+              print key "=" val
+            }'
+          eval "$(echo "$AWK_SCRIPT" | awk -f - "$TOML" | sed 's/^/echo "/; s/$/\" >> $GITHUB_OUTPUT/')"
           echo "--- versions ---"
           cat $GITHUB_OUTPUT
 
       - name: Install JDK + system deps for jpackage
         run: |
           set -e
-          JDK_VER="${{ steps.versions.outputs.jdk }}"
           sudo apt-get update
-          sudo apt-get install -y openjdk-${JDK_VER}-jdk-headless \
+          sudo apt-get install -y openjdk-${{ steps.versions.outputs.jdk }}-jdk-headless \
             libgl1-mesa-dev libx11-dev libxcursor-dev libxfixes-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev \
             libxi-dev libxinerama-dev libxxf86vm-dev libxext-dev \
@@ -93,9 +113,9 @@ jobs:
           KOTLIN_VER="${{ steps.versions.outputs.kotlin }}"
           AGP_VER="${{ steps.versions.outputs.agp }}"
           COMPOSE_VER="${{ steps.versions.outputs.compose }}"
-          JVM_TARGET=$(grep '^jvmTarget ' "${{ env.MANAGER_DIR }}/libs.versions.toml" | sed 's/.*= *"\(.*\)"/\1/')
+          JVM_TARGET="${{ steps.versions.outputs.jvmTarget }}"
+          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
 
-          # 1) settings.gradle.kts
           cat > settings.gradle.kts <<'SETTINGS'
           pluginManagement {
             repositories {
@@ -114,7 +134,6 @@ jobs:
           include(":composeApp")
           SETTINGS
 
-          # 2) 根 build.gradle.kts
           cat > build.gradle.kts <<ROOT
           plugins {
             id("org.jetbrains.kotlin.multiplatform") version "${KOTLIN_VER}" apply false
@@ -124,7 +143,6 @@ jobs:
           }
           ROOT
 
-          # 3) gradle.properties
           cat > gradle.properties <<'PROPS'
           org.gradle.jvmargs=-Xmx2048M -Dfile.encoding=UTF-8
           android.useAndroidX=true
@@ -132,7 +150,6 @@ jobs:
           android.nonTransitiveRClass=true
           PROPS
 
-          # 4) composeApp/build.gradle.kts
           mkdir -p composeApp
           cat > composeApp/build.gradle.kts <<COMPOSE
           plugins {
@@ -219,20 +236,16 @@ jobs:
           }
           COMPOSE
 
-          # 5) 复制源码
           mkdir -p composeApp/src
-          cp -r ${{ env.MANAGER_DIR }}/commonMain composeApp/src/
-          cp -r ${{ env.MANAGER_DIR }}/desktopMain composeApp/src/
-          cp -r ${{ env.MANAGER_DIR }}/androidMain composeApp/src/
+          cp -r "${{ env.MANAGER_DIR }}/commonMain" composeApp/src/
+          cp -r "${{ env.MANAGER_DIR }}/desktopMain" composeApp/src/
+          cp -r "${{ env.MANAGER_DIR }}/androidMain" composeApp/src/
 
-          # 6) 复制图标资源（如果存在）
           if [ -d "${{ env.MANAGER_DIR }}/resources" ]; then
             mkdir -p composeApp/src/main
-            cp -r ${{ env.MANAGER_DIR }}/resources composeApp/src/main/
+            cp -r "${{ env.MANAGER_DIR }}/resources" composeApp/src/main/
           fi
 
-          # 7) 生成 Gradle wrapper
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
           curl -sL "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip" -o /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /opt/
           export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
@@ -247,7 +260,7 @@ jobs:
           chmod +x gradlew
           ./gradlew :composeApp:packageReleaseDistributionForCurrentOS
 
-      - name: Build debug (just build, no packaging)
+      - name: Build debug
         if: ${{ inputs.build_mode == 'debug' }}
         run: |
           GRADLE_VER="${{ steps.versions.outputs.gradle }}"
@@ -258,9 +271,9 @@ jobs:
       - name: Collect artifacts
         if: ${{ inputs.build_mode == 'release' }}
         run: |
-          mkdir -p ${{ env.OUTPUT_DIR }}
-          find composeApp/build/compose/binaries -type f \( -name "*.deb" -o -name "*.rpm" \) -exec cp {} ${{ env.OUTPUT_DIR }}/ \;
-          ls -la ${{ env.OUTPUT_DIR }}/
+          mkdir -p "${{ env.OUTPUT_DIR }}"
+          find composeApp/build/compose/binaries -type f \( -name "*.deb" -o -name "*.rpm" \) -exec cp {} "${{ env.OUTPUT_DIR }}/" \;
+          ls -la "${{ env.OUTPUT_DIR }}/"
 
       - name: Upload packages
         if: ${{ inputs.build_mode == 'release' }}
@@ -289,11 +302,20 @@ jobs:
         run: |
           set -e
           TOML="${{ env.MANAGER_DIR }}/libs.versions.toml"
-          echo "kotlin=$(grep '^kotlin ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "gradle=$(grep '^gradle ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "agp=$(grep '^agp ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "compose=$(grep '^compose-multiplatform ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "jdk=$(grep '^jdk ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
+          AWK_SCRIPT='
+            /^\[versions\]/ { in_v=1; next }
+            /^\[/ { in_v=0 }
+            in_v && /^[a-zA-Z_-]+[[:space:]]*=/ {
+              key=$1; sub(/[[:space:]]*=.*/,"",key)
+              val=""; in_q=0
+              for(i=1;i<=length($0);i++){
+                c=substr($0,i,1)
+                if(c=="\""){ in_q=1-in_q; continue }
+                if(in_q) val=val c
+              }
+              print key "=" val
+            }'
+          eval "$(echo "$AWK_SCRIPT" | awk -f - "$TOML" | sed 's/^/echo "/; s/$/\" >> $GITHUB_OUTPUT/')"
           echo "--- versions ---"
           cat $GITHUB_OUTPUT
 
@@ -320,7 +342,8 @@ jobs:
           KOTLIN_VER="${{ steps.versions.outputs.kotlin }}"
           AGP_VER="${{ steps.versions.outputs.agp }}"
           COMPOSE_VER="${{ steps.versions.outputs.compose }}"
-          JVM_TARGET=$(grep '^jvmTarget ' "${{ env.MANAGER_DIR }}/libs.versions.toml" | sed 's/.*= *"\(.*\)"/\1/')
+          JVM_TARGET="${{ steps.versions.outputs.jvmTarget }}"
+          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
 
           cat > settings.gradle.kts <<'SETTINGS'
           pluginManagement {
@@ -443,16 +466,15 @@ jobs:
           COMPOSE
 
           mkdir -p composeApp/src
-          cp -r ${{ env.MANAGER_DIR }}/commonMain composeApp/src/
-          cp -r ${{ env.MANAGER_DIR }}/desktopMain composeApp/src/
-          cp -r ${{ env.MANAGER_DIR }}/androidMain composeApp/src/
+          cp -r "${{ env.MANAGER_DIR }}/commonMain" composeApp/src/
+          cp -r "${{ env.MANAGER_DIR }}/desktopMain" composeApp/src/
+          cp -r "${{ env.MANAGER_DIR }}/androidMain" composeApp/src/
 
           if [ -d "${{ env.MANAGER_DIR }}/resources" ]; then
             mkdir -p composeApp/src/main
-            cp -r ${{ env.MANAGER_DIR }}/resources composeApp/src/main/
+            cp -r "${{ env.MANAGER_DIR }}/resources" composeApp/src/main/
           fi
 
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
           curl -sL "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip" -o /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /opt/
           export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
@@ -478,9 +500,9 @@ jobs:
       - name: Collect artifacts
         if: ${{ inputs.build_mode == 'release' }}
         run: |
-          mkdir -p ${{ env.OUTPUT_DIR }}
-          find composeApp/build/compose/binaries -type f \( -name "*.deb" -o -name "*.rpm" \) -exec cp {} ${{ env.OUTPUT_DIR }}/ \;
-          ls -la ${{ env.OUTPUT_DIR }}/
+          mkdir -p "${{ env.OUTPUT_DIR }}"
+          find composeApp/build/compose/binaries -type f \( -name "*.deb" -o -name "*.rpm" \) -exec cp {} "${{ env.OUTPUT_DIR }}/" \;
+          ls -la "${{ env.OUTPUT_DIR }}/"
 
       - name: Upload packages
         if: ${{ inputs.build_mode == 'release' }}
@@ -510,11 +532,20 @@ jobs:
         run: |
           set -e
           TOML="${{ env.MANAGER_DIR }}/libs.versions.toml"
-          echo "kotlin=$(grep '^kotlin ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "gradle=$(grep '^gradle ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "agp=$(grep '^agp ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "compose=$(grep '^compose-multiplatform ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "jdk=$(grep '^jdk ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
+          AWK_SCRIPT='
+            /^\[versions\]/ { in_v=1; next }
+            /^\[/ { in_v=0 }
+            in_v && /^[a-zA-Z_-]+[[:space:]]*=/ {
+              key=$1; sub(/[[:space:]]*=.*/,"",key)
+              val=""; in_q=0
+              for(i=1;i<=length($0);i++){
+                c=substr($0,i,1)
+                if(c=="\""){ in_q=1-in_q; continue }
+                if(in_q) val=val c
+              }
+              print key "=" val
+            }'
+          eval "$(echo "$AWK_SCRIPT" | awk -f - "$TOML" | sed 's/^/echo "/; s/$/\" >> $GITHUB_OUTPUT/')"
           echo "--- versions ---"
           cat $GITHUB_OUTPUT
 
@@ -529,7 +560,6 @@ jobs:
         run: |
           choco install wixtoolset -y --no-progress
           choco install innosetup -y --no-progress
-          # 刷新 PATH
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
           echo "PATH=$env:Path" >> $env:GITHUB_ENV
 
@@ -540,7 +570,8 @@ jobs:
           KOTLIN_VER="${{ steps.versions.outputs.kotlin }}"
           AGP_VER="${{ steps.versions.outputs.agp }}"
           COMPOSE_VER="${{ steps.versions.outputs.compose }}"
-          JVM_TARGET=$(grep '^jvmTarget ' "${{ env.MANAGER_DIR }}/libs.versions.toml" | sed 's/.*= *"\(.*\)"/\1/')
+          JVM_TARGET="${{ steps.versions.outputs.jvmTarget }}"
+          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
 
           cat > settings.gradle.kts <<'SETTINGS'
           pluginManagement {
@@ -674,7 +705,6 @@ jobs:
             cp -r "${{ env.MANAGER_DIR }}/resources" composeApp/src/main/
           fi
 
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
           curl -sL "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip" -o /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /opt/
           export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
@@ -704,24 +734,17 @@ jobs:
 
           New-Item -ItemType Directory -Force -Path $OUT | Out-Null
 
-          # 找 MSI 输出
           $msi = Get-ChildItem "$BUILD" -Filter "*.msi" -Recurse -File | Select-Object -First 1
-          if (-not $msi) { throw "❌ MSI not found in $BUILD" }
-          Write-Host "✅ Found MSI: $($msi.FullName)"
+          if (-not $msi) { throw "MSI not found in $BUILD" }
+          Write-Host "Found MSI: $($msi.FullName)"
 
-          # 找 exe (app 目录)
-          $exeDir = Get-ChildItem "$BUILD" -Filter "*.exe" -Recurse -File | Where-Object { $_.Name -eq "$APP.exe" } | Select-Object -First 1
-          if (-not $exeDir) {
-            # jpackage 输出通常在 app/ 子目录
-            $exeDir = Get-ChildItem "$BUILD" -Filter "$APP.exe" -Recurse -File | Select-Object -First 1
-          }
-          if (-not $exeDir) { throw "❌ $APP.exe not found under $BUILD" }
-          Write-Host "✅ Found EXE: $($exeDir.FullName)"
+          $exeFile = Get-ChildItem "$BUILD" -Filter "$APP.exe" -Recurse -File | Select-Object -First 1
+          if (-not $exeFile) { throw "$APP.exe not found under $BUILD" }
+          Write-Host "Found EXE: $($exeFile.FullName)"
 
           New-Item -ItemType Directory -Force -Path $PKG | Out-Null
-          Copy-Item $exeDir.FullName "$PKG\$APP.exe" -Force
+          Copy-Item $exeFile.FullName "$PKG\$APP.exe" -Force
 
-          # 图标
           $iconFile = ""
           if (Test-Path "$RES\LianT.ico")       { $iconFile = "$RES\LianT.ico" }
           elseif (Test-Path "$RES\$APP.ico")    { $iconFile = "$RES\$APP.ico" }
@@ -729,9 +752,8 @@ jobs:
             $found = Get-ChildItem $RES -Filter "*.ico" -File -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($found) { $iconFile = $found.FullName }
           }
-          if ($iconFile) { Copy-Item $iconFile "$PKG\app.ico" -Force; Write-Host "✅ Icon: $iconFile" }
+          if ($iconFile) { Copy-Item $iconFile "$PKG\app.ico" -Force; Write-Host "Icon: $iconFile" }
 
-          # Inno Setup 脚本
           $issPath = "$PKG\installer.iss"
           $lines = @()
           $lines += "; -- Inno Setup Script for $APP $VERSION --"
@@ -765,7 +787,6 @@ jobs:
           $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
           [System.IO.File]::WriteAllLines($issPath, $lines, $utf8NoBom)
 
-          # 找 iscc
           $iscc = Get-Command iscc -ErrorAction SilentlyContinue
           if (-not $iscc) {
             $candidates = @(
@@ -775,7 +796,7 @@ jobs:
             )
             foreach ($c in $candidates) { if (Test-Path $c) { $iscc = $c; break } }
           }
-          if (-not $iscc) { throw "❌ iscc.exe not found" }
+          if (-not $iscc) { throw "iscc.exe not found" }
 
           Push-Location $PKG
           & $iscc "installer.iss"
@@ -784,8 +805,8 @@ jobs:
 
           $outFile = "$OUT\${APP}_${VERSION}_amd64.exe"
           if (Test-Path $outFile) {
-            Write-Host "✅ Generated: $outFile ($([math]::Round((Get-Item $outFile).Length/1MB,2)) MB)"
-          } else { throw "❌ Output exe not found" }
+            Write-Host "Generated: $outFile ($([math]::Round((Get-Item $outFile).Length/1MB,2)) MB)"
+          } else { throw "Output exe not found at $outFile" }
 
       - name: Build debug
         if: ${{ inputs.build_mode == 'debug' }}
@@ -801,7 +822,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p "${{ env.OUTPUT_DIR }}"
-          find composeApp/build/compose/binaries -name "*.msi" -exec cp {} "${{ env.OUTPUT_DIR }}/" \;
+          find composeApp/build/compose/binaries -name "*.exe" -exec cp {} "${{ env.OUTPUT_DIR }}/" \;
           ls -la "${{ env.OUTPUT_DIR }}/"
 
       - name: Upload packages
@@ -831,11 +852,20 @@ jobs:
         run: |
           set -e
           TOML="${{ env.MANAGER_DIR }}/libs.versions.toml"
-          echo "kotlin=$(grep '^kotlin ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "gradle=$(grep '^gradle ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "agp=$(grep '^agp ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "compose=$(grep '^compose-multiplatform ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "jdk=$(grep '^jdk ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
+          AWK_SCRIPT='
+            /^\[versions\]/ { in_v=1; next }
+            /^\[/ { in_v=0 }
+            in_v && /^[a-zA-Z_-]+[[:space:]]*=/ {
+              key=$1; sub(/[[:space:]]*=.*/,"",key)
+              val=""; in_q=0
+              for(i=1;i<=length($0);i++){
+                c=substr($0,i,1)
+                if(c=="\""){ in_q=1-in_q; continue }
+                if(in_q) val=val c
+              }
+              print key "=" val
+            }'
+          eval "$(echo "$AWK_SCRIPT" | awk -f - "$TOML" | sed 's/^/echo "/; s/$/\" >> $GITHUB_OUTPUT/')"
           echo "--- versions ---"
           cat $GITHUB_OUTPUT
 
@@ -851,7 +881,8 @@ jobs:
           KOTLIN_VER="${{ steps.versions.outputs.kotlin }}"
           AGP_VER="${{ steps.versions.outputs.agp }}"
           COMPOSE_VER="${{ steps.versions.outputs.compose }}"
-          JVM_TARGET=$(grep '^jvmTarget ' "${{ env.MANAGER_DIR }}/libs.versions.toml" | sed 's/.*= *"\(.*\)"/\1/')
+          JVM_TARGET="${{ steps.versions.outputs.jvmTarget }}"
+          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
 
           cat > settings.gradle.kts <<'SETTINGS'
           pluginManagement {
@@ -975,16 +1006,15 @@ jobs:
           COMPOSE
 
           mkdir -p composeApp/src
-          cp -r ${{ env.MANAGER_DIR }}/commonMain composeApp/src/
-          cp -r ${{ env.MANAGER_DIR }}/desktopMain composeApp/src/
-          cp -r ${{ env.MANAGER_DIR }}/androidMain composeApp/src/
+          cp -r "${{ env.MANAGER_DIR }}/commonMain" composeApp/src/
+          cp -r "${{ env.MANAGER_DIR }}/desktopMain" composeApp/src/
+          cp -r "${{ env.MANAGER_DIR }}/androidMain" composeApp/src/
 
           if [ -d "${{ env.MANAGER_DIR }}/resources" ]; then
             mkdir -p composeApp/src/main
-            cp -r ${{ env.MANAGER_DIR }}/resources composeApp/src/main/
+            cp -r "${{ env.MANAGER_DIR }}/resources" composeApp/src/main/
           fi
 
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
           curl -sL "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip" -o /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /opt/
           export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
@@ -1010,9 +1040,9 @@ jobs:
       - name: Collect artifacts
         if: ${{ inputs.build_mode == 'release' }}
         run: |
-          mkdir -p ${{ env.OUTPUT_DIR }}
-          find composeApp/build/compose/binaries -name "*.dmg" -exec cp {} ${{ env.OUTPUT_DIR }}/ \;
-          ls -la ${{ env.OUTPUT_DIR }}/
+          mkdir -p "${{ env.OUTPUT_DIR }}"
+          find composeApp/build/compose/binaries -name "*.dmg" -exec cp {} "${{ env.OUTPUT_DIR }}/" \;
+          ls -la "${{ env.OUTPUT_DIR }}/"
 
       - name: Upload packages
         if: ${{ inputs.build_mode == 'release' }}
@@ -1041,11 +1071,20 @@ jobs:
         run: |
           set -e
           TOML="${{ env.MANAGER_DIR }}/libs.versions.toml"
-          echo "kotlin=$(grep '^kotlin ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "gradle=$(grep '^gradle ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "agp=$(grep '^agp ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "compose=$(grep '^compose-multiplatform ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-          echo "jdk=$(grep '^jdk ' "$TOML" | sed 's/.*= *"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
+          AWK_SCRIPT='
+            /^\[versions\]/ { in_v=1; next }
+            /^\[/ { in_v=0 }
+            in_v && /^[a-zA-Z_-]+[[:space:]]*=/ {
+              key=$1; sub(/[[:space:]]*=.*/,"",key)
+              val=""; in_q=0
+              for(i=1;i<=length($0);i++){
+                c=substr($0,i,1)
+                if(c=="\""){ in_q=1-in_q; continue }
+                if(in_q) val=val c
+              }
+              print key "=" val
+            }'
+          eval "$(echo "$AWK_SCRIPT" | awk -f - "$TOML" | sed 's/^/echo "/; s/$/\" >> $GITHUB_OUTPUT/')"
           echo "--- versions ---"
           cat $GITHUB_OUTPUT
 
@@ -1061,7 +1100,8 @@ jobs:
           KOTLIN_VER="${{ steps.versions.outputs.kotlin }}"
           AGP_VER="${{ steps.versions.outputs.agp }}"
           COMPOSE_VER="${{ steps.versions.outputs.compose }}"
-          JVM_TARGET=$(grep '^jvmTarget ' "${{ env.MANAGER_DIR }}/libs.versions.toml" | sed 's/.*= *"\(.*\)"/\1/')
+          JVM_TARGET="${{ steps.versions.outputs.jvmTarget }}"
+          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
 
           cat > settings.gradle.kts <<'SETTINGS'
           pluginManagement {
@@ -1185,16 +1225,15 @@ jobs:
           COMPOSE
 
           mkdir -p composeApp/src
-          cp -r ${{ env.MANAGER_DIR }}/commonMain composeApp/src/
-          cp -r ${{ env.MANAGER_DIR }}/desktopMain composeApp/src/
-          cp -r ${{ env.MANAGER_DIR }}/androidMain composeApp/src/
+          cp -r "${{ env.MANAGER_DIR }}/commonMain" composeApp/src/
+          cp -r "${{ env.MANAGER_DIR }}/desktopMain" composeApp/src/
+          cp -r "${{ env.MANAGER_DIR }}/androidMain" composeApp/src/
 
           if [ -d "${{ env.MANAGER_DIR }}/resources" ]; then
             mkdir -p composeApp/src/main
-            cp -r ${{ env.MANAGER_DIR }}/resources composeApp/src/main/
+            cp -r "${{ env.MANAGER_DIR }}/resources" composeApp/src/main/
           fi
 
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
           curl -sL "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip" -o /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /opt/
           export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
@@ -1220,9 +1259,9 @@ jobs:
       - name: Collect artifacts
         if: ${{ inputs.build_mode == 'release' }}
         run: |
-          mkdir -p ${{ env.OUTPUT_DIR }}
-          find composeApp/build/compose/binaries -name "*.dmg" -exec cp {} ${{ env.OUTPUT_DIR }}/ \;
-          ls -la ${{ env.OUTPUT_DIR }}/
+          mkdir -p "${{ env.OUTPUT_DIR }}"
+          find composeApp/build/compose/binaries -name "*.dmg" -exec cp {} "${{ env.OUTPUT_DIR }}/" \;
+          ls -la "${{ env.OUTPUT_DIR }}/"
 
       - name: Upload packages
         if: ${{ inputs.build_mode == 'release' }}
