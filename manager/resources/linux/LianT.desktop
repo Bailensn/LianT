@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=联T
+Comment=LianT Desktop
+Exec=LianT
+Icon=LianT
+Terminal=false
+Categories=Utility;
+StartupWMClass=LianT
