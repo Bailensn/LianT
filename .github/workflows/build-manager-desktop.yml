@@ -62,7 +62,7 @@ jobs:
             libgl1-mesa-dev libx11-dev libxcursor-dev libxfixes-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev \
             libxi-dev libxinerama-dev libxxf86vm-dev libxext-dev \
-            pkg-config gcc
+            pkg-config gcc libwayland-dev
 
       - uses: actions/setup-go@v6
         with:
