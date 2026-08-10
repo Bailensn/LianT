@@ -1,104 +1,138 @@
 name: Build Service
+
 on:
   workflow_dispatch:
     inputs:
-      mode:
-        description: Build mode
-        required: true
+      build_mode:
+        description: 'Build mode'
         type: choice
         options:
           - debug
           - release
-        default: debug
+        default: release
       linux_amd64:
-        description: Linux amd64
-        required: false
+        description: 'Linux amd64'
         type: boolean
         default: false
       linux_arm64:
-        description: Linux arm64
-        required: false
+        description: 'Linux arm64'
         type: boolean
         default: false
       windows_amd64:
-        description: Windows amd64
-        required: false
+        description: 'Windows amd64 (.exe)'
         type: boolean
         default: false
       darwin_amd64:
-        description: macOS Intel amd64
-        required: false
+        description: 'macOS amd64 (Intel)'
         type: boolean
         default: false
       darwin_arm64:
-        description: macOS Apple Silicon arm64
-        required: false
+        description: 'macOS arm64 (Apple Silicon)'
         type: boolean
         default: false
+
+permissions:
+  contents: read
+
 defaults:
   run:
     working-directory: service
+
 jobs:
   build:
-    name: Build Service
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: linux-amd64
-            goos: linux
-            goarch: amd64
-          - target: linux-arm64
-            goos: linux
-            goarch: arm64
-          - target: windows-amd64
-            goos: windows
-            goarch: amd64
-          - target: darwin-amd64
-            goos: darwin
-            goarch: amd64
-          - target: darwin-arm64
-            goos: darwin
-            goarch: arm64
-    if: |
-      (matrix.target == 'linux-amd64' && inputs.linux_amd64) ||
-      (matrix.target == 'linux-arm64' && inputs.linux_arm64) ||
-      (matrix.target == 'windows-amd64' && inputs.windows_amd64) ||
-      (matrix.target == 'darwin-amd64' && inputs.darwin_amd64) ||
-      (matrix.target == 'darwin-arm64' && inputs.darwin_arm64)
+    env:
+      BUILD_MODE: ${{ inputs.build_mode }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version: '1.22'
+          cache: true
           cache-dependency-path: service/go.sum
-      - name: Download modules
-        run: go mod download
-      - name: Build
-        shell: bash
+
+      - name: Build Linux amd64 (${{ env.BUILD_MODE }})
+        if: ${{ inputs.linux_amd64 }}
         run: |
-          mkdir -p output
-          export CGO_ENABLED=0
-          export GOOS=${{ matrix.goos }}
-          export GOARCH=${{ matrix.goarch }}
-          if [ "${{ inputs.mode }}" = "release" ]; then
-            FLAGS="-ldflags=-s -w -trimpath"
+          if [ "$BUILD_MODE" = "release" ]; then
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -ldflags="-s -w" -trimpath -o service-linux-amd64 .
           else
-            FLAGS=""
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -o service-linux-amd64 .
           fi
-          EXT=""
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            EXT=".exe"
-          fi
-          go build \
-            $FLAGS \
-            -o output/service-${{ matrix.target }}${EXT} \
-            .
-      - name: Upload artifact
+      - name: Upload Linux amd64
+        if: ${{ inputs.linux_amd64 }}
         uses: actions/upload-artifact@v4
         with:
-          name: service-${{ matrix.target }}
-          path: service/output/*
+          name: service-linux-amd64
+          path: service/service-linux-amd64
+
+      - name: Build Linux arm64 (${{ env.BUILD_MODE }})
+        if: ${{ inputs.linux_arm64 }}
+        run: |
+          if [ "$BUILD_MODE" = "release" ]; then
+            CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+              go build -ldflags="-s -w" -trimpath -o service-linux-arm64 .
+          else
+            CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+              go build -o service-linux-arm64 .
+          fi
+      - name: Upload Linux arm64
+        if: ${{ inputs.linux_arm64 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-linux-arm64
+          path: service/service-linux-arm64
+
+      - name: Build Windows amd64 (${{ env.BUILD_MODE }})
+        if: ${{ inputs.windows_amd64 }}
+        run: |
+          if [ "$BUILD_MODE" = "release" ]; then
+            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+              go build -ldflags="-s -w" -trimpath -o service-windows-amd64.exe .
+          else
+            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+              go build -o service-windows-amd64.exe .
+          fi
+      - name: Upload Windows amd64
+        if: ${{ inputs.windows_amd64 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-windows-amd64
+          path: service/service-windows-amd64.exe
+
+      - name: Build macOS amd64 (${{ env.BUILD_MODE }})
+        if: ${{ inputs.darwin_amd64 }}
+        run: |
+          if [ "$BUILD_MODE" = "release" ]; then
+            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 \
+              go build -ldflags="-s -w" -trimpath -o service-darwin-amd64 .
+          else
+            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 \
+              go build -o service-darwin-amd64 .
+          fi
+      - name: Upload macOS amd64
+        if: ${{ inputs.darwin_amd64 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-darwin-amd64
+          path: service/service-darwin-amd64
+
+      - name: Build macOS arm64 (${{ env.BUILD_MODE }})
+        if: ${{ inputs.darwin_arm64 }}
+        run: |
+          if [ "$BUILD_MODE" = "release" ]; then
+            CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
+              go build -ldflags="-s -w" -trimpath -o service-darwin-arm64 .
+          else
+            CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
+              go build -o service-darwin-arm64 .
+          fi
+      - name: Upload macOS arm64
+        if: ${{ inputs.darwin_arm64 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-darwin-arm64
+          path: service/service-darwin-arm64
