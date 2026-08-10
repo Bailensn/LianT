@@ -1,4 +1,4 @@
-name: Build Service
+name: Build Service (CLI)
 
 on:
   workflow_dispatch:
@@ -13,11 +13,11 @@ on:
       linux_amd64:
         description: 'Linux amd64'
         type: boolean
-        default: false
+        default: true
       linux_arm64:
         description: 'Linux arm64'
         type: boolean
-        default: false
+        default: true
       windows_amd64:
         description: 'Windows amd64 (.exe)'
         type: boolean
@@ -53,7 +53,6 @@ jobs:
           cache: true
           cache-dependency-path: service/go.sum
 
-      # 仅在 release 模式安装 garble（手动触发时根据输入，tag 触发时总是 release）
       - name: Install garble (release mode)
         if: env.BUILD_MODE == 'release'
         run: go install mvdan.cc/garble@latest

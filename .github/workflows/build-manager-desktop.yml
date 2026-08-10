@@ -52,7 +52,6 @@ jobs:
           cache: true
           cache-dependency-path: manager/desktop/go.sum
 
-      # 仅在 release 模式安装 garble
       - name: Install garble (release mode)
         if: env.BUILD_MODE == 'release'
         run: go install mvdan.cc/garble@latest
