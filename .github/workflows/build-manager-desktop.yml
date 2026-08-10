@@ -39,6 +39,7 @@ env:
   APP_VERSION: ${{ inputs.version }}
   BUILD_ROOT: ${{ github.workspace }}/build
   SRC_ROOT: ${{ github.workspace }}/manager/desktop
+  OUTPUT_DIR: ${{ github.workspace }}
 
 jobs:
   # ======================================================================
@@ -202,14 +203,17 @@ jobs:
           find ${RPMTOP}/RPMS -name "*.rpm" -exec cp {} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm" \;
           echo "✅ Generated .rpm: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm"
 
+          # 将生成的安装包移动到仓库根目录，以便上传
+          mv *.deb *.rpm ${{ env.OUTPUT_DIR }}/
+
       - name: Upload packages (release)
         if: ${{ inputs.build_mode == 'release' }}
         uses: actions/upload-artifact@v6
         with:
           name: packages-linux-amd64
           path: |
-            *.deb
-            *.rpm
+            ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.deb
+            ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm
           if-no-files-found: error
           retention-days: 30
 
@@ -374,14 +378,16 @@ jobs:
           find ${RPMTOP}/RPMS -name "*.rpm" -exec cp {} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm" \;
           echo "✅ Generated .rpm: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm"
 
+          mv *.deb *.rpm ${{ env.OUTPUT_DIR }}/
+
       - name: Upload packages (release)
         if: ${{ inputs.build_mode == 'release' }}
         uses: actions/upload-artifact@v6
         with:
           name: packages-linux-arm64
           path: |
-            *.deb
-            *.rpm
+            ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.deb
+            ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm
           if-no-files-found: error
           retention-days: 30
 
@@ -439,7 +445,6 @@ jobs:
           Write-Host "🔍 BUILD=$BUILD"
           Write-Host "🔍 APP=$APP  VERSION=$VERSION"
 
-          # 校验二进制存在
           if (-not (Test-Path "$BUILD\$APP.exe")) {
             throw "❌ Binary not found at $BUILD\$APP.exe"
           }
@@ -448,7 +453,6 @@ jobs:
           Copy-Item "$BUILD\$APP.exe" "$PKG\$APP.exe" -Force
           Write-Host "✅ Copied $APP.exe into $PKG/"
 
-          # 复制图标等资源（如果存在）
           if (Test-Path $RES) {
             Get-ChildItem $RES -File | ForEach-Object {
               Copy-Item $_.FullName "$PKG\" -Force
@@ -458,14 +462,12 @@ jobs:
             Write-Host "⚠️ No resources dir at $RES, skipping"
           }
 
-          # 动态拼额外 File 指令
           $extraFiles = ""
           if (Test-Path "$PKG\*.ico") { $extraFiles += '  File "*.ico"' + "`r`n" }
           if (Test-Path "$PKG\*.png") { $extraFiles += '  File "*.png"' + "`r`n" }
           Write-Host "📦 extraFiles: $extraFiles"
 
-          # 正确构造 outFile 和 installDir，避免变量名粘连
-          $outFile   = "${APP}_${VERSION}_amd64.exe"
+          $outFile = "${APP}_${VERSION}_amd64.exe"
           $installDir = '$PROGRAMFILES64\' + $APP
 
           $nsi = @"
@@ -513,12 +515,10 @@ jobs:
           SectionEnd
           "@
 
-          # 写出 installer.nsi 并展示内容便于排查
           $nsi | Out-File "$PKG\installer.nsi" -Encoding ASCII
           Write-Host "📝 installer.nsi contents:"
           Get-Content "$PKG\installer.nsi" | ForEach-Object { Write-Host "  $_" }
 
-          # 确认包目录内容
           Write-Host "📦 Package contents:"
           Get-ChildItem $PKG | ForEach-Object { Write-Host "  $($_.Name)  ($($_.Length) bytes)" }
 
@@ -527,8 +527,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "NSIS 打包失败" }
           Pop-Location
 
-          # 用通配符找实际生成的 exe，避免版本号对不上
-          $generated = Get-ChildItem "$PKG\${APP}_*.exe" -File | Where-Object { $_.Name -match "^$([regex]::Escape($APP))_\d+\.\d+\.\d+_amd64\.exe$" }
+          # 找到生成的 exe 并移动到仓库根目录
+          $generated = Get-ChildItem "$PKG\${APP}_*.exe" -File | Where-Object { $_.Name -match "^${APP}_\d+\.\d+\.\d+_amd64\.exe$" }
           if (-not $generated) {
             $generated = Get-ChildItem "$PKG\*.exe" -File | Where-Object { $_.Name -like '*_amd64.exe' -and $_.Name -ne "$APP.exe" } | Select-Object -First 1
           }
@@ -537,8 +537,9 @@ jobs:
           }
 
           $finalName = "${APP}_${VERSION}_amd64.exe"
-          Move-Item $generated.FullName ".\$finalName" -Force
-          Write-Host "✅ Generated Windows installer: $finalName  ($($generated.Length) bytes)"
+          $dest = "${{ env.OUTPUT_DIR }}\$finalName"
+          Move-Item $generated.FullName $dest -Force
+          Write-Host "✅ Moved installer to $dest ($($generated.Length) bytes)"
 
       - name: Upload packages (release)
         if: ${{ inputs.build_mode == 'release' }}
@@ -599,7 +600,6 @@ jobs:
           cp "$BIN" ${APP}/Contents/MacOS/${{ env.APP_NAME }}
           chmod +x ${APP}/Contents/MacOS/${{ env.APP_NAME }}
 
-          # 从 resources/darwin 获取图标（优先 icns，其次 png）
           RES="${{ github.workspace }}/manager/resources/darwin"
           if [ -f "${RES}/LianT.icns" ]; then
             cp "${RES}/LianT.icns" ${APP}/Contents/Resources/AppIcon.icns
@@ -607,7 +607,6 @@ jobs:
             cp "${RES}/LianT.png"  ${APP}/Contents/Resources/AppIcon.png
           fi
 
-          # 复制 resources/darwin 下其他文件（如果有）
           if [ -d "${RES}" ]; then
             for f in "${RES}"/*; do
               fname=$(basename "$f")
@@ -649,6 +648,9 @@ jobs:
             "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg"
 
           echo "✅ Generated .dmg: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg"
+
+          # 移动到仓库根目录
+          mv "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg" ${{ env.OUTPUT_DIR }}/
 
       - name: Upload packages (release)
         if: ${{ inputs.build_mode == 'release' }}
