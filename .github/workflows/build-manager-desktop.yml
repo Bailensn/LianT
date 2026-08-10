@@ -49,7 +49,12 @@ jobs:
       - name: Install Linux graphics dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libvulkan-dev libxkbcommon-dev libwayland-dev libx11-dev
+          sudo apt-get install -y \
+            libvulkan-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libx11-dev \
+            libegl1-mesa-dev
 
       - uses: actions/setup-go@v5
         with:
