@@ -46,20 +46,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ★ 唯一新增：Linux 编译 Gio 必须的系统库
+      - name: Install Linux graphics dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvulkan-dev libxkbcommon-dev
+
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.23'                       # ★ 从 1.22 升到 1.23
           cache: true
           cache-dependency-path: manager/desktop/go.sum
 
+      # ---------- Linux amd64 ----------
       - name: Build Linux amd64 (${{ env.BUILD_MODE }})
         if: ${{ inputs.linux_amd64 }}
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \   # ★ 改成 1
               go build -ldflags="-s -w" -trimpath -o manager-desktop-linux-amd64 .
           else
-            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \   # ★ 改成 1
               go build -o manager-desktop-linux-amd64 .
           fi
       - name: Upload Linux amd64
@@ -69,14 +76,15 @@ jobs:
           name: manager-desktop-linux-amd64
           path: manager/desktop/manager-desktop-linux-amd64
 
+      # ---------- Linux arm64 ----------
       - name: Build Linux arm64 (${{ env.BUILD_MODE }})
         if: ${{ inputs.linux_arm64 }}
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+            CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \   # ★ 改成 1
               go build -ldflags="-s -w" -trimpath -o manager-desktop-linux-arm64 .
           else
-            CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+            CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \   # ★ 改成 1
               go build -o manager-desktop-linux-arm64 .
           fi
       - name: Upload Linux arm64
@@ -86,6 +94,7 @@ jobs:
           name: manager-desktop-linux-arm64
           path: manager/desktop/manager-desktop-linux-arm64
 
+      # ---------- Windows amd64（保持原样，CGO_ENABLED=0 即可）----------
       - name: Build Windows amd64 (${{ env.BUILD_MODE }})
         if: ${{ inputs.windows_amd64 }}
         run: |
@@ -103,6 +112,7 @@ jobs:
           name: manager-desktop-windows-amd64
           path: manager/desktop/manager-desktop-windows-amd64.exe
 
+      # ---------- macOS amd64 ----------
       - name: Build macOS amd64 (${{ env.BUILD_MODE }})
         if: ${{ inputs.darwin_amd64 }}
         run: |
@@ -120,6 +130,7 @@ jobs:
           name: manager-desktop-darwin-amd64
           path: manager/desktop/manager-desktop-darwin-amd64
 
+      # ---------- macOS arm64 ----------
       - name: Build macOS arm64 (${{ env.BUILD_MODE }})
         if: ${{ inputs.darwin_arm64 }}
         run: |

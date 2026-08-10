@@ -1,0 +1,396 @@
+name: Package Release
+
+"on":
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: |
+          选择要打包的目标
+          - Linux_arm64.deb
+          - Linux_arm64.rpm
+          - Linux_amd64.deb
+          - Linux_amd64.rpm
+          - Windows_amd64.exe
+          - Darwin_arm64.dmg
+          - Darwin_amd64.dmg
+        required: true
+        type: string
+        default: 'Linux_arm64.deb,Linux_arm64.rpm,Linux_amd64.deb,Linux_amd64.rpm,Windows_amd64.exe,Darwin_arm64.dmg,Darwin_amd64.dmg'
+
+env:
+  APP_NAME: LianT
+  APP_VERSION: "1.0.0"
+
+jobs:
+  # ======================================================================
+  # Linux 打包 —— 矩阵覆盖 4 种组合，用 step-level if 精确过滤
+  # ======================================================================
+  package-linux:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: 'Linux_arm64.deb',  arch: 'arm64', pkg: 'deb', runner: 'ubuntu-22.04-arm', deb_arch: 'arm64'  }
+          - { target: 'Linux_arm64.rpm',  arch: 'arm64', pkg: 'rpm', runner: 'ubuntu-22.04-arm', rpm_arch: 'aarch64' }
+          - { target: 'Linux_amd64.deb',  arch: 'amd64', pkg: 'deb', runner: 'ubuntu-22.04',     deb_arch: 'amd64'  }
+          - { target: 'Linux_amd64.rpm',  arch: 'amd64', pkg: 'rpm', runner: 'ubuntu-22.04',     rpm_arch: 'x86_64'  }
+
+    steps:
+      - name: Checkout
+        if: contains(inputs.targets, matrix.target)
+        uses: actions/checkout@v4
+
+      # ---------- 安装打包工具 ----------
+      - name: Install deb tools
+        if: contains(inputs.targets, matrix.target) && matrix.pkg == 'deb'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev fakeroot
+
+      - name: Install rpm tools
+        if: contains(inputs.targets, matrix.target) && matrix.pkg == 'rpm'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm fakeroot
+
+      # ======================== 构建 .deb ========================
+      - name: Build .deb
+        if: contains(inputs.targets, matrix.target) && matrix.pkg == 'deb'
+        shell: bash
+        run: |
+          set -e
+          BUILD="LianT/manager/build/linux/${{ matrix.arch }}"
+          RES="LianT/manager/resources/linux"
+          PKG="deb_pkg"
+
+          # 目录结构
+          mkdir -p ${PKG}/usr/bin
+          mkdir -p ${PKG}/usr/share/applications
+          for s in 16 32 48 64 128 256 512; do
+            mkdir -p ${PKG}/usr/share/icons/hicolor/${s}x${s}/apps
+          done
+          mkdir -p ${PKG}/DEBIAN
+
+          # 二进制
+          cp ${BUILD}/${APP_NAME} ${PKG}/usr/bin/${APP_NAME}
+          chmod 755 ${PKG}/usr/bin/${APP_NAME}
+
+          # 全套图标
+          cp ${RES}/16/LianT.png  ${PKG}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${RES}/32/LianT.png  ${PKG}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${RES}/48/LianT.png  ${PKG}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${RES}/64/LianT.png  ${PKG}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${RES}/128/LianT.png ${PKG}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${RES}/256/LianT.png ${PKG}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${RES}/512/LianT.png ${PKG}/usr/share/icons/hicolor/512x512/apps/LianT.png
+
+          # desktop 文件
+          cp ${RES}/LianT.desktop ${PKG}/usr/share/applications/LianT.desktop
+
+          # control 文件
+          cat > ${PKG}/DEBIAN/control <<EOF
+          Package: liant
+          Version: ${APP_VERSION}
+          Section: utils
+          Priority: optional
+          Architecture: ${{ matrix.deb_arch }}
+          Maintainer: LianT Team
+          Description: LianT Manager
+           Cross-platform manager tool.
+          EOF
+          sed -i 's/\r$//' ${PKG}/DEBIAN/control
+
+          # 打包
+          dpkg-deb --build --root-owner-group ${PKG} \
+            "${APP_NAME}_${APP_VERSION}_${{ matrix.deb_arch }}.deb"
+          echo "✅ 已生成: ${APP_NAME}_${APP_VERSION}_${{ matrix.deb_arch }}.deb"
+
+      # ======================== 构建 .rpm ========================
+      - name: Build .rpm
+        if: contains(inputs.targets, matrix.target) && matrix.pkg == 'rpm'
+        shell: bash
+        run: |
+          set -e
+          BUILD="LianT/manager/build/linux/${{ matrix.arch }}"
+          RES="LianT/manager/resources/linux"
+          RPMTOP="${HOME}/rpmbuild"
+
+          mkdir -p ${RPMTOP}/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          BR="${RPMTOP}/BUILDROOT"
+          mkdir -p ${BR}/usr/bin
+          mkdir -p ${BR}/usr/share/applications
+          for s in 16 32 48 64 128 256 512; do
+            mkdir -p ${BR}/usr/share/icons/hicolor/${s}x${s}/apps
+          done
+
+          # 准备文件到 BUILDROOT
+          cp ${BUILD}/${APP_NAME} ${BR}/usr/bin/${APP_NAME}
+          chmod 755 ${BR}/usr/bin/${APP_NAME}
+          cp ${RES}/16/LianT.png  ${BR}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${RES}/32/LianT.png  ${BR}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${RES}/48/LianT.png  ${BR}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${RES}/64/LianT.png  ${BR}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${RES}/128/LianT.png ${BR}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${RES}/256/LianT.png ${BR}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${RES}/512/LianT.png ${BR}/usr/share/icons/hicolor/512x512/apps/LianT.png
+          cp ${RES}/LianT.desktop ${BR}/usr/share/applications/LianT.desktop
+
+          # SPEC 文件
+          cat > ${RPMTOP}/SPECS/LianT.spec <<EOF
+          Name:           liant
+          Version:        ${APP_VERSION}
+          Release:        1%{?dist}
+          Summary:        LianT Manager
+          License:        Proprietary
+          BuildArch:      ${{ matrix.rpm_arch }}
+
+          %description
+          Cross-platform manager tool.
+
+          %install
+          mkdir -p %{buildroot}/usr/bin
+          cp ${BR}/usr/bin/LianT %{buildroot}/usr/bin/LianT
+          chmod 755 %{buildroot}/usr/bin/LianT
+          mkdir -p %{buildroot}/usr/share/applications
+          cp ${BR}/usr/share/applications/LianT.desktop %{buildroot}/usr/share/applications/LianT.desktop
+          for s in 16 32 48 64 128 256 512; do
+            mkdir -p %{buildroot}/usr/share/icons/hicolor/\${s}x\${s}/apps
+          done
+          cp ${BR}/usr/share/icons/hicolor/16x16/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/32x32/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/48x48/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/64x64/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/128x128/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/256x256/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/512x512/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/512x512/apps/LianT.png
+
+          %files
+          /usr/bin/LianT
+          /usr/share/applications/LianT.desktop
+          /usr/share/icons/hicolor/16x16/apps/LianT.png
+          /usr/share/icons/hicolor/32x32/apps/LianT.png
+          /usr/share/icons/hicolor/48x48/apps/LianT.png
+          /usr/share/icons/hicolor/64x64/apps/LianT.png
+          /usr/share/icons/hicolor/128x128/apps/LianT.png
+          /usr/share/icons/hicolor/256x256/apps/LianT.png
+          /usr/share/icons/hicolor/512x512/apps/LianT.png
+
+          %post
+          /bin/touch --no-create /usr/share/icons/hicolor 2>/dev/null || true
+          [ -x /usr/bin/gtk-update-icon-cache ] && /usr/bin/gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+          [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
+
+          %postun
+          [ -x /usr/bin/gtk-update-icon-cache ] && /usr/bin/gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+          [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
+          EOF
+
+          rpmbuild -bb \
+            --define "_topdir ${RPMTOP}" \
+            --define "_buildroot ${BR}" \
+            --define "_rpmdir ${RPMTOP}/RPMS" \
+            ${RPMTOP}/SPECS/LianT.spec
+
+          find ${RPMTOP}/RPMS -name "*.rpm" -exec cp {} "${APP_NAME}_${APP_VERSION}_${{ matrix.rpm_arch }}.rpm" \;
+          echo "✅ 已生成: ${APP_NAME}_${APP_VERSION}_${{ matrix.rpm_arch }}.rpm"
+
+      # ---------- 上传产物 ----------
+      - name: Upload Linux artifact
+        if: contains(inputs.targets, matrix.target)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            *.deb
+            *.rpm
+          if-no-files-found: warn
+          retention-days: 30
+
+  # ======================================================================
+  # Windows 打包
+  # ======================================================================
+  package-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        if: contains(inputs.targets, 'Windows_amd64.exe')
+        uses: actions/checkout@v4
+
+      - name: Build .exe installer (NSIS)
+        if: contains(inputs.targets, 'Windows_amd64.exe')
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $BUILD   = "LianT/manager/build/windows/amd64"
+          $RES     = "LianT/manager/release/windows"
+          $PKG     = "pkg_win"
+          $VERSION = "${env:APP_VERSION}"
+
+          New-Item -ItemType Directory -Force -Path $PKG | Out-Null
+          Copy-Item "$BUILD/LianT.exe" "$PKG/LianT.exe" -Force
+
+          # 复制图标资源
+          if (Test-Path $RES) {
+            Get-ChildItem $RES -File | ForEach-Object {
+              Copy-Item $_.FullName "$PKG/" -Force
+            }
+          }
+
+          # NSIS 脚本
+          $nsi = @"
+          !define APP_NAME "LianT"
+          !define APP_VERSION "$VERSION"
+          !define COMPANY   "LianT Team"
+          RequestExecutionLevel admin
+          SetCompressor /SOLID lzma
+          Name "\${APP_NAME}"
+          OutFile "LianT_\${APP_VERSION}_amd64.exe"
+          InstallDir "\$PROGRAMFILES64\LianT"
+          ShowInstDetails show
+          !include "MUI2.nsh"
+          !insertmacro MUI_PAGE_WELCOME
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_PAGE_FINISH
+          !insertmacro MUI_UNPAGE_CONFIRM
+          !insertmacro MUI_UNPAGE_INSTFILES
+          !insertmacro MUI_LANGUAGE "SimpChinese"
+          !insertmacro MUI_LANGUAGE "English"
+
+          Section "Main"
+            SetOutPath "\$INSTDIR"
+            File "LianT.exe"
+            if exist "*.ico" File "*.ico"
+            if exist "*.png" File "*.png"
+            CreateDirectory "\$SMPROGRAMS\LianT"
+            CreateShortcut  "\$SMPROGRAMS\LianT\LianT.lnk" "\$INSTDIR\LianT.exe"
+            CreateShortcut  "\$DESKTOP\LianT.lnk"          "\$INSTDIR\LianT.exe"
+            WriteUninstaller "\$INSTDIR\Uninstall.exe"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LianT" "DisplayName"     "\${APP_NAME}"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LianT" "UninstallString" "\$INSTDIR\Uninstall.exe"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LianT" "DisplayVersion"  "\${APP_VERSION}"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LianT" "Publisher"       "\${COMPANY}"
+          SectionEnd
+
+          Section "Uninstall"
+            Delete "\$INSTDIR\LianT.exe"
+            Delete "\$INSTDIR\Uninstall.exe"
+            RMDir  "\$INSTDIR"
+            Delete "\$SMPROGRAMS\LianT\LianT.lnk"
+            RMDir  "\$SMPROGRAMS\LianT"
+            Delete "\$DESKTOP\LianT.lnk"
+            DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LianT"
+          SectionEnd
+          "@
+          $nsi | Out-File "$PKG/installer.nsi" -Encoding ASCII
+
+          Push-Location $PKG
+          & "C:\Program Files (x86)\NSIS\makensis.exe" installer.nsi
+          if ($LASTEXITCODE -ne 0) { throw "NSIS 打包失败" }
+          Pop-Location
+
+          Move-Item "$PKG/LianT_${VERSION}_amd64.exe" "./LianT_${VERSION}_amd64.exe" -Force
+          Write-Host "✅ 已生成: LianT_${VERSION}_amd64.exe"
+
+      - name: Upload Windows artifact
+        if: contains(inputs.targets, 'Windows_amd64.exe')
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows_amd64.exe
+          path: '*.exe'
+          if-no-files-found: warn
+          retention-days: 30
+
+  # ======================================================================
+  # macOS 打包
+  # ======================================================================
+  package-darwin:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: 'Darwin_arm64.dmg', arch: 'arm64', runner: 'macos-latest', dmg_arch: 'arm64' }
+          - { target: 'Darwin_amd64.dmg', arch: 'amd64', runner: 'macos-13',     dmg_arch: 'amd64' }
+
+    steps:
+      - name: Checkout
+        if: contains(inputs.targets, matrix.target)
+        uses: actions/checkout@v4
+
+      - name: Build .dmg
+        if: contains(inputs.targets, matrix.target)
+        shell: bash
+        run: |
+          set -e
+          BUILD="LianT/manager/build/darwin/${{ matrix.arch }}"
+          RES="LianT/manager/release/darwin"
+          APP="${APP_NAME}.app"
+
+          mkdir -p ${APP}/Contents/MacOS
+          mkdir -p ${APP}/Contents/Resources
+
+          cp ${BUILD}/${APP_NAME} ${APP}/Contents/MacOS/${APP_NAME}
+          chmod +x ${APP}/Contents/MacOS/${APP_NAME}
+
+          # 图标：优先 .icns，其次 .png
+          if   [ -f "${RES}/LianT.icns" ]; then
+            cp "${RES}/LianT.icns" ${APP}/Contents/Resources/AppIcon.icns
+          elif [ -f "${RES}/LianT.png"  ]; then
+            cp "${RES}/LianT.png"  ${APP}/Contents/Resources/AppIcon.png
+          fi
+
+          # 其余资源
+          if [ -d "${RES}" ]; then
+            for f in "${RES}"/*; do
+              fname=$(basename "$f")
+              [ "$fname" = "LianT.icns" ] || [ "$fname" = "LianT.png" ] && continue
+              cp -r "$f" ${APP}/Contents/Resources/ 2>/dev/null || true
+            done
+          fi
+
+          # Info.plist
+          cat > ${APP}/Contents/Info.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>              <string>${APP_NAME}</string>
+            <key>CFBundleDisplayName</key>       <string>${APP_NAME}</string>
+            <key>CFBundleIdentifier</key>        <string>com.liant.manager</string>
+            <key>CFBundleVersion</key>           <string>${APP_VERSION}</string>
+            <key>CFBundleShortVersionString</key><string>${APP_VERSION}</string>
+            <key>CFBundleExecutable</key>        <string>${APP_NAME}</string>
+            <key>CFBundlePackageType</key>       <string>APPL</string>
+            <key>CFBundleSignature</key>         <string>????</string>
+            <key>LSMinimumSystemVersion</key>    <string>10.13</string>
+            <key>NSHighResolutionCapable</key>   <true/>
+            <key>LSApplicationCategoryType</key> <string>public.app-category.utilities</string>
+          </dict>
+          </plist>
+          EOF
+
+          echo "✅ .app 已构建"
+
+          # 制作 DMG
+          DMG_DIR="dmg_stage"
+          mkdir -p ${DMG_DIR}
+          cp -r ${APP} ${DMG_DIR}/
+          ln -sf /Applications ${DMG_DIR}/Applications
+
+          hdiutil create -volname "${APP_NAME}" \
+            -srcfolder ${DMG_DIR} \
+            -ov -format UDZO \
+            "LianT_${APP_VERSION}_${{ matrix.dmg_arch }}.dmg"
+
+          echo "✅ 已生成: LianT_${APP_VERSION}_${{ matrix.dmg_arch }}.dmg"
+
+      - name: Upload macOS artifact
+        if: contains(inputs.targets, matrix.target)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: '*.dmg'
+          if-no-files-found: warn
+          retention-days: 30
