@@ -54,18 +54,28 @@ jobs:
         working-directory: ${{ env.SRC_ROOT }}
     steps:
       - uses: actions/checkout@v6
-      - name: Install dependencies
+
+      - name: Install dependencies (Fyne + OpenGL + X11)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libvulkan-dev libxkbcommon-dev libwayland-dev libx11-dev \
-            libegl1-mesa-dev libxkbcommon-x11-dev libx11-xcb-dev \
-            libxcursor-dev libxfixes-dev
+            libgl1-mesa-dev libx11-dev libxcursor-dev libxfixes-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev \
+            libxi-dev libxinerama-dev libxxf86vm-dev libxext-dev \
+            pkg-config gcc
+
       - uses: actions/setup-go@v6
         with:
           go-version: '1.26.5'
           cache: true
           cache-dependency-path: go.sum
+
+      - name: Verify CGO
+        run: |
+          which gcc || (sudo apt-get install -y gcc && echo "gcc installed")
+          gcc --version
+          go env CGO_ENABLED
+
       - name: Build binary
         run: |
           export CGO_ENABLED=1 GOOS=linux GOARCH=amd64
@@ -228,18 +238,28 @@ jobs:
         working-directory: ${{ env.SRC_ROOT }}
     steps:
       - uses: actions/checkout@v6
-      - name: Install dependencies
+
+      - name: Install dependencies (Fyne + OpenGL + X11)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libvulkan-dev libxkbcommon-dev libwayland-dev libx11-dev \
-            libegl1-mesa-dev libxkbcommon-x11-dev libx11-xcb-dev \
-            libxcursor-dev libxfixes-dev
+            libgl1-mesa-dev libx11-dev libxcursor-dev libxfixes-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev \
+            libxi-dev libxinerama-dev libxxf86vm-dev libxext-dev \
+            pkg-config gcc
+
       - uses: actions/setup-go@v6
         with:
           go-version: '1.26.5'
           cache: true
           cache-dependency-path: go.sum
+
+      - name: Verify CGO
+        run: |
+          which gcc || (sudo apt-get install -y gcc && echo "gcc installed")
+          gcc --version
+          go env CGO_ENABLED
+
       - name: Build binary
         run: |
           export CGO_ENABLED=1 GOOS=linux GOARCH=arm64
@@ -402,14 +422,39 @@ jobs:
         working-directory: ${{ env.SRC_ROOT }}
     steps:
       - uses: actions/checkout@v6
+
       - uses: actions/setup-go@v6
         with:
           go-version: '1.26.5'
           cache: true
           cache-dependency-path: go.sum
+
+      - name: Install MinGW-w64 (required for Fyne CGO)
+        run: choco install mingw -y --no-progress
+        shell: pwsh
+
+      - name: Verify CGO toolchain
+        shell: pwsh
+        run: |
+          $mingwPath = "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin"
+          if (Test-Path $mingwPath) {
+            $env:Path = "$mingwPath;$env:Path"
+          }
+          gcc --version
+          go env CGO_ENABLED
+
       - name: Build binary
         shell: pwsh
         run: |
+          # Ensure MinGW is in PATH for this step
+          $mingwPath = "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin"
+          if (Test-Path $mingwPath) {
+            $env:Path = "$mingwPath;$env:Path"
+          }
+          $env:CGO_ENABLED = "1"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+
           New-Item -ItemType Directory -Force -Path "${{ env.BUILD_ROOT }}\windows\amd64" | Out-Null
           if ("${{ inputs.build_mode }}" -eq "release") {
             go build -ldflags="-s -w -H=windowsgui" -trimpath -o "${{ env.BUILD_ROOT }}\windows\amd64\${{ env.APP_NAME }}.exe" .
@@ -430,7 +475,6 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup -y
-          # 刷新环境变量
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 
       - name: Package Windows .exe installer (release)
@@ -491,7 +535,6 @@ jobs:
           }
 
           # ---- 构建 Inno Setup 脚本 ----
-          # 逐行拼接，所有路径使用反斜杠（Inno Setup 要求）
           $issPath = "$PKG\installer.iss"
 
           $lines = @()
@@ -612,11 +655,19 @@ jobs:
         working-directory: ${{ env.SRC_ROOT }}
     steps:
       - uses: actions/checkout@v6
+
       - uses: actions/setup-go@v6
         with:
           go-version: '1.26.5'
           cache: true
           cache-dependency-path: go.sum
+
+      - name: Verify CGO toolchain
+        run: |
+          which clang || (xcode-select --install && echo "Xcode CLI installed")
+          clang --version
+          go env CGO_ENABLED
+
       - name: Build binary
         run: |
           export CGO_ENABLED=1 GOOS=darwin GOARCH=arm64
