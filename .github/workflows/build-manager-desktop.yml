@@ -41,13 +41,16 @@ env:
   SRC_ROOT: ${{ github.workspace }}/manager/desktop
 
 jobs:
-  # ==========================================================================
-  # Build phase – 4 parallel platform jobs
-  # ==========================================================================
+  # ======================================================================
+  # Linux amd64
+  # ======================================================================
   linux-amd64:
     if: ${{ inputs.linux_amd64 }}
-    name: Build Linux amd64
+    name: Linux amd64
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.SRC_ROOT }}
     steps:
       - uses: actions/checkout@v6
       - name: Install dependencies
@@ -61,203 +64,55 @@ jobs:
         with:
           go-version: '1.26.5'
           cache: true
-          cache-dependency-path: manager/desktop/go.sum
+          cache-dependency-path: go.sum
       - name: Build binary
-        working-directory: ${{ env.SRC_ROOT }}
         run: |
           export CGO_ENABLED=1 GOOS=linux GOARCH=amd64
-          if [ "${{ inputs.build_mode }}" = "release" ]; then
-            go build -ldflags="-s -w" -trimpath -o manager-desktop-linux-amd64 .
-          else
-            go build -o manager-desktop-linux-amd64 .
-          fi
-      - name: Prepare artifact directory
-        run: |
           mkdir -p ${{ env.BUILD_ROOT }}/linux/amd64
-          cp ${{ env.SRC_ROOT }}/manager-desktop-linux-amd64 ${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }}
-      - uses: actions/upload-artifact@v6
+          if [ "${{ inputs.build_mode }}" = "release" ]; then
+            go build -ldflags="-s -w" -trimpath -o ${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }} .
+          else
+            go build -o ${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }} .
+          fi
+
+      # Debug: 直接上传二进制
+      - name: Upload binary (debug)
+        if: ${{ inputs.build_mode == 'debug' }}
+        uses: actions/upload-artifact@v6
         with:
-          name: build-linux-amd64
+          name: ${{ env.APP_NAME }}-linux-amd64
           path: ${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }}
-          retention-days: 1
+          retention-days: 7
 
-  linux-arm64:
-    if: ${{ inputs.linux_arm64 }}
-    name: Build Linux arm64
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libvulkan-dev libxkbcommon-dev libwayland-dev libx11-dev \
-            libegl1-mesa-dev libxkbcommon-x11-dev libx11-xcb-dev \
-            libxcursor-dev libxfixes-dev
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.26.5'
-          cache: true
-          cache-dependency-path: manager/desktop/go.sum
-      - name: Build binary
-        working-directory: ${{ env.SRC_ROOT }}
-        run: |
-          export CGO_ENABLED=1 GOOS=linux GOARCH=arm64
-          if [ "${{ inputs.build_mode }}" = "release" ]; then
-            go build -ldflags="-s -w" -trimpath -o manager-desktop-linux-arm64 .
-          else
-            go build -o manager-desktop-linux-arm64 .
-          fi
-      - name: Prepare artifact directory
-        run: |
-          mkdir -p ${{ env.BUILD_ROOT }}/linux/arm64
-          cp ${{ env.SRC_ROOT }}/manager-desktop-linux-arm64 ${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }}
-      - uses: actions/upload-artifact@v6
-        with:
-          name: build-linux-arm64
-          path: ${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }}
-          retention-days: 1
-
-  windows-amd64:
-    if: ${{ inputs.windows_amd64 }}
-    name: Build Windows amd64
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.26.5'
-          cache: true
-          cache-dependency-path: manager/desktop/go.sum
-      - name: Build binary
-        working-directory: ${{ env.SRC_ROOT }}
-        shell: pwsh
-        run: |
-          if ("${{ inputs.build_mode }}" -eq "release") {
-            go build -ldflags="-s -w -H=windowsgui" -trimpath -o manager-desktop-windows-amd64.exe .
-          } else {
-            go build -o manager-desktop-windows-amd64.exe .
-          }
-      - name: Prepare artifact directory
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path "${{ env.BUILD_ROOT }}\windows\amd64" | Out-Null
-          Copy-Item "${{ env.SRC_ROOT }}\manager-desktop-windows-amd64.exe" "${{ env.BUILD_ROOT }}\windows\amd64\${{ env.APP_NAME }}.exe"
-      - uses: actions/upload-artifact@v6
-        with:
-          name: build-windows-amd64
-          path: ${{ env.BUILD_ROOT }}/windows/amd64/${{ env.APP_NAME }}.exe
-          retention-days: 1
-
-  darwin-arm64:
-    if: ${{ inputs.darwin_arm64 }}
-    name: Build macOS arm64
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.26.5'
-          cache: true
-          cache-dependency-path: manager/desktop/go.sum
-      - name: Build binary
-        working-directory: ${{ env.SRC_ROOT }}
-        run: |
-          export CGO_ENABLED=1 GOOS=darwin GOARCH=arm64
-          if [ "${{ inputs.build_mode }}" = "release" ]; then
-            go build -ldflags="-s -w" -trimpath -o manager-desktop-darwin-arm64 .
-          else
-            go build -o manager-desktop-darwin-arm64 .
-          fi
-      - name: Prepare artifact directory
-        run: |
-          mkdir -p ${{ env.BUILD_ROOT }}/darwin/arm64
-          cp ${{ env.SRC_ROOT }}/manager-desktop-darwin-arm64 ${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }}
-      - uses: actions/upload-artifact@v6
-        with:
-          name: build-darwin-arm64
-          path: ${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }}
-          retention-days: 1
-
-  # ==========================================================================
-  # Packaging phase – only runs when build_mode == release
-  # ==========================================================================
-  package-release:
-    if: ${{ inputs.build_mode == 'release' }}
-    name: Package Release Artifacts
-    needs:
-      - linux-amd64
-      - linux-arm64
-      - windows-amd64
-      - darwin-arm64
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux-amd64
-            runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-          - platform: linux-arm64
-            runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
-          - platform: windows-amd64
-            runner: windows-latest
-            goos: windows
-            goarch: amd64
-          - platform: darwin-arm64
-            runner: macos-latest
-            goos: darwin
-            goarch: arm64
-    steps:
-      - uses: actions/checkout@v6
-
-      # 只有当前平台被勾选（artifact 存在）时才下载，避免报错
-      - name: Download build artifact
-        id: dl
-        continue-on-error: true
-        uses: actions/download-artifact@v6
-        with:
-          name: build-${{ matrix.platform }}
-          path: ${{ env.BUILD_ROOT }}/${{ matrix.goos }}/${{ matrix.goarch }}
-
-      - name: Skip if no artifact
-        if: steps.dl.outcome != 'success'
-        run: echo "::notice::No artifact for ${{ matrix.platform }}, skipping packaging."
-
-      # ---- Linux packaging (deb + rpm) ----
-      - name: Package Linux .deb & .rpm
-        if: startsWith(matrix.platform, 'linux-') && steps.dl.outcome == 'success'
+      # Release: 打包 deb + rpm 后上传
+      - name: Package .deb & .rpm (release)
+        if: ${{ inputs.build_mode == 'release' }}
         shell: bash
         run: |
           set -e
-          if [ "${{ matrix.goarch }}" = "amd64" ]; then
-            DEB_ARCH="amd64"; RPM_ARCH="x86_64"
-          else
-            DEB_ARCH="arm64"; RPM_ARCH="aarch64"
-          fi
-
-          BIN=${{ env.BUILD_ROOT }}/linux/${{ matrix.goarch }}/${{ env.APP_NAME }}
-          test -f "$BIN" || { echo "Binary not found at $BIN"; exit 1; }
+          BIN="${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }}"
+          test -f "$BIN" || { echo "❌ Binary not found at $BIN"; exit 1; }
 
           # --- .deb ---
-          sudo apt-get update && sudo apt-get install -y dpkg-dev fakeroot rpm
+          sudo apt-get install -y dpkg-dev fakeroot rpm
           PKG="deb_pkg"
-          mkdir -p ${PKG}/usr/bin ${PKG}/usr/share/applications
+          mkdir -p ${PKG}/usr/bin
+          mkdir -p ${PKG}/usr/share/applications
           for s in 16 32 48 64 128 256 512; do
             mkdir -p ${PKG}/usr/share/icons/hicolor/${s}x${s}/apps
           done
           mkdir -p ${PKG}/DEBIAN
-
           cp "$BIN" ${PKG}/usr/bin/${{ env.APP_NAME }}
           chmod 755 ${PKG}/usr/bin/${{ env.APP_NAME }}
 
-          RES=${{ github.workspace }}/manager/resources/linux
-          for s in 16 32 48 64 128 256 512; do
-            cp ${RES}/${s}/LianT.png ${PKG}/usr/share/icons/hicolor/${s}x${s}/apps/LianT.png
-          done
+          RES="${{ github.workspace }}/manager/resources/linux"
+          cp ${RES}/16/LianT.png  ${PKG}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${RES}/32/LianT.png  ${PKG}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${RES}/48/LianT.png  ${PKG}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${RES}/64/LianT.png  ${PKG}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${RES}/128/LianT.png ${PKG}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${RES}/256/LianT.png ${PKG}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${RES}/512/LianT.png ${PKG}/usr/share/icons/hicolor/512x512/apps/LianT.png
           cp ${RES}/LianT.desktop ${PKG}/usr/share/applications/LianT.desktop
 
           cat > ${PKG}/DEBIAN/control <<EOF
@@ -265,30 +120,33 @@ jobs:
           Version: ${{ env.APP_VERSION }}
           Section: utils
           Priority: optional
-          Architecture: ${DEB_ARCH}
+          Architecture: amd64
           Maintainer: LianT Team
           Description: LianT Manager
            Cross-platform manager tool.
           EOF
           sed -i 's/\r$//' ${PKG}/DEBIAN/control
-
-          dpkg-deb --build --root-owner-group ${PKG} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_${DEB_ARCH}.deb"
-          echo "✅ Generated .deb: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_${DEB_ARCH}.deb"
+          dpkg-deb --build --root-owner-group ${PKG} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.deb"
+          echo "✅ Generated .deb: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.deb"
 
           # --- .rpm ---
           RPMTOP="${HOME}/rpmbuild"
           mkdir -p ${RPMTOP}/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
           BR="${RPMTOP}/BUILDROOT"
-          mkdir -p ${BR}/usr/bin ${BR}/usr/share/applications
+          mkdir -p ${BR}/usr/bin
+          mkdir -p ${BR}/usr/share/applications
           for s in 16 32 48 64 128 256 512; do
             mkdir -p ${BR}/usr/share/icons/hicolor/${s}x${s}/apps
           done
-
           cp "$BIN" ${BR}/usr/bin/${{ env.APP_NAME }}
           chmod 755 ${BR}/usr/bin/${{ env.APP_NAME }}
-          for s in 16 32 48 64 128 256 512; do
-            cp ${RES}/${s}/LianT.png ${BR}/usr/share/icons/hicolor/${s}x${s}/apps/LianT.png
-          done
+          cp ${RES}/16/LianT.png  ${BR}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${RES}/32/LianT.png  ${BR}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${RES}/48/LianT.png  ${BR}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${RES}/64/LianT.png  ${BR}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${RES}/128/LianT.png ${BR}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${RES}/256/LianT.png ${BR}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${RES}/512/LianT.png ${BR}/usr/share/icons/hicolor/512x512/apps/LianT.png
           cp ${RES}/LianT.desktop ${BR}/usr/share/applications/LianT.desktop
 
           cat > ${RPMTOP}/SPECS/LianT.spec <<EOF
@@ -297,7 +155,7 @@ jobs:
           Release:        1%{?dist}
           Summary:        LianT Manager
           License:        Proprietary
-          BuildArch:      ${RPM_ARCH}
+          BuildArch:      x86_64
 
           %description
           Cross-platform manager tool.
@@ -311,9 +169,13 @@ jobs:
           for s in 16 32 48 64 128 256 512; do
             mkdir -p %{buildroot}/usr/share/icons/hicolor/\${s}x\${s}/apps
           done
-          for s in 16 32 48 64 128 256 512; do
-            cp ${BR}/usr/share/icons/hicolor/${s}x${s}/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/\${s}x\${s}/apps/LianT.png
-          done
+          cp ${BR}/usr/share/icons/hicolor/16x16/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/32x32/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/48x48/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/64x64/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/128x128/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/256x256/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/512x512/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/512x512/apps/LianT.png
 
           %files
           /usr/bin/LianT
@@ -336,51 +198,261 @@ jobs:
           [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
           EOF
 
-          rpmbuild -bb --define "_topdir ${RPMTOP}" --define "_buildroot ${BR}" --define "_rpmdir ${RPMTOP}/RPMS" ${RPMTOP}/SPECS/LianT.spec
-          find ${RPMTOP}/RPMS -name "*.rpm" -exec cp {} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_${RPM_ARCH}.rpm" \;
-          echo "✅ Generated .rpm: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_${RPM_ARCH}.rpm"
+          rpmbuild -bb \
+            --define "_topdir ${RPMTOP}" \
+            --define "_buildroot ${BR}" \
+            --define "_rpmdir ${RPMTOP}/RPMS" \
+            ${RPMTOP}/SPECS/LianT.spec
+          find ${RPMTOP}/RPMS -name "*.rpm" -exec cp {} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm" \;
+          echo "✅ Generated .rpm: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm"
 
-      # ---- Windows .exe installer ----
-      - name: Install NSIS
-        if: matrix.platform == 'windows-amd64' && steps.dl.outcome == 'success'
+      - name: Upload packages (release)
+        if: ${{ inputs.build_mode == 'release' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: packages-linux-amd64
+          path: |
+            *.deb
+            *.rpm
+          if-no-files-found: error
+          retention-days: 30
+
+  # ======================================================================
+  # Linux arm64
+  # ======================================================================
+  linux-arm64:
+    if: ${{ inputs.linux_arm64 }}
+    name: Linux arm64
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        working-directory: ${{ env.SRC_ROOT }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libvulkan-dev libxkbcommon-dev libwayland-dev libx11-dev \
+            libegl1-mesa-dev libxkbcommon-x11-dev libx11-xcb-dev \
+            libxcursor-dev libxfixes-dev
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.5'
+          cache: true
+          cache-dependency-path: go.sum
+      - name: Build binary
+        run: |
+          export CGO_ENABLED=1 GOOS=linux GOARCH=arm64
+          mkdir -p ${{ env.BUILD_ROOT }}/linux/arm64
+          if [ "${{ inputs.build_mode }}" = "release" ]; then
+            go build -ldflags="-s -w" -trimpath -o ${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }} .
+          else
+            go build -o ${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }} .
+          fi
+
+      - name: Upload binary (debug)
+        if: ${{ inputs.build_mode == 'debug' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.APP_NAME }}-linux-arm64
+          path: ${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }}
+          retention-days: 7
+
+      - name: Package .deb & .rpm (release)
+        if: ${{ inputs.build_mode == 'release' }}
+        shell: bash
+        run: |
+          set -e
+          BIN="${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }}"
+          test -f "$BIN" || { echo "❌ Binary not found at $BIN"; exit 1; }
+
+          sudo apt-get install -y dpkg-dev fakeroot rpm
+          PKG="deb_pkg"
+          mkdir -p ${PKG}/usr/bin
+          mkdir -p ${PKG}/usr/share/applications
+          for s in 16 32 48 64 128 256 512; do
+            mkdir -p ${PKG}/usr/share/icons/hicolor/${s}x${s}/apps
+          done
+          mkdir -p ${PKG}/DEBIAN
+          cp "$BIN" ${PKG}/usr/bin/${{ env.APP_NAME }}
+          chmod 755 ${PKG}/usr/bin/${{ env.APP_NAME }}
+
+          RES="${{ github.workspace }}/manager/resources/linux"
+          cp ${RES}/16/LianT.png  ${PKG}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${RES}/32/LianT.png  ${PKG}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${RES}/48/LianT.png  ${PKG}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${RES}/64/LianT.png  ${PKG}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${RES}/128/LianT.png ${PKG}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${RES}/256/LianT.png ${PKG}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${RES}/512/LianT.png ${PKG}/usr/share/icons/hicolor/512x512/apps/LianT.png
+          cp ${RES}/LianT.desktop ${PKG}/usr/share/applications/LianT.desktop
+
+          cat > ${PKG}/DEBIAN/control <<EOF
+          Package: liant
+          Version: ${{ env.APP_VERSION }}
+          Section: utils
+          Priority: optional
+          Architecture: arm64
+          Maintainer: LianT Team
+          Description: LianT Manager
+           Cross-platform manager tool.
+          EOF
+          sed -i 's/\r$//' ${PKG}/DEBIAN/control
+          dpkg-deb --build --root-owner-group ${PKG} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.deb"
+          echo "✅ Generated .deb: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.deb"
+
+          RPMTOP="${HOME}/rpmbuild"
+          mkdir -p ${RPMTOP}/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          BR="${RPMTOP}/BUILDROOT"
+          mkdir -p ${BR}/usr/bin
+          mkdir -p ${BR}/usr/share/applications
+          for s in 16 32 48 64 128 256 512; do
+            mkdir -p ${BR}/usr/share/icons/hicolor/${s}x${s}/apps
+          done
+          cp "$BIN" ${BR}/usr/bin/${{ env.APP_NAME }}
+          chmod 755 ${BR}/usr/bin/${{ env.APP_NAME }}
+          cp ${RES}/16/LianT.png  ${BR}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${RES}/32/LianT.png  ${BR}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${RES}/48/LianT.png  ${BR}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${RES}/64/LianT.png  ${BR}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${RES}/128/LianT.png ${BR}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${RES}/256/LianT.png ${BR}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${RES}/512/LianT.png ${BR}/usr/share/icons/hicolor/512x512/apps/LianT.png
+          cp ${RES}/LianT.desktop ${BR}/usr/share/applications/LianT.desktop
+
+          cat > ${RPMTOP}/SPECS/LianT.spec <<EOF
+          Name:           liant
+          Version:        ${{ env.APP_VERSION }}
+          Release:        1%{?dist}
+          Summary:        LianT Manager
+          License:        Proprietary
+          BuildArch:      aarch64
+
+          %description
+          Cross-platform manager tool.
+
+          %install
+          mkdir -p %{buildroot}/usr/bin
+          cp ${BR}/usr/bin/LianT %{buildroot}/usr/bin/LianT
+          chmod 755 %{buildroot}/usr/bin/LianT
+          mkdir -p %{buildroot}/usr/share/applications
+          cp ${BR}/usr/share/applications/LianT.desktop %{buildroot}/usr/share/applications/LianT.desktop
+          for s in 16 32 48 64 128 256 512; do
+            mkdir -p %{buildroot}/usr/share/icons/hicolor/\${s}x\${s}/apps
+          done
+          cp ${BR}/usr/share/icons/hicolor/16x16/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/32x32/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/48x48/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/64x64/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/128x128/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/256x256/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/512x512/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/512x512/apps/LianT.png
+
+          %files
+          /usr/bin/LianT
+          /usr/share/applications/LianT.desktop
+          /usr/share/icons/hicolor/16x16/apps/LianT.png
+          /usr/share/icons/hicolor/32x32/apps/LianT.png
+          /usr/share/icons/hicolor/48x48/apps/LianT.png
+          /usr/share/icons/hicolor/64x64/apps/LianT.png
+          /usr/share/icons/hicolor/128x128/apps/LianT.png
+          /usr/share/icons/hicolor/256x256/apps/LianT.png
+          /usr/share/icons/hicolor/512x512/apps/LianT.png
+
+          %post
+          /bin/touch --no-create /usr/share/icons/hicolor 2>/dev/null || true
+          [ -x /usr/bin/gtk-update-icon-cache ] && /usr/bin/gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+          [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
+
+          %postun
+          [ -x /usr/bin/gtk-update-icon-cache ] && /usr/bin/gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+          [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
+          EOF
+
+          rpmbuild -bb \
+            --define "_topdir ${RPMTOP}" \
+            --define "_buildroot ${BR}" \
+            --define "_rpmdir ${RPMTOP}/RPMS" \
+            ${RPMTOP}/SPECS/LianT.spec
+          find ${RPMTOP}/RPMS -name "*.rpm" -exec cp {} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm" \;
+          echo "✅ Generated .rpm: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm"
+
+      - name: Upload packages (release)
+        if: ${{ inputs.build_mode == 'release' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: packages-linux-arm64
+          path: |
+            *.deb
+            *.rpm
+          if-no-files-found: error
+          retention-days: 30
+
+  # ======================================================================
+  # Windows amd64
+  # ======================================================================
+  windows-amd64:
+    if: ${{ inputs.windows_amd64 }}
+    name: Windows amd64
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ${{ env.SRC_ROOT }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.5'
+          cache: true
+          cache-dependency-path: go.sum
+      - name: Build binary
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "${{ env.BUILD_ROOT }}\windows\amd64" | Out-Null
+          if ("${{ inputs.build_mode }}" -eq "release") {
+            go build -ldflags="-s -w -H=windowsgui" -trimpath -o "${{ env.BUILD_ROOT }}\windows\amd64\${{ env.APP_NAME }}.exe" .
+          } else {
+            go build -o "${{ env.BUILD_ROOT }}\windows\amd64\${{ env.APP_NAME }}.exe" .
+          }
+
+      - name: Upload binary (debug)
+        if: ${{ inputs.build_mode == 'debug' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.APP_NAME }}-windows-amd64
+          path: ${{ env.BUILD_ROOT }}/windows/amd64/${{ env.APP_NAME }}.exe
+          retention-days: 7
+
+      - name: Install NSIS (release)
+        if: ${{ inputs.build_mode == 'release' }}
         shell: pwsh
         run: choco install nsis -y
 
-      - name: Package Windows .exe installer
-        if: matrix.platform == 'windows-amd64' && steps.dl.outcome == 'success'
+      - name: Package Windows .exe installer (release)
+        if: ${{ inputs.build_mode == 'release' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $BUILD   = "${{ env.BUILD_ROOT }}/windows/amd64"
-          $RES     = "${{ github.workspace }}/manager/release/windows"
+          $BUILD   = "${{ env.BUILD_ROOT }}\windows\amd64"
+          $RES     = "${{ github.workspace }}\manager\resources\windows"
           $PKG     = "pkg_win"
           $VERSION = "${{ env.APP_VERSION }}"
 
-          # 校验二进制存在
-          $exeSrc = "$BUILD/${{ env.APP_NAME }}.exe"
-          if (-not (Test-Path $exeSrc)) { throw "Binary not found at $exeSrc" }
-
           New-Item -ItemType Directory -Force -Path $PKG | Out-Null
-          Copy-Item $exeSrc "$PKG/${{ env.APP_NAME }}.exe" -Force
+          Copy-Item "$BUILD\${{ env.APP_NAME }}.exe" "$PKG\${{ env.APP_NAME }}.exe" -Force
 
-          # 把图标资源复制进包目录（如果存在）
+          # 复制图标等资源（如果存在）
+          if (Test-Path $RES) {
+            Get-ChildItem $RES -File | ForEach-Object {
+              Copy-Item $_.FullName "$PKG\" -Force
+            }
+          }
+
+          # 构建 NSIS 脚本（动态处理额外文件）
           $extraFiles = ""
-          if (Test-Path "$RES/*.ico") {
-            Copy-Item "$RES/*.ico" $PKG -Force
-            $extraFiles += "  File `"*.ico`"`r`n"
-          }
-          if (Test-Path "$RES/*.png") {
-            Copy-Item "$RES/*.png" $PKG -Force
-            $extraFiles += "  File `"*.png`"`r`n"
-          }
-          if (Test-Path "$RES/*.bmp") {
-            Copy-Item "$RES/*.bmp" $PKG -Force
-            $extraFiles += "  File `"*.bmp`"`r`n"
-          }
-
-          # 列出 PKG 里实际有哪些文件，方便排错
-          Write-Host "📦 Package contents:"
-          Get-ChildItem $PKG | Format-Table Name, Length -AutoSize
+          if (Test-Path "$PKG\*.ico") { $extraFiles += "  File `"*.ico`"`r`n" }
+          if (Test-Path "$PKG\*.png") { $extraFiles += "  File `"*.png`"`r`n" }
 
           $nsi = @"
           !define APP_NAME "${{ env.APP_NAME }}"
@@ -388,9 +460,9 @@ jobs:
           !define COMPANY   "LianT Team"
           RequestExecutionLevel admin
           SetCompressor /SOLID lzma
-          Name "`${APP_NAME}"
-          OutFile "${{ env.APP_NAME }}_`${APP_VERSION}_amd64.exe"
-          InstallDir "`$PROGRAMFILES64\${{ env.APP_NAME }}"
+          Name "${APP_NAME}"
+          OutFile "${{ env.APP_NAME }}_${APP_VERSION}_amd64.exe"
+          InstallDir "$$PROGRAMFILES64\${{ env.APP_NAME }}"
           ShowInstDetails show
           !include "MUI2.nsh"
           !insertmacro MUI_PAGE_WELCOME
@@ -403,71 +475,110 @@ jobs:
           !insertmacro MUI_LANGUAGE "English"
 
           Section "Main"
-            SetOutPath "`$INSTDIR"
+            SetOutPath "$$INSTDIR"
             File "${{ env.APP_NAME }}.exe"
-          ${ExtraFiles}
-            CreateDirectory "`$SMPROGRAMS\${{ env.APP_NAME }}"
-            CreateShortcut  "`$SMPROGRAMS\${{ env.APP_NAME }}\${{ env.APP_NAME }}.lnk" "`$INSTDIR\${{ env.APP_NAME }}.exe"
-            CreateShortcut  "`$DESKTOP\${{ env.APP_NAME }}.lnk"          "`$INSTDIR\${{ env.APP_NAME }}.exe"
-            WriteUninstaller "`$INSTDIR\Uninstall.exe"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "DisplayName"     "`${APP_NAME}"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "UninstallString" "`$INSTDIR\Uninstall.exe"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "DisplayVersion"  "`${APP_VERSION}"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "Publisher"       "`${COMPANY}"
+            ${ExtraFiles}
+            CreateDirectory "$$SMPROGRAMS\${{ env.APP_NAME }}"
+            CreateShortcut  "$$SMPROGRAMS\${{ env.APP_NAME }}\${{ env.APP_NAME }}.lnk" "$$INSTDIR\${{ env.APP_NAME }}.exe"
+            CreateShortcut  "$$DESKTOP\${{ env.APP_NAME }}.lnk"          "$$INSTDIR\${{ env.APP_NAME }}.exe"
+            WriteUninstaller "$$INSTDIR\Uninstall.exe"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "DisplayName"     "${APP_NAME}"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "UninstallString" "$$INSTDIR\Uninstall.exe"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "DisplayVersion"  "${APP_VERSION}"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}" "Publisher"       "${COMPANY}"
           SectionEnd
 
           Section "Uninstall"
-            Delete "`$INSTDIR\${{ env.APP_NAME }}.exe"
-            Delete "`$INSTDIR\Uninstall.exe"
-            RMDir  "`$INSTDIR"
-            Delete "`$SMPROGRAMS\${{ env.APP_NAME }}\${{ env.APP_NAME }}.lnk"
-            RMDir  "`$SMPROGRAMS\${{ env.APP_NAME }}"
-            Delete "`$DESKTOP\${{ env.APP_NAME }}.lnk"
+            Delete "$$INSTDIR\${{ env.APP_NAME }}.exe"
+            Delete "$$INSTDIR\Uninstall.exe"
+            RMDir  "$$INSTDIR"
+            Delete "$$SMPROGRAMS\${{ env.APP_NAME }}\${{ env.APP_NAME }}.lnk"
+            RMDir  "$$SMPROGRAMS\${{ env.APP_NAME }}"
+            Delete "$$DESKTOP\${{ env.APP_NAME }}.lnk"
             DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${{ env.APP_NAME }}"
           SectionEnd
-"@
-          # 把动态拼出来的 File 行注入到 NSIS 脚本
+          "@
+
+          # 替换占位符
           $nsi = $nsi -replace '\$\{ExtraFiles\}', $extraFiles
-
-          # 写文件时统一用 CRLF，避免 NSIS 解析警告
-          $nsi | Out-File "$PKG/installer.nsi" -Encoding ASCII -NoNewline
-          (Get-Content "$PKG/installer.nsi") -join "`r`n" | Out-File "$PKG/installer.nsi" -Encoding ASCII
-
-          Write-Host "📝 installer.nsi contents:"
-          Get-Content "$PKG/installer.nsi" | Write-Host
+          $nsi | Out-File "$PKG\installer.nsi" -Encoding ASCII
 
           Push-Location $PKG
           & "C:\Program Files (x86)\NSIS\makensis.exe" installer.nsi
           if ($LASTEXITCODE -ne 0) { throw "NSIS 打包失败" }
           Pop-Location
 
-          $outExe = "$PKG\${{ env.APP_NAME }}_${VERSION}_amd64.exe"
-          if (-not (Test-Path $outExe)) { throw "Expected installer not found: $outExe" }
-          Move-Item $outExe "./${{ env.APP_NAME }}_${VERSION}_amd64.exe" -Force
+          Move-Item "$PKG\${{ env.APP_NAME }}_${VERSION}_amd64.exe" ".\${{ env.APP_NAME }}_${VERSION}_amd64.exe" -Force
           Write-Host "✅ Generated Windows installer: ${{ env.APP_NAME }}_${VERSION}_amd64.exe"
 
-      # ---- macOS .dmg ----
-      - name: Package macOS .dmg
-        if: matrix.platform == 'darwin-arm64' && steps.dl.outcome == 'success'
+      - name: Upload packages (release)
+        if: ${{ inputs.build_mode == 'release' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: packages-windows-amd64
+          path: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  # ======================================================================
+  # macOS arm64
+  # ======================================================================
+  darwin-arm64:
+    if: ${{ inputs.darwin_arm64 }}
+    name: macOS arm64
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: ${{ env.SRC_ROOT }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.5'
+          cache: true
+          cache-dependency-path: go.sum
+      - name: Build binary
+        run: |
+          export CGO_ENABLED=1 GOOS=darwin GOARCH=arm64
+          mkdir -p ${{ env.BUILD_ROOT }}/darwin/arm64
+          if [ "${{ inputs.build_mode }}" = "release" ]; then
+            go build -ldflags="-s -w" -trimpath -o ${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }} .
+          else
+            go build -o ${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }} .
+          fi
+
+      - name: Upload binary (debug)
+        if: ${{ inputs.build_mode == 'debug' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.APP_NAME }}-darwin-arm64
+          path: ${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }}
+          retention-days: 7
+
+      - name: Package macOS .dmg (release)
+        if: ${{ inputs.build_mode == 'release' }}
         shell: bash
         run: |
           set -e
-          BUILD="${{ env.BUILD_ROOT }}/darwin/arm64"
-          RES="${{ github.workspace }}/manager/release/darwin"
-          APP="${{ env.APP_NAME }}.app"
+          BIN="${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }}"
+          test -f "$BIN" || { echo "❌ Binary not found at $BIN"; exit 1; }
 
-          test -f "$BUILD/${{ env.APP_NAME }}" || { echo "Binary not found at $BUILD/${{ env.APP_NAME }}"; exit 1; }
+          APP="${APP_NAME}.app"
+          mkdir -p ${APP}/Contents/MacOS
+          mkdir -p ${APP}/Contents/Resources
 
-          mkdir -p ${APP}/Contents/MacOS ${APP}/Contents/Resources
-          cp ${BUILD}/${{ env.APP_NAME }} ${APP}/Contents/MacOS/${{ env.APP_NAME }}
+          cp "$BIN" ${APP}/Contents/MacOS/${{ env.APP_NAME }}
           chmod +x ${APP}/Contents/MacOS/${{ env.APP_NAME }}
 
-          if   [ -f "${RES}/LianT.icns" ]; then
+          # 从 resources/darwin 获取图标（优先 icns，其次 png）
+          RES="${{ github.workspace }}/manager/resources/darwin"
+          if [ -f "${RES}/LianT.icns" ]; then
             cp "${RES}/LianT.icns" ${APP}/Contents/Resources/AppIcon.icns
-          elif [ -f "${RES}/LianT.png"  ]; then
+          elif [ -f "${RES}/LianT.png" ]; then
             cp "${RES}/LianT.png"  ${APP}/Contents/Resources/AppIcon.png
           fi
 
+          # 复制 resources/darwin 下其他文件（如果有）
           if [ -d "${RES}" ]; then
             for f in "${RES}"/*; do
               fname=$(basename "$f")
@@ -481,12 +592,12 @@ jobs:
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-            <key>CFBundleName</key>              <string>${{ env.APP_NAME }}</string>
-            <key>CFBundleDisplayName</key>       <string>${{ env.APP_NAME }}</string>
+            <key>CFBundleName</key>              <string>${APP_NAME}</string>
+            <key>CFBundleDisplayName</key>       <string>${APP_NAME}</string>
             <key>CFBundleIdentifier</key>        <string>com.liant.manager</string>
             <key>CFBundleVersion</key>           <string>${{ env.APP_VERSION }}</string>
             <key>CFBundleShortVersionString</key><string>${{ env.APP_VERSION }}</string>
-            <key>CFBundleExecutable</key>        <string>${{ env.APP_NAME }}</string>
+            <key>CFBundleExecutable</key>        <string>${APP_NAME}</string>
             <key>CFBundlePackageType</key>       <string>APPL</string>
             <key>CFBundleSignature</key>         <string>????</string>
             <key>LSMinimumSystemVersion</key>    <string>10.13</string>
@@ -503,21 +614,18 @@ jobs:
           cp -r ${APP} ${DMG_DIR}/
           ln -sf /Applications ${DMG_DIR}/Applications
 
-          hdiutil create -volname "${{ env.APP_NAME }}" \
+          hdiutil create -volname "${APP_NAME}" \
             -srcfolder ${DMG_DIR} \
             -ov -format UDZO \
             "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg"
+
           echo "✅ Generated .dmg: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg"
 
-      # Upload packaged artifacts
-      - uses: actions/upload-artifact@v6
-        if: steps.dl.outcome == 'success'
+      - name: Upload packages (release)
+        if: ${{ inputs.build_mode == 'release' }}
+        uses: actions/upload-artifact@v6
         with:
-          name: packages-${{ matrix.platform }}
-          path: |
-            *.deb
-            *.rpm
-            *.exe
-            *.dmg
-          if-no-files-found: ignore
+          name: packages-darwin-arm64
+          path: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg
+          if-no-files-found: error
           retention-days: 30
