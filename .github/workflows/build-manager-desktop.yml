@@ -46,7 +46,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ★ 唯一新增：Linux 编译 Gio 必须的系统库
       - name: Install Linux graphics dependencies
         run: |
           sudo apt-get update
@@ -54,7 +53,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'                       # ★ 从 1.22 升到 1.23
+          go-version: '1.26'
           cache: true
           cache-dependency-path: manager/desktop/go.sum
 
@@ -63,10 +62,10 @@ jobs:
         if: ${{ inputs.linux_amd64 }}
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \   # ★ 改成 1
+            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \ 
               go build -ldflags="-s -w" -trimpath -o manager-desktop-linux-amd64 .
           else
-            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \   # ★ 改成 1
+            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \ 
               go build -o manager-desktop-linux-amd64 .
           fi
       - name: Upload Linux amd64
@@ -81,10 +80,10 @@ jobs:
         if: ${{ inputs.linux_arm64 }}
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \   # ★ 改成 1
+            CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \ 
               go build -ldflags="-s -w" -trimpath -o manager-desktop-linux-arm64 .
           else
-            CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \   # ★ 改成 1
+            CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \ 
               go build -o manager-desktop-linux-arm64 .
           fi
       - name: Upload Linux arm64
