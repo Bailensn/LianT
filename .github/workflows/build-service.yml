@@ -22,10 +22,6 @@ on:
         description: 'Windows amd64 (.exe)'
         type: boolean
         default: false
-      darwin_amd64:
-        description: 'macOS amd64 (Intel)'
-        type: boolean
-        default: false
       darwin_arm64:
         description: 'macOS arm64 (Apple Silicon)'
         type: boolean
@@ -102,23 +98,6 @@ jobs:
         with:
           name: service-windows-amd64
           path: service/service-windows-amd64.exe
-
-      - name: Build macOS amd64 (${{ env.BUILD_MODE }})
-        if: ${{ inputs.darwin_amd64 }}
-        run: |
-          if [ "$BUILD_MODE" = "release" ]; then
-            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 \
-              go build -ldflags="-s -w" -trimpath -o service-darwin-amd64 .
-          else
-            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 \
-              go build -o service-darwin-amd64 .
-          fi
-      - name: Upload macOS amd64
-        if: ${{ inputs.darwin_amd64 }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: service-darwin-amd64
-          path: service/service-darwin-amd64
 
       - name: Build macOS arm64 (${{ env.BUILD_MODE }})
         if: ${{ inputs.darwin_arm64 }}

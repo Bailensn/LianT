@@ -12,10 +12,9 @@ name: Package Release
           - Linux_amd64.rpm
           - Windows_amd64.exe
           - Darwin_arm64.dmg
-          - Darwin_amd64.dmg
         required: true
         type: string
-        default: 'Linux_arm64.deb,Linux_arm64.rpm,Linux_amd64.deb,Linux_amd64.rpm,Windows_amd64.exe,Darwin_arm64.dmg,Darwin_amd64.dmg'
+        default: 'Linux_arm64.deb,Linux_arm64.rpm,Linux_amd64.deb,Linux_amd64.rpm,Windows_amd64.exe,Darwin_arm64.dmg'
 
 env:
   APP_NAME: LianT
@@ -312,7 +311,6 @@ jobs:
       matrix:
         include:
           - { target: 'Darwin_arm64.dmg', arch: 'arm64', runner: 'macos-latest', dmg_arch: 'arm64' }
-          - { target: 'Darwin_amd64.dmg', arch: 'amd64', runner: 'macos-13',     dmg_arch: 'amd64' }
 
     steps:
       - name: Checkout

@@ -113,34 +113,6 @@ jobs:
           name: manager-desktop-windows-amd64
           path: manager/desktop/manager-desktop-windows-amd64.exe
 
-  macos-amd64:
-    name: macOS amd64 (Intel)
-    runs-on: macos-13
-    env:
-      BUILD_MODE: ${{ inputs.build_mode }}
-    defaults:
-      run:
-        working-directory: manager/desktop
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-          cache: true
-          cache-dependency-path: manager/desktop/go.sum
-      - name: Build
-        run: |
-          export CGO_ENABLED=1 GOOS=darwin GOARCH=amd64
-          if [ "$BUILD_MODE" = "release" ]; then
-            go build -ldflags="-s -w" -trimpath -o manager-desktop-darwin-amd64 .
-          else
-            go build -o manager-desktop-darwin-amd64 .
-          fi
-      - uses: actions/upload-artifact@v4
-        with:
-          name: manager-desktop-darwin-amd64
-          path: manager/desktop/manager-desktop-darwin-amd64
-
   macos-arm64:
     name: macOS arm64 (Apple Silicon)
     runs-on: macos-14
