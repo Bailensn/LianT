@@ -6,30 +6,28 @@ on:
       build_mode:
         description: 'Build mode'
         type: choice
-        options: [debug, release]
+        options:
+          - debug
+          - release
         default: release
       version:
         description: 'Version'
         type: string
         default: '1.0.0'
       linux_amd64:
-        description: 'Linux amd64 (deb/rpm)'
+        description: 'Linux amd64'
         type: boolean
         default: false
       linux_arm64:
-        description: 'Linux arm64 (deb/rpm)'
+        description: 'Linux arm64'
         type: boolean
         default: false
       windows_amd64:
-        description: 'Windows amd64 (exe)'
+        description: 'Windows amd64 (.exe)'
         type: boolean
         default: false
       darwin_arm64:
-        description: 'macOS arm64 (dmg)'
-        type: boolean
-        default: false
-      darwin_amd64:
-        description: 'macOS amd64 (dmg)'
+        description: 'macOS arm64 (Apple Silicon)'
         type: boolean
         default: false
 
@@ -39,20 +37,9 @@ permissions:
 env:
   APP_NAME: LianT
   APP_VERSION: ${{ inputs.version }}
-  OUTPUT_DIR: ${{ github.workspace }}/out
-  MANAGER_DIR: ${{ github.workspace }}/manager
-
-# ======================================================================
-# 版本解析说明（每个 job 的 "Parse versions" 步骤都执行同样的逻辑）：
-#   awk 脚本只在 [versions] 段内匹配 key，避免误匹配 [libraries]/[plugins] 段
-#   输出示例：
-#     kotlin=2.4.10
-#     gradle=9.6.1
-#     agp=9.3.0
-#     compose=1.12.0-beta03
-#     jdk=21
-#     jvmTarget=17
-# ======================================================================
+  BUILD_ROOT: ${{ github.workspace }}/build
+  SRC_ROOT: ${{ github.workspace }}/manager/desktop
+  OUTPUT_DIR: ${{ github.workspace }}
 
 jobs:
   # ======================================================================
@@ -64,223 +51,178 @@ jobs:
     runs-on: ubuntu-26.04
     defaults:
       run:
-        working-directory: ${{ github.workspace }}
+        working-directory: ${{ env.SRC_ROOT }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: Parse versions from libs.versions.toml
-        id: versions
+      - name: Install dependencies
         run: |
-          set -e
-          TOML="${{ env.MANAGER_DIR }}/libs.versions.toml"
-          AWK_SCRIPT='
-            /^\[versions\]/ { in_v=1; next }
-            /^\[/ { in_v=0 }
-            in_v && /^[a-zA-Z_-]+[[:space:]]*=/ {
-              key=$1; sub(/[[:space:]]*=.*/,"",key)
-              val=""; in_q=0; ch=""
-              for(i=1;i<=length($0);i++){
-                c=substr($0,i,1)
-                if(c=="\""){ in_q=1-in_q; continue }
-                if(in_q) val=val c
-              }
-              print key "=" val
-            }'
-          eval "$(echo "$AWK_SCRIPT" | awk -f - "$TOML" | sed 's/^/echo "/; s/$/\" >> $GITHUB_OUTPUT/')"
-          echo "--- versions ---"
-          cat $GITHUB_OUTPUT
-
-      - name: Install JDK + system deps for jpackage
-        run: |
-          set -e
           sudo apt-get update
-          sudo apt-get install -y openjdk-${{ steps.versions.outputs.jdk }}-jdk-headless \
+          sudo apt-get install -y \
             libgl1-mesa-dev libx11-dev libxcursor-dev libxfixes-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev \
             libxi-dev libxinerama-dev libxxf86vm-dev libxext-dev \
-            pkg-config fakeroot dpkg-dev rpm binutils libwayland-dev
-          echo "JAVA_HOME=/usr/lib/jvm/java-${{ steps.versions.outputs.jdk }}-openjdk-amd64" >> $GITHUB_ENV
+            pkg-config gcc libwayland-dev
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-go@v7
         with:
-          distribution: 'temurin'
-          java-version: ${{ steps.versions.outputs.jdk }}
+          go-version: '1.26.5'
+          cache: true
+          cache-dependency-path: manager/desktop/go.sum
 
-      - name: Generate Gradle scaffolding
+      - name: Verify CGO
         run: |
-          set -e
-          KOTLIN_VER="${{ steps.versions.outputs.kotlin }}"
-          AGP_VER="${{ steps.versions.outputs.agp }}"
-          COMPOSE_VER="${{ steps.versions.outputs.compose }}"
-          JVM_TARGET="${{ steps.versions.outputs.jvmTarget }}"
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
+          which gcc || (sudo apt-get install -y gcc && echo "gcc installed")
+          gcc --version
+          go env CGO_ENABLED
 
-          cat > settings.gradle.kts <<'SETTINGS'
-          pluginManagement {
-            repositories {
-              google()
-              mavenCentral()
-              gradlePluginPortal()
-            }
-          }
-          dependencyResolutionManagement {
-            repositories {
-              google()
-              mavenCentral()
-            }
-          }
-          rootProject.name = "LianT"
-          include(":composeApp")
-          SETTINGS
-
-          cat > build.gradle.kts <<ROOT
-          plugins {
-            id("org.jetbrains.kotlin.multiplatform") version "${KOTLIN_VER}" apply false
-            id("org.jetbrains.kotlin.plugin.serialization") version "${KOTLIN_VER}" apply false
-            id("org.jetbrains.compose") version "${COMPOSE_VER}" apply false
-            id("com.android.application") version "${AGP_VER}" apply false
-          }
-          ROOT
-
-          cat > gradle.properties <<'PROPS'
-          org.gradle.jvmargs=-Xmx2048M -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          kotlin.code.style=official
-          android.nonTransitiveRClass=true
-          PROPS
-
-          mkdir -p composeApp
-          cat > composeApp/build.gradle.kts <<COMPOSE
-          plugins {
-            id("org.jetbrains.kotlin.multiplatform")
-            id("org.jetbrains.kotlin.plugin.serialization")
-            id("org.jetbrains.compose")
-            id("com.android.application")
-          }
-
-          kotlin {
-            jvm("desktop") {
-              compilations.all {
-                kotlinOptions.jvmTarget = "${JVM_TARGET}"
-              }
-            }
-            androidTarget {
-              compilations.all {
-                kotlinOptions.jvmTarget = "${JVM_TARGET}"
-              }
-            }
-            sourceSets {
-              val commonMain by getting {
-                dependencies {
-                  implementation(compose.runtime)
-                  implementation(compose.foundation)
-                  implementation(compose.material3)
-                  implementation(compose.ui)
-                  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
-                  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.3")
-                }
-              }
-              val desktopMain by getting {
-                dependencies {
-                  implementation(compose.desktop.currentOs)
-                }
-              }
-              val androidMain by getting {
-                dependencies {
-                  implementation(compose.ui)
-                  implementation(compose.material3)
-                  implementation(compose.foundation)
-                  implementation(compose.runtime)
-                }
-              }
-            }
-          }
-
-          android {
-            namespace = "com.bailensn.tlink"
-            compileSdk = 34
-            defaultConfig {
-              applicationId = "com.bailensn.tlink"
-              minSdk = 24
-              targetSdk = 34
-              versionCode = 1
-              versionName = "${{ env.APP_VERSION }}"
-            }
-            compileOptions {
-              sourceCompatibility = JavaVersion.VERSION_17
-              targetCompatibility = JavaVersion.VERSION_17
-            }
-            buildFeatures { compose = true }
-          }
-
-          compose.desktop {
-            application {
-              mainClass = "com.bailensn.tlink.MainKt"
-              jvmArgs += listOf("-Xmx512m")
-              nativeDistributions {
-                targetFormats(
-                  org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb,
-                  org.jetbrains.compose.desktop.application.dsl.TargetFormat.Rpm
-                )
-                packageName = "LianT"
-                packageVersion = "${{ env.APP_VERSION }}"
-                description = "联T Manager"
-                vendor = "bailensn"
-                linux {
-                  packageName = "liant"
-                  debMaintainer = "LianT Team"
-                }
-              }
-            }
-          }
-          COMPOSE
-
-          mkdir -p composeApp/src
-          cp -r "${{ env.MANAGER_DIR }}/commonMain" composeApp/src/
-          cp -r "${{ env.MANAGER_DIR }}/desktopMain" composeApp/src/
-          cp -r "${{ env.MANAGER_DIR }}/androidMain" composeApp/src/
-
-          if [ -d "${{ env.MANAGER_DIR }}/resources" ]; then
-            mkdir -p composeApp/src/main
-            cp -r "${{ env.MANAGER_DIR }}/resources" composeApp/src/main/
+      - name: Build binary
+        run: |
+          export CGO_ENABLED=1 GOOS=linux GOARCH=amd64
+          mkdir -p ${{ env.BUILD_ROOT }}/linux/amd64
+          if [ "${{ inputs.build_mode }}" = "release" ]; then
+            go build -ldflags="-s -w" -trimpath -o ${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }} .
+          else
+            go build -o ${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }} .
           fi
 
-          curl -sL "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip" -o /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /opt/
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          gradle wrapper --gradle-version ${GRADLE_VER} --distribution-type bin
-          echo "✅ Gradle ${GRADLE_VER} wrapper generated"
-
-      - name: Build release distribution
-        if: ${{ inputs.build_mode == 'release' }}
-        run: |
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          chmod +x gradlew
-          ./gradlew :composeApp:packageReleaseDistributionForCurrentOS
-
-      - name: Build debug
+      - name: Upload binary (debug)
         if: ${{ inputs.build_mode == 'debug' }}
-        run: |
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          chmod +x gradlew
-          ./gradlew :composeApp:compileKotlinDesktop
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.APP_NAME }}-linux-amd64
+          path: ${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }}
+          retention-days: 7
 
-      - name: Collect artifacts
+      - name: Package .deb & .rpm (release)
         if: ${{ inputs.build_mode == 'release' }}
+        shell: bash
         run: |
-          mkdir -p "${{ env.OUTPUT_DIR }}"
-          find composeApp/build/compose/binaries -type f \( -name "*.deb" -o -name "*.rpm" \) -exec cp {} "${{ env.OUTPUT_DIR }}/" \;
-          ls -la "${{ env.OUTPUT_DIR }}/"
+          set -e
+          BIN="${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }}"
+          test -f "$BIN" || { echo "❌ Binary not found at $BIN"; exit 1; }
 
-      - name: Upload packages
+          sudo apt-get install -y dpkg-dev fakeroot rpm
+          PKG="deb_pkg"
+          mkdir -p ${PKG}/usr/bin
+          mkdir -p ${PKG}/usr/share/applications
+          for s in 16 32 48 64 128 256 512; do
+            mkdir -p ${PKG}/usr/share/icons/hicolor/${s}x${s}/apps
+          done
+          mkdir -p ${PKG}/DEBIAN
+          cp "$BIN" ${PKG}/usr/bin/${{ env.APP_NAME }}
+          chmod 755 ${PKG}/usr/bin/${{ env.APP_NAME }}
+
+          RES="${{ github.workspace }}/manager/resources/linux"
+          cp ${RES}/16/LianT.png  ${PKG}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${RES}/32/LianT.png  ${PKG}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${RES}/48/LianT.png  ${PKG}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${RES}/64/LianT.png  ${PKG}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${RES}/128/LianT.png ${PKG}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${RES}/256/LianT.png ${PKG}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${RES}/512/LianT.png ${PKG}/usr/share/icons/hicolor/512x512/apps/LianT.png
+          cp ${RES}/LianT.desktop ${PKG}/usr/share/applications/LianT.desktop
+
+          cat > ${PKG}/DEBIAN/control <<EOF
+          Package: liant
+          Version: ${{ env.APP_VERSION }}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: LianT Team
+          Description: LianT Manager
+           Cross-platform manager tool.
+          EOF
+          sed -i 's/\r$//' ${PKG}/DEBIAN/control
+          dpkg-deb --build --root-owner-group ${PKG} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.deb"
+          echo "✅ Generated .deb: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.deb"
+
+          RPMTOP="${HOME}/rpmbuild"
+          mkdir -p ${RPMTOP}/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          BR="${RPMTOP}/BUILDROOT"
+          mkdir -p ${BR}/usr/bin
+          mkdir -p ${BR}/usr/share/applications
+          for s in 16 32 48 64 128 256 512; do
+            mkdir -p ${BR}/usr/share/icons/hicolor/${s}x${s}/apps
+          done
+          cp "$BIN" ${BR}/usr/bin/${{ env.APP_NAME }}
+          chmod 755 ${BR}/usr/bin/${{ env.APP_NAME }}
+          cp ${RES}/16/LianT.png  ${BR}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${RES}/32/LianT.png  ${BR}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${RES}/48/LianT.png  ${BR}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${RES}/64/LianT.png  ${BR}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${RES}/128/LianT.png ${BR}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${RES}/256/LianT.png ${BR}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${RES}/512/LianT.png ${BR}/usr/share/icons/hicolor/512x512/apps/LianT.png
+          cp ${RES}/LianT.desktop ${BR}/usr/share/applications/LianT.desktop
+
+          cat > ${RPMTOP}/SPECS/LianT.spec <<EOF
+          Name:           liant
+          Version:        ${{ env.APP_VERSION }}
+          Release:        1%{?dist}
+          Summary:        LianT Manager
+          License:        Proprietary
+          BuildArch:      x86_64
+
+          %description
+          Cross-platform manager tool.
+
+          %install
+          mkdir -p %{buildroot}/usr/bin
+          cp ${BR}/usr/bin/LianT %{buildroot}/usr/bin/LianT
+          chmod 755 %{buildroot}/usr/bin/LianT
+          mkdir -p %{buildroot}/usr/share/applications
+          cp ${BR}/usr/share/applications/LianT.desktop %{buildroot}/usr/share/applications/LianT.desktop
+          for s in 16 32 48 64 128 256 512; do
+            mkdir -p %{buildroot}/usr/share/icons/hicolor/\${s}x\${s}/apps
+          done
+          cp ${BR}/usr/share/icons/hicolor/16x16/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/32x32/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/48x48/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/64x64/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/128x128/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/256x256/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/512x512/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/512x512/apps/LianT.png
+
+          %files
+          /usr/bin/LianT
+          /usr/share/applications/LianT.desktop
+          /usr/share/icons/hicolor/16x16/apps/LianT.png
+          /usr/share/icons/hicolor/32x32/apps/LianT.png
+          /usr/share/icons/hicolor/48x48/apps/LianT.png
+          /usr/share/icons/hicolor/64x64/apps/LianT.png
+          /usr/share/icons/hicolor/128x128/apps/LianT.png
+          /usr/share/icons/hicolor/256x256/apps/LianT.png
+          /usr/share/icons/hicolor/512x512/apps/LianT.png
+
+          %post
+          /bin/touch --no-create /usr/share/icons/hicolor 2>/dev/null || true
+          [ -x /usr/bin/gtk-update-icon-cache ] && /usr/bin/gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+          [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
+
+          %postun
+          [ -x /usr/bin/gtk-update-icon-cache ] && /usr/bin/gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+          [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
+          EOF
+
+          rpmbuild -bb \
+            --define "_topdir ${RPMTOP}" \
+            --define "_buildroot ${BR}" \
+            --define "_rpmdir ${RPMTOP}/RPMS" \
+            ${RPMTOP}/SPECS/LianT.spec
+          find ${RPMTOP}/RPMS -name "*.rpm" -exec cp {} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm" \;
+          echo "✅ Generated .rpm: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm"
+
+          mv *.deb *.rpm ${{ env.OUTPUT_DIR }}/
+
+      - name: Upload packages (release)
         if: ${{ inputs.build_mode == 'release' }}
         uses: actions/upload-artifact@v7
         with:
           name: packages-linux-amd64
-          path: ${{ env.OUTPUT_DIR }}/*
+          path: |
+            ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.deb
+            ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm
           if-no-files-found: error
           retention-days: 30
 
@@ -293,223 +235,178 @@ jobs:
     runs-on: ubuntu-26.04-arm
     defaults:
       run:
-        working-directory: ${{ github.workspace }}
+        working-directory: ${{ env.SRC_ROOT }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: Parse versions from libs.versions.toml
-        id: versions
+      - name: Install dependencies
         run: |
-          set -e
-          TOML="${{ env.MANAGER_DIR }}/libs.versions.toml"
-          AWK_SCRIPT='
-            /^\[versions\]/ { in_v=1; next }
-            /^\[/ { in_v=0 }
-            in_v && /^[a-zA-Z_-]+[[:space:]]*=/ {
-              key=$1; sub(/[[:space:]]*=.*/,"",key)
-              val=""; in_q=0
-              for(i=1;i<=length($0);i++){
-                c=substr($0,i,1)
-                if(c=="\""){ in_q=1-in_q; continue }
-                if(in_q) val=val c
-              }
-              print key "=" val
-            }'
-          eval "$(echo "$AWK_SCRIPT" | awk -f - "$TOML" | sed 's/^/echo "/; s/$/\" >> $GITHUB_OUTPUT/')"
-          echo "--- versions ---"
-          cat $GITHUB_OUTPUT
-
-      - name: Install JDK + system deps for jpackage
-        run: |
-          set -e
           sudo apt-get update
-          sudo apt-get install -y openjdk-${{ steps.versions.outputs.jdk }}-jdk-headless \
+          sudo apt-get install -y \
             libgl1-mesa-dev libx11-dev libxcursor-dev libxfixes-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev \
             libxi-dev libxinerama-dev libxxf86vm-dev libxext-dev \
-            pkg-config fakeroot dpkg-dev rpm binutils libwayland-dev
-          echo "JAVA_HOME=/usr/lib/jvm/java-${{ steps.versions.outputs.jdk }}-openjdk-arm64" >> $GITHUB_ENV
+            pkg-config gcc libwayland-dev
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-go@v7
         with:
-          distribution: 'temurin'
-          java-version: ${{ steps.versions.outputs.jdk }}
+          go-version: '1.26.5'
+          cache: true
+          cache-dependency-path: manager/desktop/go.sum
 
-      - name: Generate Gradle scaffolding
+      - name: Verify CGO
         run: |
-          set -e
-          KOTLIN_VER="${{ steps.versions.outputs.kotlin }}"
-          AGP_VER="${{ steps.versions.outputs.agp }}"
-          COMPOSE_VER="${{ steps.versions.outputs.compose }}"
-          JVM_TARGET="${{ steps.versions.outputs.jvmTarget }}"
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
+          which gcc || (sudo apt-get install -y gcc && echo "gcc installed")
+          gcc --version
+          go env CGO_ENABLED
 
-          cat > settings.gradle.kts <<'SETTINGS'
-          pluginManagement {
-            repositories {
-              google()
-              mavenCentral()
-              gradlePluginPortal()
-            }
-          }
-          dependencyResolutionManagement {
-            repositories {
-              google()
-              mavenCentral()
-            }
-          }
-          rootProject.name = "LianT"
-          include(":composeApp")
-          SETTINGS
-
-          cat > build.gradle.kts <<ROOT
-          plugins {
-            id("org.jetbrains.kotlin.multiplatform") version "${KOTLIN_VER}" apply false
-            id("org.jetbrains.kotlin.plugin.serialization") version "${KOTLIN_VER}" apply false
-            id("org.jetbrains.compose") version "${COMPOSE_VER}" apply false
-            id("com.android.application") version "${AGP_VER}" apply false
-          }
-          ROOT
-
-          cat > gradle.properties <<'PROPS'
-          org.gradle.jvmargs=-Xmx2048M -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          kotlin.code.style=official
-          android.nonTransitiveRClass=true
-          PROPS
-
-          mkdir -p composeApp
-          cat > composeApp/build.gradle.kts <<COMPOSE
-          plugins {
-            id("org.jetbrains.kotlin.multiplatform")
-            id("org.jetbrains.kotlin.plugin.serialization")
-            id("org.jetbrains.compose")
-            id("com.android.application")
-          }
-
-          kotlin {
-            jvm("desktop") {
-              compilations.all {
-                kotlinOptions.jvmTarget = "${JVM_TARGET}"
-              }
-            }
-            androidTarget {
-              compilations.all {
-                kotlinOptions.jvmTarget = "${JVM_TARGET}"
-              }
-            }
-            sourceSets {
-              val commonMain by getting {
-                dependencies {
-                  implementation(compose.runtime)
-                  implementation(compose.foundation)
-                  implementation(compose.material3)
-                  implementation(compose.ui)
-                  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
-                  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.3")
-                }
-              }
-              val desktopMain by getting {
-                dependencies {
-                  implementation(compose.desktop.currentOs)
-                }
-              }
-              val androidMain by getting {
-                dependencies {
-                  implementation(compose.ui)
-                  implementation(compose.material3)
-                  implementation(compose.foundation)
-                  implementation(compose.runtime)
-                }
-              }
-            }
-          }
-
-          android {
-            namespace = "com.bailensn.tlink"
-            compileSdk = 34
-            defaultConfig {
-              applicationId = "com.bailensn.tlink"
-              minSdk = 24
-              targetSdk = 34
-              versionCode = 1
-              versionName = "${{ env.APP_VERSION }}"
-            }
-            compileOptions {
-              sourceCompatibility = JavaVersion.VERSION_17
-              targetCompatibility = JavaVersion.VERSION_17
-            }
-            buildFeatures { compose = true }
-          }
-
-          compose.desktop {
-            application {
-              mainClass = "com.bailensn.tlink.MainKt"
-              jvmArgs += listOf("-Xmx512m")
-              nativeDistributions {
-                targetFormats(
-                  org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb,
-                  org.jetbrains.compose.desktop.application.dsl.TargetFormat.Rpm
-                )
-                packageName = "LianT"
-                packageVersion = "${{ env.APP_VERSION }}"
-                description = "联T Manager"
-                vendor = "bailensn"
-                linux {
-                  packageName = "liant"
-                  debMaintainer = "LianT Team"
-                }
-              }
-            }
-          }
-          COMPOSE
-
-          mkdir -p composeApp/src
-          cp -r "${{ env.MANAGER_DIR }}/commonMain" composeApp/src/
-          cp -r "${{ env.MANAGER_DIR }}/desktopMain" composeApp/src/
-          cp -r "${{ env.MANAGER_DIR }}/androidMain" composeApp/src/
-
-          if [ -d "${{ env.MANAGER_DIR }}/resources" ]; then
-            mkdir -p composeApp/src/main
-            cp -r "${{ env.MANAGER_DIR }}/resources" composeApp/src/main/
+      - name: Build binary
+        run: |
+          export CGO_ENABLED=1 GOOS=linux GOARCH=arm64
+          mkdir -p ${{ env.BUILD_ROOT }}/linux/arm64
+          if [ "${{ inputs.build_mode }}" = "release" ]; then
+            go build -ldflags="-s -w" -trimpath -o ${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }} .
+          else
+            go build -o ${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }} .
           fi
 
-          curl -sL "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip" -o /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /opt/
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          gradle wrapper --gradle-version ${GRADLE_VER} --distribution-type bin
-          echo "✅ Gradle ${GRADLE_VER} wrapper generated"
-
-      - name: Build release distribution
-        if: ${{ inputs.build_mode == 'release' }}
-        run: |
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          chmod +x gradlew
-          ./gradlew :composeApp:packageReleaseDistributionForCurrentOS
-
-      - name: Build debug
+      - name: Upload binary (debug)
         if: ${{ inputs.build_mode == 'debug' }}
-        run: |
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          chmod +x gradlew
-          ./gradlew :composeApp:compileKotlinDesktop
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.APP_NAME }}-linux-arm64
+          path: ${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }}
+          retention-days: 7
 
-      - name: Collect artifacts
+      - name: Package .deb & .rpm (release)
         if: ${{ inputs.build_mode == 'release' }}
+        shell: bash
         run: |
-          mkdir -p "${{ env.OUTPUT_DIR }}"
-          find composeApp/build/compose/binaries -type f \( -name "*.deb" -o -name "*.rpm" \) -exec cp {} "${{ env.OUTPUT_DIR }}/" \;
-          ls -la "${{ env.OUTPUT_DIR }}/"
+          set -e
+          BIN="${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }}"
+          test -f "$BIN" || { echo "❌ Binary not found at $BIN"; exit 1; }
 
-      - name: Upload packages
+          sudo apt-get install -y dpkg-dev fakeroot rpm
+          PKG="deb_pkg"
+          mkdir -p ${PKG}/usr/bin
+          mkdir -p ${PKG}/usr/share/applications
+          for s in 16 32 48 64 128 256 512; do
+            mkdir -p ${PKG}/usr/share/icons/hicolor/${s}x${s}/apps
+          done
+          mkdir -p ${PKG}/DEBIAN
+          cp "$BIN" ${PKG}/usr/bin/${{ env.APP_NAME }}
+          chmod 755 ${PKG}/usr/bin/${{ env.APP_NAME }}
+
+          RES="${{ github.workspace }}/manager/resources/linux"
+          cp ${RES}/16/LianT.png  ${PKG}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${RES}/32/LianT.png  ${PKG}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${RES}/48/LianT.png  ${PKG}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${RES}/64/LianT.png  ${PKG}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${RES}/128/LianT.png ${PKG}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${RES}/256/LianT.png ${PKG}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${RES}/512/LianT.png ${PKG}/usr/share/icons/hicolor/512x512/apps/LianT.png
+          cp ${RES}/LianT.desktop ${PKG}/usr/share/applications/LianT.desktop
+
+          cat > ${PKG}/DEBIAN/control <<EOF
+          Package: liant
+          Version: ${{ env.APP_VERSION }}
+          Section: utils
+          Priority: optional
+          Architecture: arm64
+          Maintainer: LianT Team
+          Description: LianT Manager
+           Cross-platform manager tool.
+          EOF
+          sed -i 's/\r$//' ${PKG}/DEBIAN/control
+          dpkg-deb --build --root-owner-group ${PKG} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.deb"
+          echo "✅ Generated .deb: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.deb"
+
+          RPMTOP="${HOME}/rpmbuild"
+          mkdir -p ${RPMTOP}/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          BR="${RPMTOP}/BUILDROOT"
+          mkdir -p ${BR}/usr/bin
+          mkdir -p ${BR}/usr/share/applications
+          for s in 16 32 48 64 128 256 512; do
+            mkdir -p ${BR}/usr/share/icons/hicolor/${s}x${s}/apps
+          done
+          cp "$BIN" ${BR}/usr/bin/${{ env.APP_NAME }}
+          chmod 755 ${BR}/usr/bin/${{ env.APP_NAME }}
+          cp ${RES}/16/LianT.png  ${BR}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${RES}/32/LianT.png  ${BR}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${RES}/48/LianT.png  ${BR}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${RES}/64/LianT.png  ${BR}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${RES}/128/LianT.png ${BR}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${RES}/256/LianT.png ${BR}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${RES}/512/LianT.png ${BR}/usr/share/icons/hicolor/512x512/apps/LianT.png
+          cp ${RES}/LianT.desktop ${BR}/usr/share/applications/LianT.desktop
+
+          cat > ${RPMTOP}/SPECS/LianT.spec <<EOF
+          Name:           liant
+          Version:        ${{ env.APP_VERSION }}
+          Release:        1%{?dist}
+          Summary:        LianT Manager
+          License:        Proprietary
+          BuildArch:      aarch64
+
+          %description
+          Cross-platform manager tool.
+
+          %install
+          mkdir -p %{buildroot}/usr/bin
+          cp ${BR}/usr/bin/LianT %{buildroot}/usr/bin/LianT
+          chmod 755 %{buildroot}/usr/bin/LianT
+          mkdir -p %{buildroot}/usr/share/applications
+          cp ${BR}/usr/share/applications/LianT.desktop %{buildroot}/usr/share/applications/LianT.desktop
+          for s in 16 32 48 64 128 256 512; do
+            mkdir -p %{buildroot}/usr/share/icons/hicolor/\${s}x\${s}/apps
+          done
+          cp ${BR}/usr/share/icons/hicolor/16x16/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/16x16/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/32x32/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/32x32/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/48x48/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/48x48/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/64x64/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/64x64/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/128x128/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/128x128/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/256x256/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/LianT.png
+          cp ${BR}/usr/share/icons/hicolor/512x512/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/512x512/apps/LianT.png
+
+          %files
+          /usr/bin/LianT
+          /usr/share/applications/LianT.desktop
+          /usr/share/icons/hicolor/16x16/apps/LianT.png
+          /usr/share/icons/hicolor/32x32/apps/LianT.png
+          /usr/share/icons/hicolor/48x48/apps/LianT.png
+          /usr/share/icons/hicolor/64x64/apps/LianT.png
+          /usr/share/icons/hicolor/128x128/apps/LianT.png
+          /usr/share/icons/hicolor/256x256/apps/LianT.png
+          /usr/share/icons/hicolor/512x512/apps/LianT.png
+
+          %post
+          /bin/touch --no-create /usr/share/icons/hicolor 2>/dev/null || true
+          [ -x /usr/bin/gtk-update-icon-cache ] && /usr/bin/gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+          [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
+
+          %postun
+          [ -x /usr/bin/gtk-update-icon-cache ] && /usr/bin/gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+          [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
+          EOF
+
+          rpmbuild -bb \
+            --define "_topdir ${RPMTOP}" \
+            --define "_buildroot ${BR}" \
+            --define "_rpmdir ${RPMTOP}/RPMS" \
+            ${RPMTOP}/SPECS/LianT.spec
+          find ${RPMTOP}/RPMS -name "*.rpm" -exec cp {} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm" \;
+          echo "✅ Generated .rpm: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm"
+
+          mv *.deb *.rpm ${{ env.OUTPUT_DIR }}/
+
+      - name: Upload packages (release)
         if: ${{ inputs.build_mode == 'release' }}
         uses: actions/upload-artifact@v7
         with:
           name: packages-linux-arm64
-          path: ${{ env.OUTPUT_DIR }}/*
+          path: |
+            ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.deb
+            ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm
           if-no-files-found: error
           retention-days: 30
 
@@ -522,241 +419,128 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: ${{ github.workspace }}
+        working-directory: ${{ env.SRC_ROOT }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: Parse versions from libs.versions.toml
-        id: versions
-        shell: bash
-        run: |
-          set -e
-          TOML="${{ env.MANAGER_DIR }}/libs.versions.toml"
-          AWK_SCRIPT='
-            /^\[versions\]/ { in_v=1; next }
-            /^\[/ { in_v=0 }
-            in_v && /^[a-zA-Z_-]+[[:space:]]*=/ {
-              key=$1; sub(/[[:space:]]*=.*/,"",key)
-              val=""; in_q=0
-              for(i=1;i<=length($0);i++){
-                c=substr($0,i,1)
-                if(c=="\""){ in_q=1-in_q; continue }
-                if(in_q) val=val c
-              }
-              print key "=" val
-            }'
-          eval "$(echo "$AWK_SCRIPT" | awk -f - "$TOML" | sed 's/^/echo "/; s/$/\" >> $GITHUB_OUTPUT/')"
-          echo "--- versions ---"
-          cat $GITHUB_OUTPUT
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-go@v7
         with:
-          distribution: 'temurin'
-          java-version: ${{ steps.versions.outputs.jdk }}
+          go-version: '1.26.5'
+          cache: true
+          cache-dependency-path: manager/desktop/go.sum
 
-      - name: Install WiX Toolset + Inno Setup
+      - name: Install MinGW-w64
+        run: choco install mingw -y --no-progress
+        shell: pwsh
+
+      - name: Verify CGO toolchain
         shell: pwsh
         run: |
-          choco install wixtoolset -y --no-progress
-          choco install innosetup -y --no-progress
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-          echo "PATH=$env:Path" >> $env:GITHUB_ENV
+          $mingwPath = "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin"
+          if (Test-Path $mingwPath) {
+            $env:Path = "$mingwPath;$env:Path"
+          }
+          gcc --version
+          go env CGO_ENABLED
 
-      - name: Generate Gradle scaffolding
-        shell: bash
+      - name: Build binary
+        shell: pwsh
         run: |
-          set -e
-          KOTLIN_VER="${{ steps.versions.outputs.kotlin }}"
-          AGP_VER="${{ steps.versions.outputs.agp }}"
-          COMPOSE_VER="${{ steps.versions.outputs.compose }}"
-          JVM_TARGET="${{ steps.versions.outputs.jvmTarget }}"
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
-
-          cat > settings.gradle.kts <<'SETTINGS'
-          pluginManagement {
-            repositories {
-              google()
-              mavenCentral()
-              gradlePluginPortal()
-            }
+          # Ensure MinGW is in PATH for this step
+          $mingwPath = "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin"
+          if (Test-Path $mingwPath) {
+            $env:Path = "$mingwPath;$env:Path"
           }
-          dependencyResolutionManagement {
-            repositories {
-              google()
-              mavenCentral()
-            }
-          }
-          rootProject.name = "LianT"
-          include(":composeApp")
-          SETTINGS
+          $env:CGO_ENABLED = "1"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
 
-          cat > build.gradle.kts <<ROOT
-          plugins {
-            id("org.jetbrains.kotlin.multiplatform") version "${KOTLIN_VER}" apply false
-            id("org.jetbrains.kotlin.plugin.serialization") version "${KOTLIN_VER}" apply false
-            id("org.jetbrains.compose") version "${COMPOSE_VER}" apply false
-            id("com.android.application") version "${AGP_VER}" apply false
-          }
-          ROOT
-
-          cat > gradle.properties <<'PROPS'
-          org.gradle.jvmargs=-Xmx2048M -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          kotlin.code.style=official
-          android.nonTransitiveRClass=true
-          PROPS
-
-          mkdir -p composeApp
-          cat > composeApp/build.gradle.kts <<COMPOSE
-          plugins {
-            id("org.jetbrains.kotlin.multiplatform")
-            id("org.jetbrains.kotlin.plugin.serialization")
-            id("org.jetbrains.compose")
-            id("com.android.application")
+          New-Item -ItemType Directory -Force -Path "${{ env.BUILD_ROOT }}\windows\amd64" | Out-Null
+          if ("${{ inputs.build_mode }}" -eq "release") {
+            go build -ldflags="-s -w -H=windowsgui" -trimpath -o "${{ env.BUILD_ROOT }}\windows\amd64\${{ env.APP_NAME }}.exe" .
+          } else {
+            go build -o "${{ env.BUILD_ROOT }}\windows\amd64\${{ env.APP_NAME }}.exe" .
           }
 
-          kotlin {
-            jvm("desktop") {
-              compilations.all {
-                kotlinOptions.jvmTarget = "${JVM_TARGET}"
-              }
-            }
-            androidTarget {
-              compilations.all {
-                kotlinOptions.jvmTarget = "${JVM_TARGET}"
-              }
-            }
-            sourceSets {
-              val commonMain by getting {
-                dependencies {
-                  implementation(compose.runtime)
-                  implementation(compose.foundation)
-                  implementation(compose.material3)
-                  implementation(compose.ui)
-                  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
-                  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.3")
-                }
-              }
-              val desktopMain by getting {
-                dependencies {
-                  implementation(compose.desktop.currentOs)
-                }
-              }
-              val androidMain by getting {
-                dependencies {
-                  implementation(compose.ui)
-                  implementation(compose.material3)
-                  implementation(compose.foundation)
-                  implementation(compose.runtime)
-                }
-              }
-            }
-          }
+      - name: Upload binary (debug)
+        if: ${{ inputs.build_mode == 'debug' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.APP_NAME }}-windows-amd64
+          path: ${{ env.BUILD_ROOT }}/windows/amd64/${{ env.APP_NAME }}.exe
+          retention-days: 7
 
-          android {
-            namespace = "com.bailensn.tlink"
-            compileSdk = 34
-            defaultConfig {
-              applicationId = "com.bailensn.tlink"
-              minSdk = 24
-              targetSdk = 34
-              versionCode = 1
-              versionName = "${{ env.APP_VERSION }}"
-            }
-            compileOptions {
-              sourceCompatibility = JavaVersion.VERSION_17
-              targetCompatibility = JavaVersion.VERSION_17
-            }
-            buildFeatures { compose = true }
-          }
-
-          compose.desktop {
-            application {
-              mainClass = "com.bailensn.tlink.MainKt"
-              jvmArgs += listOf("-Xmx512m")
-              nativeDistributions {
-                targetFormats(
-                  org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi
-                )
-                packageName = "LianT"
-                packageVersion = "${{ env.APP_VERSION }}"
-                description = "联T Manager"
-                vendor = "bailensn"
-                windows {
-                  menuGroup = "联T"
-                  upgradeUuid = "b5a1c3e0-7f2b-4d8a-9e1f-3c4d5e6f7a8b"
-                  if (file("src/main/resources/windows/LianT.ico").exists()) {
-                    iconFile.set(file("src/main/resources/windows/LianT.ico"))
-                  }
-                }
-              }
-            }
-          }
-          COMPOSE
-
-          mkdir -p composeApp/src
-          cp -r "${{ env.MANAGER_DIR }}/commonMain" composeApp/src/
-          cp -r "${{ env.MANAGER_DIR }}/desktopMain" composeApp/src/
-          cp -r "${{ env.MANAGER_DIR }}/androidMain" composeApp/src/
-
-          if [ -d "${{ env.MANAGER_DIR }}/resources" ]; then
-            mkdir -p composeApp/src/main
-            cp -r "${{ env.MANAGER_DIR }}/resources" composeApp/src/main/
-          fi
-
-          curl -sL "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip" -o /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /opt/
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          gradle wrapper --gradle-version ${GRADLE_VER} --distribution-type bin
-          echo "✅ Gradle ${GRADLE_VER} wrapper generated"
-
-      - name: Build release distribution (MSI via jpackage)
+      - name: Install Inno Setup (release)
         if: ${{ inputs.build_mode == 'release' }}
-        shell: bash
+        shell: pwsh
         run: |
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          chmod +x gradlew
-          ./gradlew :composeApp:packageReleaseDistributionForCurrentOS
+          choco install innosetup -y
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 
-      - name: Package .exe installer with Inno Setup
+      - name: Package Windows .exe installer (release)
         if: ${{ inputs.build_mode == 'release' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $APP     = "${{ env.APP_NAME }}"
           $VERSION = "${{ env.APP_VERSION }}"
-          $BUILD   = "${{ github.workspace }}\composeApp\build\compose\binaries"
-          $RES     = "${{ env.MANAGER_DIR }}\resources\windows"
+          $BUILD   = "${{ env.BUILD_ROOT }}\windows\amd64"
+          $RES     = "${{ github.workspace }}\manager\resources\windows"
           $PKG     = "pkg_win"
           $OUT     = "${{ env.OUTPUT_DIR }}"
 
-          New-Item -ItemType Directory -Force -Path $OUT | Out-Null
+          Write-Host "🔍 APP=$APP  VERSION=$VERSION"
+          Write-Host "🔍 BUILD=$BUILD"
+          Write-Host "🔍 RES=$RES"
 
-          $msi = Get-ChildItem "$BUILD" -Filter "*.msi" -Recurse -File | Select-Object -First 1
-          if (-not $msi) { throw "MSI not found in $BUILD" }
-          Write-Host "Found MSI: $($msi.FullName)"
+          # ---- 校验二进制 ----
+          $exePath = "$BUILD\$APP.exe"
+          if (-not (Test-Path $exePath)) {
+            throw "❌ Binary not found at $exePath"
+          }
+          Write-Host "✅ Binary found: $exePath ($([math]::Round((Get-Item $exePath).Length/1MB,2)) MB)"
 
-          $exeFile = Get-ChildItem "$BUILD" -Filter "$APP.exe" -Recurse -File | Select-Object -First 1
-          if (-not $exeFile) { throw "$APP.exe not found under $BUILD" }
-          Write-Host "Found EXE: $($exeFile.FullName)"
-
-          New-Item -ItemType Directory -Force -Path $PKG | Out-Null
-          Copy-Item $exeFile.FullName "$PKG\$APP.exe" -Force
-
+          # ---- 确定图标文件 ----
           $iconFile = ""
-          if (Test-Path "$RES\LianT.ico")       { $iconFile = "$RES\LianT.ico" }
-          elseif (Test-Path "$RES\$APP.ico")    { $iconFile = "$RES\$APP.ico" }
-          else {
+          if (Test-Path "$RES\$APP.ico") {
+            $iconFile = "$RES\$APP.ico"
+          } elseif (Test-Path "$RES\LianT.ico") {
+            $iconFile = "$RES\LianT.ico"
+          } else {
             $found = Get-ChildItem $RES -Filter "*.ico" -File -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($found) { $iconFile = $found.FullName }
           }
-          if ($iconFile) { Copy-Item $iconFile "$PKG\app.ico" -Force; Write-Host "Icon: $iconFile" }
+          if ($iconFile) {
+            Write-Host "✅ Using icon: $iconFile"
+          } else {
+            Write-Host "⚠️ No .ico found in $RES, installer will use default icon"
+          }
 
+          # ---- 准备打包目录 ----
+          New-Item -ItemType Directory -Force -Path $PKG | Out-Null
+          Copy-Item $exePath "$PKG\$APP.exe" -Force
+          Write-Host "✅ Copied $APP.exe into $PKG\"
+
+          if ($iconFile) {
+            Copy-Item $iconFile "$PKG\app.ico" -Force
+            Write-Host "✅ Copied icon into $PKG\app.ico"
+          }
+
+          # 复制其他资源文件（非 .ico）
+          if (Test-Path $RES) {
+            Get-ChildItem $RES -File | Where-Object { $_.Extension -ne ".ico" } | ForEach-Object {
+              Copy-Item $_.FullName "$PKG\" -Force
+              Write-Host "  + $($_.Name)"
+            }
+          }
+
+          # ---- 构建 Inno Setup 脚本 ----
           $issPath = "$PKG\installer.iss"
+
           $lines = @()
           $lines += "; -- Inno Setup Script for $APP $VERSION --"
+          $lines += "; Generated by GitHub Actions workflow"
+          $lines += ""
           $lines += "[Setup]"
           $lines += "AppName=$APP"
           $lines += "AppVersion=$VERSION"
@@ -768,15 +552,27 @@ jobs:
           $lines += "Compression=lzma"
           $lines += "SolidCompression=yes"
           $lines += "PrivilegesRequired=admin"
-          if ($iconFile) { $lines += "SetupIconFile=app.ico" }
+          $lines += "UninstallDisplayIcon={app}\app.ico"
+          if ($iconFile) {
+            $lines += "SetupIconFile=app.ico"
+          }
           $lines += ""
           $lines += "[Files]"
           $lines += "Source: ""$APP.exe""; DestDir: ""{app}""; Flags: ignoreversion"
-          if ($iconFile) { $lines += "Source: ""app.ico""; DestDir: ""{app}""; Flags: ignoreversion" }
+          if ($iconFile) {
+            $lines += "Source: ""app.ico""; DestDir: ""{app}""; Flags: ignoreversion"
+          }
+          # 额外文件
+          $extraFiles = Get-ChildItem "$PKG\*" -File | Where-Object { $_.Name -notin @("$APP.exe","app.ico","installer.iss") }
+          if ($extraFiles) {
+            foreach ($f in $extraFiles) {
+              $lines += "Source: ""$($f.Name)""; DestDir: ""{app}""; Flags: ignoreversion"
+            }
+          }
           $lines += ""
           $lines += "[Icons]"
-          $lines += "Name: ""{group}\$APP""; Filename: ""{app}\$APP.exe"""
-          $lines += "Name: ""{commondesktop}\$APP""; Filename: ""{app}\$APP.exe""; Tasks: desktopicon"
+          $lines += "Name: ""{group}\$APP""; Filename: ""{app}\$APP.exe""; IconFilename: ""{app}\app.ico"""
+          $lines += "Name: ""{commondesktop}\$APP""; Filename: ""{app}\$APP.exe""; IconFilename: ""{app}\app.ico""; Tasks: desktopicon"
           $lines += ""
           $lines += "[Tasks]"
           $lines += 'Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"'
@@ -784,58 +580,71 @@ jobs:
           $lines += "[Run]"
           $lines += "Filename: ""{app}\$APP.exe""; Description: ""Launch $APP""; Flags: nowait postinstall skipifsilent"
 
+          # 写入文件（UTF8 无 BOM）
           $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
           [System.IO.File]::WriteAllLines($issPath, $lines, $utf8NoBom)
+          Write-Host "📝 installer.iss written to $issPath"
 
+          # 显示脚本内容
+          Write-Host "📝 installer.iss contents:"
+          Get-Content $issPath | ForEach-Object { Write-Host "  $_" }
+
+          # 确认包目录内容
+          Write-Host "📦 Package contents:"
+          Get-ChildItem $PKG | ForEach-Object { Write-Host "  $($_.Name)  ($($_.Length) bytes)" }
+
+          # ---- 查找 iscc 编译器 ----
           $iscc = Get-Command iscc -ErrorAction SilentlyContinue
           if (-not $iscc) {
             $candidates = @(
               "$env:ProgramFiles\Inno Setup 6\iscc.exe",
               "${env:ProgramFiles(x86)}\Inno Setup 6\iscc.exe",
-              "$env:LOCALAPPDATA\Programs\Inno Setup 6\iscc.exe"
+              "$env:LOCALAPPDATA\Programs\Inno Setup 6\iscc.exe",
+              "C:\tools\Inno Setup 6\iscc.exe"
             )
-            foreach ($c in $candidates) { if (Test-Path $c) { $iscc = $c; break } }
+            foreach ($c in $candidates) {
+              if (Test-Path $c) { $iscc = $c; break }
+            }
           }
-          if (-not $iscc) { throw "iscc.exe not found" }
+          if (-not $iscc) {
+            throw "❌ iscc.exe not found after Inno Setup installation"
+          }
+          Write-Host "🔧 Using iscc: $iscc"
 
+          # ---- 编译 ----
           Push-Location $PKG
           & $iscc "installer.iss"
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+          $exitCode = $LASTEXITCODE
           Pop-Location
+          if ($exitCode -ne 0) { throw "Inno Setup 编译失败 (exit code $exitCode)" }
 
-          $outFile = "$OUT\${APP}_${VERSION}_amd64.exe"
-          if (Test-Path $outFile) {
-            Write-Host "Generated: $outFile ($([math]::Round((Get-Item $outFile).Length/1MB,2)) MB)"
-          } else { throw "Output exe not found at $outFile" }
+          # ---- 确认输出文件 ----
+          $outputFile = "$OUT\${APP}_${VERSION}_amd64.exe"
+          if (Test-Path $outputFile) {
+            $size = (Get-Item $outputFile).Length
+            Write-Host "✅ Generated installer: $outputFile ($([math]::Round($size/1MB,2)) MB)"
+          } else {
+            $generated = Get-ChildItem "$OUT\*.exe" -File | Where-Object { $_.Name -match "^${APP}.*amd64\.exe$" } | Select-Object -First 1
+            if ($generated) {
+              Write-Host "✅ Generated installer: $($generated.FullName) ($([math]::Round($generated.Length/1MB,2)) MB)"
+            } else {
+              Write-Host "📁 OUTPUT_DIR contents:"
+              Get-ChildItem $OUT | ForEach-Object { Write-Host "  $($_.Name)" }
+              throw "❌ Installer output not found at expected path: $outputFile"
+            }
+          }
 
-      - name: Build debug
-        if: ${{ inputs.build_mode == 'debug' }}
-        shell: bash
-        run: |
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          chmod +x gradlew
-          ./gradlew :composeApp:compileKotlinDesktop
-
-      - name: Collect artifacts (release)
-        if: ${{ inputs.build_mode == 'release' }}
-        shell: bash
-        run: |
-          mkdir -p "${{ env.OUTPUT_DIR }}"
-          find composeApp/build/compose/binaries -name "*.exe" -exec cp {} "${{ env.OUTPUT_DIR }}/" \;
-          ls -la "${{ env.OUTPUT_DIR }}/"
-
-      - name: Upload packages
+      - name: Upload packages (release)
         if: ${{ inputs.build_mode == 'release' }}
         uses: actions/upload-artifact@v7
         with:
           name: packages-windows-amd64
-          path: ${{ env.OUTPUT_DIR }}/*
+          path: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.exe
           if-no-files-found: error
           retention-days: 30
 
   # ======================================================================
-  # macOS arm64 (Apple Silicon)
+  # macOS arm64
   # ======================================================================
   darwin-arm64:
     if: ${{ inputs.darwin_arm64 }}
@@ -843,431 +652,111 @@ jobs:
     runs-on: macos-14
     defaults:
       run:
-        working-directory: ${{ github.workspace }}
+        working-directory: ${{ env.SRC_ROOT }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: Parse versions from libs.versions.toml
-        id: versions
-        run: |
-          set -e
-          TOML="${{ env.MANAGER_DIR }}/libs.versions.toml"
-          AWK_SCRIPT='
-            /^\[versions\]/ { in_v=1; next }
-            /^\[/ { in_v=0 }
-            in_v && /^[a-zA-Z_-]+[[:space:]]*=/ {
-              key=$1; sub(/[[:space:]]*=.*/,"",key)
-              val=""; in_q=0
-              for(i=1;i<=length($0);i++){
-                c=substr($0,i,1)
-                if(c=="\""){ in_q=1-in_q; continue }
-                if(in_q) val=val c
-              }
-              print key "=" val
-            }'
-          eval "$(echo "$AWK_SCRIPT" | awk -f - "$TOML" | sed 's/^/echo "/; s/$/\" >> $GITHUB_OUTPUT/')"
-          echo "--- versions ---"
-          cat $GITHUB_OUTPUT
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-go@v7
         with:
-          distribution: 'temurin'
-          java-version: ${{ steps.versions.outputs.jdk }}
+          go-version: '1.26.5'
+          cache: true
+          cache-dependency-path: manager/desktop/go.sum
 
-      - name: Generate Gradle scaffolding
+      - name: Verify CGO toolchain
         run: |
-          set -e
-          KOTLIN_VER="${{ steps.versions.outputs.kotlin }}"
-          AGP_VER="${{ steps.versions.outputs.agp }}"
-          COMPOSE_VER="${{ steps.versions.outputs.compose }}"
-          JVM_TARGET="${{ steps.versions.outputs.jvmTarget }}"
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
+          which clang || (xcode-select --install && echo "Xcode CLI installed")
+          clang --version
+          go env CGO_ENABLED
 
-          cat > settings.gradle.kts <<'SETTINGS'
-          pluginManagement {
-            repositories {
-              google()
-              mavenCentral()
-              gradlePluginPortal()
-            }
-          }
-          dependencyResolutionManagement {
-            repositories {
-              google()
-              mavenCentral()
-            }
-          }
-          rootProject.name = "LianT"
-          include(":composeApp")
-          SETTINGS
-
-          cat > build.gradle.kts <<ROOT
-          plugins {
-            id("org.jetbrains.kotlin.multiplatform") version "${KOTLIN_VER}" apply false
-            id("org.jetbrains.kotlin.plugin.serialization") version "${KOTLIN_VER}" apply false
-            id("org.jetbrains.compose") version "${COMPOSE_VER}" apply false
-            id("com.android.application") version "${AGP_VER}" apply false
-          }
-          ROOT
-
-          cat > gradle.properties <<'PROPS'
-          org.gradle.jvmargs=-Xmx2048M -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          kotlin.code.style=official
-          android.nonTransitiveRClass=true
-          PROPS
-
-          mkdir -p composeApp
-          cat > composeApp/build.gradle.kts <<COMPOSE
-          plugins {
-            id("org.jetbrains.kotlin.multiplatform")
-            id("org.jetbrains.kotlin.plugin.serialization")
-            id("org.jetbrains.compose")
-            id("com.android.application")
-          }
-
-          kotlin {
-            jvm("desktop") {
-              compilations.all {
-                kotlinOptions.jvmTarget = "${JVM_TARGET}"
-              }
-            }
-            androidTarget {
-              compilations.all {
-                kotlinOptions.jvmTarget = "${JVM_TARGET}"
-              }
-            }
-            sourceSets {
-              val commonMain by getting {
-                dependencies {
-                  implementation(compose.runtime)
-                  implementation(compose.foundation)
-                  implementation(compose.material3)
-                  implementation(compose.ui)
-                  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
-                  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.3")
-                }
-              }
-              val desktopMain by getting {
-                dependencies {
-                  implementation(compose.desktop.currentOs)
-                }
-              }
-              val androidMain by getting {
-                dependencies {
-                  implementation(compose.ui)
-                  implementation(compose.material3)
-                  implementation(compose.foundation)
-                  implementation(compose.runtime)
-                }
-              }
-            }
-          }
-
-          android {
-            namespace = "com.bailensn.tlink"
-            compileSdk = 34
-            defaultConfig {
-              applicationId = "com.bailensn.tlink"
-              minSdk = 24
-              targetSdk = 34
-              versionCode = 1
-              versionName = "${{ env.APP_VERSION }}"
-            }
-            compileOptions {
-              sourceCompatibility = JavaVersion.VERSION_17
-              targetCompatibility = JavaVersion.VERSION_17
-            }
-            buildFeatures { compose = true }
-          }
-
-          compose.desktop {
-            application {
-              mainClass = "com.bailensn.tlink.MainKt"
-              jvmArgs += listOf("-Xmx512m")
-              nativeDistributions {
-                targetFormats(
-                  org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg
-                )
-                packageName = "LianT"
-                packageVersion = "${{ env.APP_VERSION }}"
-                description = "联T Manager"
-                vendor = "bailensn"
-                macOS {
-                  bundleID = "com.bailensn.tlink"
-                  if (file("src/main/resources/darwin/LianT.icns").exists()) {
-                    iconFile.set(file("src/main/resources/darwin/LianT.icns"))
-                  }
-                }
-              }
-            }
-          }
-          COMPOSE
-
-          mkdir -p composeApp/src
-          cp -r "${{ env.MANAGER_DIR }}/commonMain" composeApp/src/
-          cp -r "${{ env.MANAGER_DIR }}/desktopMain" composeApp/src/
-          cp -r "${{ env.MANAGER_DIR }}/androidMain" composeApp/src/
-
-          if [ -d "${{ env.MANAGER_DIR }}/resources" ]; then
-            mkdir -p composeApp/src/main
-            cp -r "${{ env.MANAGER_DIR }}/resources" composeApp/src/main/
+      - name: Build binary
+        run: |
+          export CGO_ENABLED=1 GOOS=darwin GOARCH=arm64
+          mkdir -p ${{ env.BUILD_ROOT }}/darwin/arm64
+          if [ "${{ inputs.build_mode }}" = "release" ]; then
+            go build -ldflags="-s -w" -trimpath -o ${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }} .
+          else
+            go build -o ${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }} .
           fi
 
-          curl -sL "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip" -o /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /opt/
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          gradle wrapper --gradle-version ${GRADLE_VER} --distribution-type bin
-          echo "✅ Gradle ${GRADLE_VER} wrapper generated"
-
-      - name: Build release distribution
-        if: ${{ inputs.build_mode == 'release' }}
-        run: |
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          chmod +x gradlew
-          ./gradlew :composeApp:packageReleaseDistributionForCurrentOS
-
-      - name: Build debug
+      - name: Upload binary (debug)
         if: ${{ inputs.build_mode == 'debug' }}
-        run: |
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          chmod +x gradlew
-          ./gradlew :composeApp:compileKotlinDesktop
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.APP_NAME }}-darwin-arm64
+          path: ${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }}
+          retention-days: 7
 
-      - name: Collect artifacts
+      - name: Package macOS .dmg (release)
         if: ${{ inputs.build_mode == 'release' }}
+        shell: bash
         run: |
-          mkdir -p "${{ env.OUTPUT_DIR }}"
-          find composeApp/build/compose/binaries -name "*.dmg" -exec cp {} "${{ env.OUTPUT_DIR }}/" \;
-          ls -la "${{ env.OUTPUT_DIR }}/"
+          set -e
+          BIN="${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }}"
+          test -f "$BIN" || { echo "❌ Binary not found at $BIN"; exit 1; }
 
-      - name: Upload packages
+          APP="${APP_NAME}.app"
+          mkdir -p ${APP}/Contents/MacOS
+          mkdir -p ${APP}/Contents/Resources
+
+          cp "$BIN" ${APP}/Contents/MacOS/${{ env.APP_NAME }}
+          chmod +x ${APP}/Contents/MacOS/${{ env.APP_NAME }}
+
+          RES="${{ github.workspace }}/manager/resources/darwin"
+          if [ -f "${RES}/LianT.icns" ]; then
+            cp "${RES}/LianT.icns" ${APP}/Contents/Resources/AppIcon.icns
+          elif [ -f "${RES}/LianT.png" ]; then
+            cp "${RES}/LianT.png"  ${APP}/Contents/Resources/AppIcon.png
+          fi
+
+          if [ -d "${RES}" ]; then
+            for f in "${RES}"/*; do
+              fname=$(basename "$f")
+              [ "$fname" = "LianT.icns" ] || [ "$fname" = "LianT.png" ] && continue
+              cp -r "$f" ${APP}/Contents/Resources/ 2>/dev/null || true
+            done
+          fi
+
+          cat > ${APP}/Contents/Info.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>              <string>${APP_NAME}</string>
+            <key>CFBundleDisplayName</key>       <string>${APP_NAME}</string>
+            <key>CFBundleIdentifier</key>        <string>com.liant.manager</string>
+            <key>CFBundleVersion</key>           <string>${{ env.APP_VERSION }}</string>
+            <key>CFBundleShortVersionString</key><string>${{ env.APP_VERSION }}</string>
+            <key>CFBundleExecutable</key>        <string>${APP_NAME}</string>
+            <key>CFBundlePackageType</key>       <string>APPL</string>
+            <key>CFBundleSignature</key>         <string>????</string>
+            <key>LSMinimumSystemVersion</key>    <string>10.13</string>
+            <key>NSHighResolutionCapable</key>   <true/>
+            <key>LSApplicationCategoryType</key> <string>public.app-category.utilities</string>
+          </dict>
+          </plist>
+          EOF
+
+          echo "✅ .app bundle created"
+
+          DMG_DIR="dmg_stage"
+          mkdir -p ${DMG_DIR}
+          cp -r ${APP} ${DMG_DIR}/
+          ln -sf /Applications ${DMG_DIR}/Applications
+
+          hdiutil create -volname "${APP_NAME}" \
+            -srcfolder ${DMG_DIR} \
+            -ov -format UDZO \
+            "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg"
+
+          echo "✅ Generated .dmg: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg"
+
+          mv "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg" ${{ env.OUTPUT_DIR }}/
+
+      - name: Upload packages (release)
         if: ${{ inputs.build_mode == 'release' }}
         uses: actions/upload-artifact@v7
         with:
           name: packages-darwin-arm64
-          path: ${{ env.OUTPUT_DIR }}/*
-          if-no-files-found: error
-          retention-days: 30
-
-  # ======================================================================
-  # macOS amd64 (Intel)
-  # ======================================================================
-  darwin-amd64:
-    if: ${{ inputs.darwin_amd64 }}
-    name: macOS amd64
-    runs-on: macos-13
-    defaults:
-      run:
-        working-directory: ${{ github.workspace }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Parse versions from libs.versions.toml
-        id: versions
-        run: |
-          set -e
-          TOML="${{ env.MANAGER_DIR }}/libs.versions.toml"
-          AWK_SCRIPT='
-            /^\[versions\]/ { in_v=1; next }
-            /^\[/ { in_v=0 }
-            in_v && /^[a-zA-Z_-]+[[:space:]]*=/ {
-              key=$1; sub(/[[:space:]]*=.*/,"",key)
-              val=""; in_q=0
-              for(i=1;i<=length($0);i++){
-                c=substr($0,i,1)
-                if(c=="\""){ in_q=1-in_q; continue }
-                if(in_q) val=val c
-              }
-              print key "=" val
-            }'
-          eval "$(echo "$AWK_SCRIPT" | awk -f - "$TOML" | sed 's/^/echo "/; s/$/\" >> $GITHUB_OUTPUT/')"
-          echo "--- versions ---"
-          cat $GITHUB_OUTPUT
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: ${{ steps.versions.outputs.jdk }}
-
-      - name: Generate Gradle scaffolding
-        run: |
-          set -e
-          KOTLIN_VER="${{ steps.versions.outputs.kotlin }}"
-          AGP_VER="${{ steps.versions.outputs.agp }}"
-          COMPOSE_VER="${{ steps.versions.outputs.compose }}"
-          JVM_TARGET="${{ steps.versions.outputs.jvmTarget }}"
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
-
-          cat > settings.gradle.kts <<'SETTINGS'
-          pluginManagement {
-            repositories {
-              google()
-              mavenCentral()
-              gradlePluginPortal()
-            }
-          }
-          dependencyResolutionManagement {
-            repositories {
-              google()
-              mavenCentral()
-            }
-          }
-          rootProject.name = "LianT"
-          include(":composeApp")
-          SETTINGS
-
-          cat > build.gradle.kts <<ROOT
-          plugins {
-            id("org.jetbrains.kotlin.multiplatform") version "${KOTLIN_VER}" apply false
-            id("org.jetbrains.kotlin.plugin.serialization") version "${KOTLIN_VER}" apply false
-            id("org.jetbrains.compose") version "${COMPOSE_VER}" apply false
-            id("com.android.application") version "${AGP_VER}" apply false
-          }
-          ROOT
-
-          cat > gradle.properties <<'PROPS'
-          org.gradle.jvmargs=-Xmx2048M -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          kotlin.code.style=official
-          android.nonTransitiveRClass=true
-          PROPS
-
-          mkdir -p composeApp
-          cat > composeApp/build.gradle.kts <<COMPOSE
-          plugins {
-            id("org.jetbrains.kotlin.multiplatform")
-            id("org.jetbrains.kotlin.plugin.serialization")
-            id("org.jetbrains.compose")
-            id("com.android.application")
-          }
-
-          kotlin {
-            jvm("desktop") {
-              compilations.all {
-                kotlinOptions.jvmTarget = "${JVM_TARGET}"
-              }
-            }
-            androidTarget {
-              compilations.all {
-                kotlinOptions.jvmTarget = "${JVM_TARGET}"
-              }
-            }
-            sourceSets {
-              val commonMain by getting {
-                dependencies {
-                  implementation(compose.runtime)
-                  implementation(compose.foundation)
-                  implementation(compose.material3)
-                  implementation(compose.ui)
-                  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
-                  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.3")
-                }
-              }
-              val desktopMain by getting {
-                dependencies {
-                  implementation(compose.desktop.currentOs)
-                }
-              }
-              val androidMain by getting {
-                dependencies {
-                  implementation(compose.ui)
-                  implementation(compose.material3)
-                  implementation(compose.foundation)
-                  implementation(compose.runtime)
-                }
-              }
-            }
-          }
-
-          android {
-            namespace = "com.bailensn.tlink"
-            compileSdk = 34
-            defaultConfig {
-              applicationId = "com.bailensn.tlink"
-              minSdk = 24
-              targetSdk = 34
-              versionCode = 1
-              versionName = "${{ env.APP_VERSION }}"
-            }
-            compileOptions {
-              sourceCompatibility = JavaVersion.VERSION_17
-              targetCompatibility = JavaVersion.VERSION_17
-            }
-            buildFeatures { compose = true }
-          }
-
-          compose.desktop {
-            application {
-              mainClass = "com.bailensn.tlink.MainKt"
-              jvmArgs += listOf("-Xmx512m")
-              nativeDistributions {
-                targetFormats(
-                  org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg
-                )
-                packageName = "LianT"
-                packageVersion = "${{ env.APP_VERSION }}"
-                description = "联T Manager"
-                vendor = "bailensn"
-                macOS {
-                  bundleID = "com.bailensn.tlink"
-                  if (file("src/main/resources/darwin/LianT.icns").exists()) {
-                    iconFile.set(file("src/main/resources/darwin/LianT.icns"))
-                  }
-                }
-              }
-            }
-          }
-          COMPOSE
-
-          mkdir -p composeApp/src
-          cp -r "${{ env.MANAGER_DIR }}/commonMain" composeApp/src/
-          cp -r "${{ env.MANAGER_DIR }}/desktopMain" composeApp/src/
-          cp -r "${{ env.MANAGER_DIR }}/androidMain" composeApp/src/
-
-          if [ -d "${{ env.MANAGER_DIR }}/resources" ]; then
-            mkdir -p composeApp/src/main
-            cp -r "${{ env.MANAGER_DIR }}/resources" composeApp/src/main/
-          fi
-
-          curl -sL "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip" -o /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /opt/
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          gradle wrapper --gradle-version ${GRADLE_VER} --distribution-type bin
-          echo "✅ Gradle ${GRADLE_VER} wrapper generated"
-
-      - name: Build release distribution
-        if: ${{ inputs.build_mode == 'release' }}
-        run: |
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          chmod +x gradlew
-          ./gradlew :composeApp:packageReleaseDistributionForCurrentOS
-
-      - name: Build debug
-        if: ${{ inputs.build_mode == 'debug' }}
-        run: |
-          GRADLE_VER="${{ steps.versions.outputs.gradle }}"
-          export PATH="/opt/gradle-${GRADLE_VER}/bin:$PATH"
-          chmod +x gradlew
-          ./gradlew :composeApp:compileKotlinDesktop
-
-      - name: Collect artifacts
-        if: ${{ inputs.build_mode == 'release' }}
-        run: |
-          mkdir -p "${{ env.OUTPUT_DIR }}"
-          find composeApp/build/compose/binaries -name "*.dmg" -exec cp {} "${{ env.OUTPUT_DIR }}/" \;
-          ls -la "${{ env.OUTPUT_DIR }}/"
-
-      - name: Upload packages
-        if: ${{ inputs.build_mode == 'release' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: packages-darwin-amd64
-          path: ${{ env.OUTPUT_DIR }}/*
+          path: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg
           if-no-files-found: error
           retention-days: 30
