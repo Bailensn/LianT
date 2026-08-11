@@ -3,22 +3,19 @@ package main
 import (
 	"fmt"
 	"os"
-)
 
-import (
+	"github.com/Bailensn/LianT/service/service"
 	"github.com/Bailensn/LianT/service/botmanager"
 	"github.com/Bailensn/LianT/service/config"
-	"github.com/Bailensn/LianT/service/service"
 )
 
-func main() {
-	args := os.Args
-	if len(args) < 2 {
+func main(){
+	args:=os.Args
+	if len(args)<2{
 		fmt.Println("请输入命令")
-		fmt.Println("例如: LianT init")
 		return
 	}
-	switch args[1] {
+	switch args[1]{
 	case "init":
 		initCommand()
 	case "config":
@@ -27,6 +24,10 @@ func main() {
 		service.ServiceCommand(args[2:])
 	case "botmanager":
 		botmanager.BotmanagerCommand(args[2:])
+	case "botstart":
+		service.BotCommand(args[2:])
+	case "service-daemon":
+		service.StartDaemon()
 	default:
 		fmt.Println("未知命令")
 	}

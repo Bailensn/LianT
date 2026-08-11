@@ -24,7 +24,6 @@ func roundedRect(
 	c color.NRGBA,
 	radius int,
 ) {
-
 	rect := image.Rectangle{
 		Max: gtx.Constraints.Max,
 	}
@@ -47,11 +46,8 @@ func roundedRect(
 
 
 func main() {
-
 	go func() {
-
 		w := new(app.Window)
-
 		w.Option(
 			app.Title("联T"),
 			app.Size(
@@ -59,33 +55,17 @@ func main() {
 				unit.Dp(200),
 			),
 		)
-
-
 		var ops op.Ops
-
 		var quit widget.Clickable
-
 		theme := material.NewTheme()
-
-
 		for {
-
 			e := w.Event()
-
-
 			switch e := e.(type) {
-
-
 			case app.FrameEvent:
-
 				gtx := app.NewContext(
 					&ops,
 					e,
 				)
-
-
-				// 背景
-
 				roundedRect(
 					gtx,
 					color.NRGBA{
@@ -96,92 +76,57 @@ func main() {
 					},
 					25,
 				)
-
-
-
 				layout.Inset{
 					Top: unit.Dp(20),
 					Left: unit.Dp(20),
 				}.Layout(
 					gtx,
 					func(gtx C) D {
-
 						return layout.Flex{
 							Axis: layout.Vertical,
 						}.Layout(
 							gtx,
-
-
 							layout.Rigid(
 								func(gtx C) D {
-
 									return material.H6(
 										theme,
 										"联T",
 									).Layout(gtx)
-
 								},
 							),
-
-
 							layout.Rigid(
 								func(gtx C) D {
-
 									return layout.Spacer{
 										Height: unit.Dp(80),
 									}.Layout(gtx)
-
 								},
 							),
-
-
 							layout.Rigid(
 								func(gtx C) D {
-
-
 									btn :=
 										material.Button(
 											theme,
 											&quit,
 											"退出",
 										)
-
-
 									if quit.Clicked(gtx) {
-
 										w.Perform(
 											system.ActionClose,
 										)
-
 									}
-
-
 									return btn.Layout(gtx)
-
 								},
 							),
 						)
-
 					},
 				)
-
-
-
 				e.Frame(
 					gtx.Ops,
 				)
-
-
-
 			case app.DestroyEvent:
-
 				return
 			}
 		}
-
-
 	}()
-
-
 	app.Main()
 }

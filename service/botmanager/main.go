@@ -328,7 +328,7 @@ func BotmanagerCommand(
 	case "remove":
 		if len(args)!=2{
 			fmt.Println(
-				"LianT bot remove <bot_id>",
+				"LianT botmanager remove <bot_id>",
 			)
 			return
 		}
@@ -349,7 +349,7 @@ func BotmanagerCommand(
 		fmt.Println(num)
 	default:
 		fmt.Println(
-			"未知bot命令",
+			"未知命令",
 		)
 	}
 }
