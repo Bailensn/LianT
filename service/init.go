@@ -6,7 +6,6 @@ import (
 )
 
 import (
-	"github.com/Bailensn/LianT/service/botmanager"
 	"github.com/Bailensn/LianT/service/config"
 )
 
@@ -32,10 +31,24 @@ func initCommand() {
 		)
 	}
 
-	/*==botmanager.go==*/
+	/*==bot.go==*/
 
 	// 初始化data数据库
-	botmanager.InitDatabase()
+	db:=openBotDB()
+	defer db.Close()
+	_,err:=db.Exec(
+		`
+CREATE TABLE IF NOT EXISTS bots(
+bot_id INTEGER PRIMARY KEY,
+token TEXT NOT NULL,
+username TEXT,
+first_name TEXT
+)
+`,
+	)
+	if err!=nil{
+		panic(err)
+	}
 
 	fmt.Println(
 		"初始化完成",

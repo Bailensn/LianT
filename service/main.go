@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/Bailensn/LianT/service/service"
-	"github.com/Bailensn/LianT/service/botmanager"
 	"github.com/Bailensn/LianT/service/config"
 )
 
@@ -22,8 +21,8 @@ func main(){
 		config.ConfigCommand(args[2:])
 	case "service":
 		service.ServiceCommand(args[2:])
-	case "botmanager":
-		botmanager.BotmanagerCommand(args[2:])
+	case "bot":
+		botmanagerCommand(args[2:])
 	case "botstart":
 		service.BotCommand(args[2:])
 	case "service-daemon":

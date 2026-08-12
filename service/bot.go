@@ -1,4 +1,4 @@
-package botmanager
+package main
 
 import (
 	"database/sql"
@@ -41,23 +41,6 @@ func openBotDB()*sql.DB{
 		panic(err)
 	}
 	return db
-}
-func InitDatabase(){
-	db:=openBotDB()
-	defer db.Close()
-	_,err:=db.Exec(
-		`
-CREATE TABLE IF NOT EXISTS bots(
-bot_id INTEGER PRIMARY KEY,
-token TEXT NOT NULL,
-username TEXT,
-first_name TEXT
-)
-`,
-	)
-	if err!=nil{
-		panic(err)
-	}
 }
 
 // ==========================
@@ -237,12 +220,12 @@ func inputHidden(prompt string) string {
 // ==========================
 // bot命令
 // ==========================
-func BotmanagerCommand(
+func botCommand(
 	args []string,
 ){
 	if len(args)<1{
 		fmt.Println(
-			"用法: LianT botmanager add/remove/list",
+			"用法: LianT bot add/remove/list",
 		)
 		return
 	}
@@ -250,7 +233,7 @@ func BotmanagerCommand(
 	case "add":
 		if len(args) != 2 {
 			fmt.Println(
-				"LianT botmanager add <bot_id>",
+				"LianT bot add <bot_id>",
 			)
 			return
 		}
@@ -328,7 +311,7 @@ func BotmanagerCommand(
 	case "remove":
 		if len(args)!=2{
 			fmt.Println(
-				"LianT botmanager remove <bot_id>",
+				"LianT bot remove <bot_id>",
 			)
 			return
 		}
