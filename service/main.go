@@ -22,7 +22,7 @@ func main(){
 	case "service":
 		service.ServiceCommand(args[2:])
 	case "bot":
-		botmanagerCommand(args[2:])
+		botCommand(args[2:])
 	case "botstart":
 		service.BotCommand(args[2:])
 	case "service-daemon":

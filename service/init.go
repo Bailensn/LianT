@@ -36,7 +36,7 @@ func initCommand() {
 	// 初始化data数据库
 	db:=openBotDB()
 	defer db.Close()
-	_,err:=db.Exec(
+	_,err=db.Exec(
 		`
 CREATE TABLE IF NOT EXISTS bots(
 bot_id INTEGER PRIMARY KEY,
