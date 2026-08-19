@@ -10,8 +10,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import org.jetbrains.compose.ui.window.Window
-import org.jetbrains.compose.ui.window.application
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.application
 
 @Composable
 fun App() {
