@@ -11,6 +11,7 @@ repositories {
 
 dependencies {
     implementation(compose.desktop.currentOs)
+    implementation(compose.components.resources)
     implementation(libs.material3)
 }
 
@@ -25,4 +26,8 @@ compose.desktop {
             linux { }
         }
     }
+}
+
+compose.resources {
+    publicResClass = true
 }
