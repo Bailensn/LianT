@@ -386,14 +386,20 @@ jobs:
       - name: Pin Gradle toolchain
         run: echo "toolchainVersion=21" > manager/desktop/gradle/gradle-daemon-jvm.properties
 
+      - name: Generate Compose Resources
+        run: |
+          ./gradlew :desktopApp:generateComposeResClass --no-daemon
+        working-directory: manager/desktop
+      
       - name: Debug Compose Resources
         run: |
-          ls -R manager/desktop/desktopApp/build/generated || true
-          find manager/desktop/desktopApp/build -name "Res.kt" -o -name "Res.java" || true
-
-      - name: Build bare app
+          find desktopApp/build -name "Res.kt" -o -name "Res.java" || true
         working-directory: manager/desktop
-        run: ./gradlew :desktopApp:createDistributable --no-daemon
+      
+      - name: Build
+        run: |
+          ./gradlew :desktopApp:createDistributable --no-daemon
+        working-directory: manager/desktop
 
       - name: Package deb
         run: |
