@@ -2,6 +2,7 @@
 kotlin = "2.4.10"
 compose = "1.11.1"
 material3 = "1.11.0-alpha07"
+backdrop = "2.0.0"
 
 [plugins]
 jetbrains-compose = { id = "org.jetbrains.compose", version.ref = "compose" }
@@ -9,3 +10,4 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 
 [libraries]
 material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "material3" }
+backdrop = { module = "io.github.kyant0:backdrop", version.ref = "backdrop" }

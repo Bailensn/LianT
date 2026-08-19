@@ -13,6 +13,7 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.components.resources)
     implementation(libs.material3)
+    implementation(libs.backdrop)
 }
 
 compose.desktop {
