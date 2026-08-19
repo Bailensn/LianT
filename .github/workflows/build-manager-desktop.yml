@@ -1,4 +1,4 @@
-name: Build Manager Desktop
+name: Build Manager Desktop (CMP)
 
 on:
   workflow_dispatch:
@@ -15,19 +15,19 @@ on:
         type: string
         default: '1.0.0'
       linux_amd64:
-        description: 'Linux amd64'
+        description: 'Linux amd64 (.deb + .rpm)'
         type: boolean
         default: false
       linux_arm64:
-        description: 'Linux arm64'
+        description: 'Linux arm64 (.deb + .rpm)'
         type: boolean
         default: false
       windows_amd64:
-        description: 'Windows amd64 (.exe)'
+        description: 'Windows amd64 (.exe installer via Inno Setup)'
         type: boolean
         default: false
       darwin_arm64:
-        description: 'macOS arm64 (Apple Silicon)'
+        description: 'macOS arm64 (.dmg)'
         type: boolean
         default: false
 
@@ -37,13 +37,12 @@ permissions:
 env:
   APP_NAME: LianT
   APP_VERSION: ${{ inputs.version }}
-  BUILD_ROOT: ${{ github.workspace }}/build
   SRC_ROOT: ${{ github.workspace }}/manager/desktop
-  OUTPUT_DIR: ${{ github.workspace }}
+  OUTPUT_DIR: ${{ github.workspace }}/out
 
 jobs:
   # ======================================================================
-  # Linux amd64
+  # Linux amd64 — Compose Desktop native packages (.deb + .rpm)
   # ======================================================================
   linux-amd64:
     if: ${{ inputs.linux_amd64 }}
@@ -55,7 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install dependencies
+      - name: Install system deps (Compose / JVM / packaging)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -63,186 +62,59 @@ jobs:
             libxcursor-dev libxfixes-dev libxkbcommon-dev \
             libxkbcommon-x11-dev libxrandr-dev libxi-dev \
             libxinerama-dev libxxf86vm-dev libxext-dev \
-            pkg-config gcc libwayland-dev
+            pkg-config gcc libwayland-dev \
+            dpkg-dev fakeroot rpm
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-java@v4
         with:
-          go-version: '1.26.5'
-          cache: true
-          cache-dependency-path: manager/desktop/go.sum
+          distribution: 'temurin'
+          java-version: '21'
 
-      - name: Verify CGO
-        run: |
-          which gcc || (sudo apt-get install -y gcc && echo "gcc installed")
-          gcc --version
-          go env CGO_ENABLED
+      - uses: gradle/actions/setup-gradle@v3
 
-      - name: Build binary
+      - name: Build native packages (debug / release)
         run: |
-          export CGO_ENABLED=1 GOOS=linux GOARCH=amd64
-          mkdir -p ${{ env.BUILD_ROOT }}/linux/amd64
+          mkdir -p ${{ env.OUTPUT_DIR }}
           if [ "${{ inputs.build_mode }}" = "release" ]; then
-            go build -ldflags="-s -w" -trimpath -o ${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }} .
+            ./gradlew packageReleaseDistributionForCurrentOS
           else
-            go build -o ${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }} .
+            ./gradlew packageDebugDistributionForCurrentOS
           fi
 
-      - name: Compress binary with UPX 5.2.0 (release)
-        if: ${{ inputs.build_mode == 'release' }}
-        run: |
-          set -e
-          BIN="${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }}"
-          echo "📦 Binary size before UPX: $(du -h "$BIN" | cut -f1)"
-          curl -fSL -o /tmp/upx.tar.xz https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-amd64_linux.tar.xz
-          tar -xf /tmp/upx.tar.xz -C /tmp/
-          UPX_BIN="/tmp/upx-5.2.0-amd64_linux/upx"
-          chmod +x "$UPX_BIN"
-          "$UPX_BIN" --version
-          "$UPX_BIN" "$BIN"
-          echo "📦 Binary size after UPX:  $(du -h "$BIN" | cut -f1)"
-
-      - name: Upload binary (debug)
-        if: ${{ inputs.build_mode == 'debug' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ env.APP_NAME }}-linux-amd64
-          path: ${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }}
-          retention-days: 7
-
-      - name: Package .deb & .rpm (release)
-        if: ${{ inputs.build_mode == 'release' }}
+      - name: Collect artifacts
         shell: bash
         run: |
           set -e
-          BIN="${{ env.BUILD_ROOT }}/linux/amd64/${{ env.APP_NAME }}"
-          test -f "$BIN" || { echo "❌ Binary not found at $BIN"; exit 1; }
+          mkdir -p ${{ env.OUTPUT_DIR }}
+          # Compose Desktop 输出到 composeApp/build/compose/binaries/
+          find ${{ env.SRC_ROOT }}/desktopApp/build/compose/binaries \
+            \( -name "*.deb" -o -name "*.rpm" -o -name "*.exe" -o -name "*.msi" -o -name "*.dmg" \) \
+            -exec cp {} ${{ env.OUTPUT_DIR }}/ \;
 
-          sudo apt-get install -y dpkg-dev fakeroot rpm
-          PKG="deb_pkg"
-          mkdir -p ${PKG}/usr/bin
-          mkdir -p ${PKG}/usr/share/applications
-          for s in 16 32 48 64 128 256 512; do
-            mkdir -p ${PKG}/usr/share/icons/hicolor/${s}x${s}/apps
+          # 重命名，统一版本号
+          cd ${{ env.OUTPUT_DIR }}
+          for f in *.deb; do
+            [ -f "$f" ] && mv "$f" "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.deb"
           done
-          mkdir -p ${PKG}/DEBIAN
-          cp "$BIN" ${PKG}/usr/bin/${{ env.APP_NAME }}
-          chmod 755 ${PKG}/usr/bin/${{ env.APP_NAME }}
-
-          RES="${{ github.workspace }}/manager/resources/linux"
-          cp ${RES}/16/LianT.png  ${PKG}/usr/share/icons/hicolor/16x16/apps/LianT.png
-          cp ${RES}/32/LianT.png  ${PKG}/usr/share/icons/hicolor/32x32/apps/LianT.png
-          cp ${RES}/48/LianT.png  ${PKG}/usr/share/icons/hicolor/48x48/apps/LianT.png
-          cp ${RES}/64/LianT.png  ${PKG}/usr/share/icons/hicolor/64x64/apps/LianT.png
-          cp ${RES}/128/LianT.png ${PKG}/usr/share/icons/hicolor/128x128/apps/LianT.png
-          cp ${RES}/256/LianT.png ${PKG}/usr/share/icons/hicolor/256x256/apps/LianT.png
-          cp ${RES}/512/LianT.png ${PKG}/usr/share/icons/hicolor/512x512/apps/LianT.png
-          cp ${RES}/LianT.desktop ${PKG}/usr/share/applications/LianT.desktop
-
-          cat > ${PKG}/DEBIAN/control <<EOF
-          Package: liant
-          Version: ${{ env.APP_VERSION }}
-          Section: utils
-          Priority: optional
-          Architecture: amd64
-          Maintainer: LianT Team
-          Description: LianT Manager
-           Cross-platform manager tool.
-          EOF
-          sed -i 's/\r$//' ${PKG}/DEBIAN/control
-          dpkg-deb --build --root-owner-group ${PKG} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.deb"
-          echo "✅ Generated .deb: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.deb"
-
-          RPMTOP="${HOME}/rpmbuild"
-          mkdir -p ${RPMTOP}/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-          BR="${RPMTOP}/BUILDROOT"
-          mkdir -p ${BR}/usr/bin
-          mkdir -p ${BR}/usr/share/applications
-          for s in 16 32 48 64 128 256 512; do
-            mkdir -p ${BR}/usr/share/icons/hicolor/${s}x${s}/apps
+          for f in *.rpm; do
+            [ -f "$f" ] && mv "$f" "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm"
           done
-          cp "$BIN" ${BR}/usr/bin/${{ env.APP_NAME }}
-          chmod 755 ${BR}/usr/bin/${{ env.APP_NAME }}
-          cp ${RES}/16/LianT.png  ${BR}/usr/share/icons/hicolor/16x16/apps/LianT.png
-          cp ${RES}/32/LianT.png  ${BR}/usr/share/icons/hicolor/32x32/apps/LianT.png
-          cp ${RES}/48/LianT.png  ${BR}/usr/share/icons/hicolor/48x48/apps/LianT.png
-          cp ${RES}/64/LianT.png  ${BR}/usr/share/icons/hicolor/64x64/apps/LianT.png
-          cp ${RES}/128/LianT.png ${BR}/usr/share/icons/hicolor/128x128/apps/LianT.png
-          cp ${RES}/256/LianT.png ${BR}/usr/share/icons/hicolor/256x256/apps/LianT.png
-          cp ${RES}/512/LianT.png ${BR}/usr/share/icons/hicolor/512x512/apps/LianT.png
-          cp ${RES}/LianT.desktop ${BR}/usr/share/applications/LianT.desktop
 
-          cat > ${RPMTOP}/SPECS/LianT.spec <<EOF
-          Name:           liant
-          Version:        ${{ env.APP_VERSION }}
-          Release:        1%{?dist}
-          Summary:        LianT Manager
-          License:        Proprietary
-          BuildArch:      x86_64
+          echo "📦 Output contents:"
+          ls -lh ${{ env.OUTPUT_DIR }}/
 
-          %description
-          Cross-platform manager tool.
-
-          %install
-          mkdir -p %{buildroot}/usr/bin
-          cp ${BR}/usr/bin/LianT %{buildroot}/usr/bin/LianT
-          chmod 755 %{buildroot}/usr/bin/LianT
-          mkdir -p %{buildroot}/usr/share/applications
-          cp ${BR}/usr/share/applications/LianT.desktop %{buildroot}/usr/share/applications/LianT.desktop
-          for s in 16 32 48 64 128 256 512; do
-            mkdir -p %{buildroot}/usr/share/icons/hicolor/\${s}x\${s}/apps
-          done
-          cp ${BR}/usr/share/icons/hicolor/16x16/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/16x16/apps/LianT.png
-          cp ${BR}/usr/share/icons/hicolor/32x32/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/32x32/apps/LianT.png
-          cp ${BR}/usr/share/icons/hicolor/48x48/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/48x48/apps/LianT.png
-          cp ${BR}/usr/share/icons/hicolor/64x64/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/64x64/apps/LianT.png
-          cp ${BR}/usr/share/icons/hicolor/128x128/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/128x128/apps/LianT.png
-          cp ${BR}/usr/share/icons/hicolor/256x256/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/LianT.png
-          cp ${BR}/usr/share/icons/hicolor/512x512/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/512x512/apps/LianT.png
-
-          %files
-          /usr/bin/LianT
-          /usr/share/applications/LianT.desktop
-          /usr/share/icons/hicolor/16x16/apps/LianT.png
-          /usr/share/icons/hicolor/32x32/apps/LianT.png
-          /usr/share/icons/hicolor/48x48/apps/LianT.png
-          /usr/share/icons/hicolor/64x64/apps/LianT.png
-          /usr/share/icons/hicolor/128x128/apps/LianT.png
-          /usr/share/icons/hicolor/256x256/apps/LianT.png
-          /usr/share/icons/hicolor/512x512/apps/LianT.png
-
-          %post
-          /bin/touch --no-create /usr/share/icons/hicolor 2>/dev/null || true
-          [ -x /usr/bin/gtk-update-icon-cache ] && /usr/bin/gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
-          [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
-
-          %postun
-          [ -x /usr/bin/gtk-update-icon-cache ] && /usr/bin/gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
-          [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
-          EOF
-
-          rpmbuild -bb \
-            --define "_topdir ${RPMTOP}" \
-            --define "_buildroot ${BR}" \
-            --define "_rpmdir ${RPMTOP}/RPMS" \
-            ${RPMTOP}/SPECS/LianT.spec
-          find ${RPMTOP}/RPMS -name "*.rpm" -exec cp {} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm" \;
-          echo "✅ Generated .rpm: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm"
-
-          mv *.deb *.rpm ${{ env.OUTPUT_DIR }}/
-
-      - name: Upload packages (release)
-        if: ${{ inputs.build_mode == 'release' }}
+      - name: Upload packages
         uses: actions/upload-artifact@v7
         with:
           name: packages-linux-amd64
           path: |
-            ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.deb
-            ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm
+            ${{ env.OUTPUT_DIR }}/*.deb
+            ${{ env.OUTPUT_DIR }}/*.rpm
           if-no-files-found: error
           retention-days: 30
 
   # ======================================================================
-  # Linux arm64
+  # Linux arm64 — Compose Desktop native packages (.deb + .rpm)
   # ======================================================================
   linux-arm64:
     if: ${{ inputs.linux_arm64 }}
@@ -254,7 +126,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install dependencies
+      - name: Install system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -262,186 +134,57 @@ jobs:
             libxcursor-dev libxfixes-dev libxkbcommon-dev \
             libxkbcommon-x11-dev libxrandr-dev libxi-dev \
             libxinerama-dev libxxf86vm-dev libxext-dev \
-            pkg-config gcc libwayland-dev
+            pkg-config gcc libwayland-dev \
+            dpkg-dev fakeroot rpm
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-java@v4
         with:
-          go-version: '1.26.5'
-          cache: true
-          cache-dependency-path: manager/desktop/go.sum
+          distribution: 'temurin'
+          java-version: '21'
 
-      - name: Verify CGO
-        run: |
-          which gcc || (sudo apt-get install -y gcc && echo "gcc installed")
-          gcc --version
-          go env CGO_ENABLED
+      - uses: gradle/actions/setup-gradle@v3
 
-      - name: Build binary
+      - name: Build native packages
         run: |
-          export CGO_ENABLED=1 GOOS=linux GOARCH=arm64
-          mkdir -p ${{ env.BUILD_ROOT }}/linux/arm64
+          mkdir -p ${{ env.OUTPUT_DIR }}
           if [ "${{ inputs.build_mode }}" = "release" ]; then
-            go build -ldflags="-s -w" -trimpath -o ${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }} .
+            ./gradlew packageReleaseDistributionForCurrentOS
           else
-            go build -o ${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }} .
+            ./gradlew packageDebugDistributionForCurrentOS
           fi
 
-      - name: Compress binary with UPX 5.2.0 (release)
-        if: ${{ inputs.build_mode == 'release' }}
-        run: |
-          set -e
-          BIN="${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }}"
-          echo "📦 Binary size before UPX: $(du -h "$BIN" | cut -f1)"
-          curl -fSL -o /tmp/upx.tar.xz https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-arm64_linux.tar.xz
-          tar -xf /tmp/upx.tar.xz -C /tmp/
-          UPX_BIN="/tmp/upx-5.2.0-arm64_linux/upx"
-          chmod +x "$UPX_BIN"
-          "$UPX_BIN" --version
-          "$UPX_BIN" "$BIN"
-          echo "📦 Binary size after UPX:  $(du -h "$BIN" | cut -f1)"
-
-      - name: Upload binary (debug)
-        if: ${{ inputs.build_mode == 'debug' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ env.APP_NAME }}-linux-arm64
-          path: ${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }}
-          retention-days: 7
-
-      - name: Package .deb & .rpm (release)
-        if: ${{ inputs.build_mode == 'release' }}
+      - name: Collect artifacts
         shell: bash
         run: |
           set -e
-          BIN="${{ env.BUILD_ROOT }}/linux/arm64/${{ env.APP_NAME }}"
-          test -f "$BIN" || { echo "❌ Binary not found at $BIN"; exit 1; }
+          mkdir -p ${{ env.OUTPUT_DIR }}
+          find ${{ env.SRC_ROOT }}/desktopApp/build/compose/binaries \
+            \( -name "*.deb" -o -name "*.rpm" \) \
+            -exec cp {} ${{ env.OUTPUT_DIR }}/ \;
 
-          sudo apt-get install -y dpkg-dev fakeroot rpm
-          PKG="deb_pkg"
-          mkdir -p ${PKG}/usr/bin
-          mkdir -p ${PKG}/usr/share/applications
-          for s in 16 32 48 64 128 256 512; do
-            mkdir -p ${PKG}/usr/share/icons/hicolor/${s}x${s}/apps
+          cd ${{ env.OUTPUT_DIR }}
+          for f in *.deb; do
+            [ -f "$f" ] && mv "$f" "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.deb"
           done
-          mkdir -p ${PKG}/DEBIAN
-          cp "$BIN" ${PKG}/usr/bin/${{ env.APP_NAME }}
-          chmod 755 ${PKG}/usr/bin/${{ env.APP_NAME }}
-
-          RES="${{ github.workspace }}/manager/resources/linux"
-          cp ${RES}/16/LianT.png  ${PKG}/usr/share/icons/hicolor/16x16/apps/LianT.png
-          cp ${RES}/32/LianT.png  ${PKG}/usr/share/icons/hicolor/32x32/apps/LianT.png
-          cp ${RES}/48/LianT.png  ${PKG}/usr/share/icons/hicolor/48x48/apps/LianT.png
-          cp ${RES}/64/LianT.png  ${PKG}/usr/share/icons/hicolor/64x64/apps/LianT.png
-          cp ${RES}/128/LianT.png ${PKG}/usr/share/icons/hicolor/128x128/apps/LianT.png
-          cp ${RES}/256/LianT.png ${PKG}/usr/share/icons/hicolor/256x256/apps/LianT.png
-          cp ${RES}/512/LianT.png ${PKG}/usr/share/icons/hicolor/512x512/apps/LianT.png
-          cp ${RES}/LianT.desktop ${PKG}/usr/share/applications/LianT.desktop
-
-          cat > ${PKG}/DEBIAN/control <<EOF
-          Package: liant
-          Version: ${{ env.APP_VERSION }}
-          Section: utils
-          Priority: optional
-          Architecture: arm64
-          Maintainer: LianT Team
-          Description: LianT Manager
-           Cross-platform manager tool.
-          EOF
-          sed -i 's/\r$//' ${PKG}/DEBIAN/control
-          dpkg-deb --build --root-owner-group ${PKG} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.deb"
-          echo "✅ Generated .deb: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.deb"
-
-          RPMTOP="${HOME}/rpmbuild"
-          mkdir -p ${RPMTOP}/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-          BR="${RPMTOP}/BUILDROOT"
-          mkdir -p ${BR}/usr/bin
-          mkdir -p ${BR}/usr/share/applications
-          for s in 16 32 48 64 128 256 512; do
-            mkdir -p ${BR}/usr/share/icons/hicolor/${s}x${s}/apps
+          for f in *.rpm; do
+            [ -f "$f" ] && mv "$f" "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm"
           done
-          cp "$BIN" ${BR}/usr/bin/${{ env.APP_NAME }}
-          chmod 755 ${BR}/usr/bin/${{ env.APP_NAME }}
-          cp ${RES}/16/LianT.png  ${BR}/usr/share/icons/hicolor/16x16/apps/LianT.png
-          cp ${RES}/32/LianT.png  ${BR}/usr/share/icons/hicolor/32x32/apps/LianT.png
-          cp ${RES}/48/LianT.png  ${BR}/usr/share/icons/hicolor/48x48/apps/LianT.png
-          cp ${RES}/64/LianT.png  ${BR}/usr/share/icons/hicolor/64x64/apps/LianT.png
-          cp ${RES}/128/LianT.png ${BR}/usr/share/icons/hicolor/128x128/apps/LianT.png
-          cp ${RES}/256/LianT.png ${BR}/usr/share/icons/hicolor/256x256/apps/LianT.png
-          cp ${RES}/512/LianT.png ${BR}/usr/share/icons/hicolor/512x512/apps/LianT.png
-          cp ${RES}/LianT.desktop ${BR}/usr/share/applications/LianT.desktop
 
-          cat > ${RPMTOP}/SPECS/LianT.spec <<EOF
-          Name:           liant
-          Version:        ${{ env.APP_VERSION }}
-          Release:        1%{?dist}
-          Summary:        LianT Manager
-          License:        Proprietary
-          BuildArch:      aarch64
+          echo "📦 Output contents:"
+          ls -lh ${{ env.OUTPUT_DIR }}/
 
-          %description
-          Cross-platform manager tool.
-
-          %install
-          mkdir -p %{buildroot}/usr/bin
-          cp ${BR}/usr/bin/LianT %{buildroot}/usr/bin/LianT
-          chmod 755 %{buildroot}/usr/bin/LianT
-          mkdir -p %{buildroot}/usr/share/applications
-          cp ${BR}/usr/share/applications/LianT.desktop %{buildroot}/usr/share/applications/LianT.desktop
-          for s in 16 32 48 64 128 256 512; do
-            mkdir -p %{buildroot}/usr/share/icons/hicolor/\${s}x\${s}/apps
-          done
-          cp ${BR}/usr/share/icons/hicolor/16x16/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/16x16/apps/LianT.png
-          cp ${BR}/usr/share/icons/hicolor/32x32/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/32x32/apps/LianT.png
-          cp ${BR}/usr/share/icons/hicolor/48x48/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/48x48/apps/LianT.png
-          cp ${BR}/usr/share/icons/hicolor/64x64/apps/LianT.png   %{buildroot}/usr/share/icons/hicolor/64x64/apps/LianT.png
-          cp ${BR}/usr/share/icons/hicolor/128x128/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/128x128/apps/LianT.png
-          cp ${BR}/usr/share/icons/hicolor/256x256/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/LianT.png
-          cp ${BR}/usr/share/icons/hicolor/512x512/apps/LianT.png %{buildroot}/usr/share/icons/hicolor/512x512/apps/LianT.png
-
-          %files
-          /usr/bin/LianT
-          /usr/share/applications/LianT.desktop
-          /usr/share/icons/hicolor/16x16/apps/LianT.png
-          /usr/share/icons/hicolor/32x32/apps/LianT.png
-          /usr/share/icons/hicolor/48x48/apps/LianT.png
-          /usr/share/icons/hicolor/64x64/apps/LianT.png
-          /usr/share/icons/hicolor/128x128/apps/LianT.png
-          /usr/share/icons/hicolor/256x256/apps/LianT.png
-          /usr/share/icons/hicolor/512x512/apps/LianT.png
-
-          %post
-          /bin/touch --no-create /usr/share/icons/hicolor 2>/dev/null || true
-          [ -x /usr/bin/gtk-update-icon-cache ] && /usr/bin/gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
-          [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
-
-          %postun
-          [ -x /usr/bin/gtk-update-icon-cache ] && /usr/bin/gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
-          [ -x /usr/bin/update-desktop-database ] && /usr/bin/update-desktop-database 2>/dev/null || true
-          EOF
-
-          rpmbuild -bb \
-            --define "_topdir ${RPMTOP}" \
-            --define "_buildroot ${BR}" \
-            --define "_rpmdir ${RPMTOP}/RPMS" \
-            ${RPMTOP}/SPECS/LianT.spec
-          find ${RPMTOP}/RPMS -name "*.rpm" -exec cp {} "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm" \;
-          echo "✅ Generated .rpm: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm"
-
-          mv *.deb *.rpm ${{ env.OUTPUT_DIR }}/
-
-      - name: Upload packages (release)
-        if: ${{ inputs.build_mode == 'release' }}
+      - name: Upload packages
         uses: actions/upload-artifact@v7
         with:
           name: packages-linux-arm64
           path: |
-            ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.deb
-            ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm
+            ${{ env.OUTPUT_DIR }}/*.deb
+            ${{ env.OUTPUT_DIR }}/*.rpm
           if-no-files-found: error
           retention-days: 30
 
   # ======================================================================
-  # Windows amd64
+  # Windows amd64 — CMP build → Inno Setup .exe installer
   # ======================================================================
   windows-amd64:
     if: ${{ inputs.windows_amd64 }}
@@ -453,109 +196,119 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-java@v4
         with:
-          go-version: '1.26.5'
-          cache: true
-          cache-dependency-path: manager/desktop/go.sum
+          distribution: 'temurin'
+          java-version: '21'
 
-      - name: Install MinGW-w64
-        run: choco install mingw -y --no-progress
-        shell: pwsh
+      - uses: gradle/actions/setup-gradle@v3
 
-      - name: Verify CGO toolchain
+      - name: Build CMP distributable (release / debug)
         shell: pwsh
         run: |
-          $mingwPath = "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin"
-          if (Test-Path $mingwPath) {
-            $env:Path = "$mingwPath;$env:Path"
-          }
-          gcc --version
-          go env CGO_ENABLED
-
-      - name: Build binary
-        shell: pwsh
-        run: |
-          # Ensure MinGW is in PATH for this step
-          $mingwPath = "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin"
-          if (Test-Path $mingwPath) {
-            $env:Path = "$mingwPath;$env:Path"
-          }
-          $env:CGO_ENABLED = "1"
-          $env:GOOS = "windows"
-          $env:GOARCH = "amd64"
-
-          New-Item -ItemType Directory -Force -Path "${{ env.BUILD_ROOT }}\windows\amd64" | Out-Null
+          New-Item -ItemType Directory -Force -Path "${{ env.OUTPUT_DIR }}" | Out-Null
           if ("${{ inputs.build_mode }}" -eq "release") {
-            go build -ldflags="-s -w -H=windowsgui" -trimpath -o "${{ env.BUILD_ROOT }}\windows\amd64\${{ env.APP_NAME }}.exe" .
+            ./gradlew createDistributable
           } else {
-            go build -o "${{ env.BUILD_ROOT }}\windows\amd64\${{ env.APP_NAME }}.exe" .
+            ./gradlew createDistributable
           }
 
-      - name: Compress binary with UPX 5.2.0 (release)
+      - name: Verify distributable layout
+        shell: pwsh
+        run: |
+          $dist = "${{ env.SRC_ROOT }}\desktopApp\build\compose\binaries\main\app"
+          if (Test-Path "$dist\LianT.exe") {
+            Write-Host "✅ Found LianT.exe in $dist"
+          } else {
+            Write-Host "🔍 Searching for LianT.exe..."
+            Get-ChildItem "${{ env.SRC_ROOT }}\desktopApp\build" -Recurse -Filter "LianT.exe" |
+              ForEach-Object { Write-Host "  Found: $($_.FullName) ($([math]::Round($_.Length/1MB,2)) MB)" }
+          }
+          Write-Host "📦 Distributable contents:"
+          Get-ChildItem $dist -Recurse -File | ForEach-Object {
+            Write-Host "  $($_.FullName.Replace($dist,'))  ($([math]::Round($_.Length/1KB,1)) KB)"
+          }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          Write-Host "✅ Inno Setup installed"
+
+      - name: Compress binaries with UPX 5.2.0 (release only)
         if: ${{ inputs.build_mode == 'release' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $BIN = "${{ env.BUILD_ROOT }}\windows\amd64\${{ env.APP_NAME }}.exe"
-          $sizeBefore = [math]::Round((Get-Item $BIN).Length/1MB, 2)
-          Write-Host "📦 Binary size before UPX: $sizeBefore MB"
+          $DIST = "${{ env.SRC_ROOT }}\desktopApp\build\compose\binaries\main\app"
+          if (-not (Test-Path $DIST)) {
+            $DIST = "${{ env.SRC_ROOT }}\desktopApp\build\compose\binaries\main-release\app"
+          }
+          Write-Host "📦 UPX target dir: $DIST"
 
-          # Download UPX 5.2.0 for Windows
           $upxZip = "$env:TEMP\upx520.zip"
           Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip" -OutFile $upxZip
           Expand-Archive -Path $upxZip -DestinationPath "$env:TEMP\upx520" -Force
           $upxExe = Get-ChildItem "$env:TEMP\upx520" -Recurse -Filter "upx.exe" | Select-Object -First 1
-          if (-not $upxExe) { throw "❌ upx.exe not found in extracted archive" }
+          if (-not $upxExe) { throw "❌ upx.exe not found" }
           Write-Host "🔧 Using UPX: $($upxExe.FullName)"
           & $upxExe.FullName --version
 
-          # Run UPX on the binary
-          & $upxExe.FullName $BIN
-          if ($LASTEXITCODE -ne 0) { throw "❌ UPX compression failed (exit $LASTEXITCODE)" }
+          # 压缩主程序
+          $mainExe = "$DIST\${{ env.APP_NAME }}.exe"
+          if (Test-Path $mainExe) {
+            $before = [math]::Round((Get-Item $mainExe).Length/1MB, 2)
+            & $upxExe.FullName $mainExe
+            $after = [math]::Round((Get-Item $mainExe).Length/1MB, 2)
+            Write-Host "📦 Main: $before MB → $after MB"
+          }
 
-          $sizeAfter = [math]::Round((Get-Item $BIN).Length/1MB, 2)
-          Write-Host "📦 Binary size after UPX:  $sizeAfter MB"
+          # 顺便压一下其他 EXE/DLL（JVM 相关）
+          Get-ChildItem $DIST -Recurse -Include *.exe,*.dll -File |
+            Where-Object { $_.FullName -ne $upxExe.FullName } |
+            ForEach-Object {
+              $b = [math]::Round($_.Length/1MB,2)
+              & $upxExe.FullName $_.FullName 2>$null
+              $a = [math]::Round((Get-Item $_.FullName).Length/1MB,2)
+              Write-Host "  UPX: $($_.Name) $b MB → $a MB"
+            }
 
-      - name: Upload binary (debug)
-        if: ${{ inputs.build_mode == 'debug' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ env.APP_NAME }}-windows-amd64
-          path: ${{ env.BUILD_ROOT }}/windows/amd64/${{ env.APP_NAME }}.exe
-          retention-days: 7
-
-      - name: Install Inno Setup (release)
-        if: ${{ inputs.build_mode == 'release' }}
-        shell: pwsh
-        run: |
-          choco install innosetup -y
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-
-      - name: Package Windows .exe installer (release)
-        if: ${{ inputs.build_mode == 'release' }}
+      - name: Build .exe installer with Inno Setup
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $APP     = "${{ env.APP_NAME }}"
           $VERSION = "${{ env.APP_VERSION }}"
-          $BUILD   = "${{ env.BUILD_ROOT }}\windows\amd64"
+          $SRC     = "${{ env.SRC_ROOT }}"
+          $DIST    = "$SRC\desktopApp\build\compose\binaries\main\app"
           $RES     = "${{ github.workspace }}\manager\resources\windows"
-          $PKG     = "pkg_win"
+          $PKG     = "$SRC\pkg_win"
           $OUT     = "${{ env.OUTPUT_DIR }}"
 
           Write-Host "🔍 APP=$APP  VERSION=$VERSION"
-          Write-Host "🔍 BUILD=$BUILD"
+          Write-Host "🔍 DIST=$DIST"
           Write-Host "🔍 RES=$RES"
 
-          # ---- 校验二进制 ----
-          $exePath = "$BUILD\$APP.exe"
+          # ---- 校验主程序 ----
+          $exePath = "$DIST\$APP.exe"
           if (-not (Test-Path $exePath)) {
-            throw "❌ Binary not found at $exePath"
+            # 尝试另一种常见路径
+            $altDist = "${{ env.SRC_ROOT }}\desktopApp\build\compose\binaries\main-release\app"
+            if (Test-Path "$altDist\$APP.exe") {
+              $DIST = $altDist
+              $exePath = "$DIST\$APP.exe"
+            } else {
+              Write-Host "🔍 Searching for distributable..."
+              Get-ChildItem "${{ env.SRC_ROOT }}\desktopApp\build" -Recurse -Filter "*.exe" -File |
+                Where-Object { $_.Name -eq "$APP.exe" -or $_.Name -eq "LianT.exe" } |
+                ForEach-Object { Write-Host "  Found: $($_.FullName)" }
+              throw "❌ Main executable not found at $exePath"
+            }
           }
-          Write-Host "✅ Binary found: $exePath ($([math]::Round((Get-Item $exePath).Length/1MB,2)) MB)"
+          Write-Host "✅ Main executable: $exePath ($([math]::Round((Get-Item $exePath).Length/1MB,2)) MB)"
 
-          # ---- 确定图标文件 ----
+          # ---- 确定图标 ----
           $iconFile = ""
           if (Test-Path "$RES\$APP.ico") {
             $iconFile = "$RES\$APP.ico"
@@ -565,36 +318,32 @@ jobs:
             $found = Get-ChildItem $RES -Filter "*.ico" -File -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($found) { $iconFile = $found.FullName }
           }
-          if ($iconFile) {
-            Write-Host "✅ Using icon: $iconFile"
-          } else {
-            Write-Host "⚠️ No .ico found in $RES, installer will use default icon"
-          }
+          if ($iconFile) { Write-Host "✅ Using icon: $iconFile" }
+          else           { Write-Host "⚠️ No .ico found, installer will use default icon" }
 
           # ---- 准备打包目录 ----
           New-Item -ItemType Directory -Force -Path $PKG | Out-Null
-          Copy-Item $exePath "$PKG\$APP.exe" -Force
-          Write-Host "✅ Copied $APP.exe into $PKG\"
+          # 复制整个 distributable 目录内容（含所有 DLL、运行时依赖）
+          Get-ChildItem $DIST -Recurse -File | ForEach-Object {
+            $rel = $_.FullName.Substring($DIST.Length).TrimStart('\','/')
+            $dest = Join-Path $PKG $rel
+            New-Item -ItemType Directory -Force -Path (Split-Path $dest -Parent) | Out-Null
+            Copy-Item $_.FullName $dest -Force
+          }
+          Write-Host "✅ Copied distributable into $PKG\"
+          Write-Host "📦 Package contents (top-level):"
+          Get-ChildItem $PKG -File | ForEach-Object { Write-Host "  $($_.Name)  ($([math]::Round($_.Length/1MB,2)) MB)" }
 
           if ($iconFile) {
             Copy-Item $iconFile "$PKG\app.ico" -Force
-            Write-Host "✅ Copied icon into $PKG\app.ico"
+            Write-Host "✅ Copied icon → $PKG\app.ico"
           }
 
-          # 复制其他资源文件（非 .ico）
-          if (Test-Path $RES) {
-            Get-ChildItem $RES -File | Where-Object { $_.Extension -ne ".ico" } | ForEach-Object {
-              Copy-Item $_.FullName "$PKG\" -Force
-              Write-Host "  + $($_.Name)"
-            }
-          }
-
-          # ---- 构建 Inno Setup 脚本 ----
+          # ---- 写 Inno Setup 脚本 ----
           $issPath = "$PKG\installer.iss"
-
           $lines = @()
           $lines += "; -- Inno Setup Script for $APP $VERSION --"
-          $lines += "; Generated by GitHub Actions workflow"
+          $lines += "; Generated by GitHub Actions workflow (CMP build)"
           $lines += ""
           $lines += "[Setup]"
           $lines += "AppName=$APP"
@@ -612,18 +361,12 @@ jobs:
             $lines += "SetupIconFile=app.ico"
           }
           $lines += ""
+          $lines += "[Dirs]"
+          $lines += "Name: ""{app}""; Flags: uninsalwaysuninstall"
+          $lines += ""
           $lines += "[Files]"
-          $lines += "Source: ""$APP.exe""; DestDir: ""{app}""; Flags: ignoreversion"
-          if ($iconFile) {
-            $lines += "Source: ""app.ico""; DestDir: ""{app}""; Flags: ignoreversion"
-          }
-          # 额外文件
-          $extraFiles = Get-ChildItem "$PKG\*" -File | Where-Object { $_.Name -notin @("$APP.exe","app.ico","installer.iss") }
-          if ($extraFiles) {
-            foreach ($f in $extraFiles) {
-              $lines += "Source: ""$($f.Name)""; DestDir: ""{app}""; Flags: ignoreversion"
-            }
-          }
+          # 递归打包整个目录
+          $lines += "Source: ""*""; DestDir: ""{app}""; Flags: ignoreversion recursesubdirs createallsubdirs"
           $lines += ""
           $lines += "[Icons]"
           $lines += "Name: ""{group}\$APP""; Filename: ""{app}\$APP.exe""; IconFilename: ""{app}\app.ico"""
@@ -635,20 +378,11 @@ jobs:
           $lines += "[Run]"
           $lines += "Filename: ""{app}\$APP.exe""; Description: ""Launch $APP""; Flags: nowait postinstall skipifsilent"
 
-          # 写入文件（UTF8 无 BOM）
           $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
           [System.IO.File]::WriteAllLines($issPath, $lines, $utf8NoBom)
-          Write-Host "📝 installer.iss written to $issPath"
+          Write-Host "📝 installer.iss written"
 
-          # 显示脚本内容
-          Write-Host "📝 installer.iss contents:"
-          Get-Content $issPath | ForEach-Object { Write-Host "  $_" }
-
-          # 确认包目录内容
-          Write-Host "📦 Package contents:"
-          Get-ChildItem $PKG | ForEach-Object { Write-Host "  $($_.Name)  ($($_.Length) bytes)" }
-
-          # ---- 查找 iscc 编译器 ----
+          # ---- 找 iscc 编译器 ----
           $iscc = Get-Command iscc -ErrorAction SilentlyContinue
           if (-not $iscc) {
             $candidates = @(
@@ -661,9 +395,7 @@ jobs:
               if (Test-Path $c) { $iscc = $c; break }
             }
           }
-          if (-not $iscc) {
-            throw "❌ iscc.exe not found after Inno Setup installation"
-          }
+          if (-not $iscc) { throw "❌ iscc.exe not found after Inno Setup installation" }
           Write-Host "🔧 Using iscc: $iscc"
 
           # ---- 编译 ----
@@ -671,9 +403,9 @@ jobs:
           & $iscc "installer.iss"
           $exitCode = $LASTEXITCODE
           Pop-Location
-          if ($exitCode -ne 0) { throw "Inno Setup 编译失败 (exit code $exitCode)" }
+          if ($exitCode -ne 0) { throw "❌ Inno Setup 编译失败 (exit code $exitCode)" }
 
-          # ---- 确认输出文件 ----
+          # ---- 确认产物 ----
           $outputFile = "$OUT\${APP}_${VERSION}_amd64.exe"
           if (Test-Path $outputFile) {
             $size = (Get-Item $outputFile).Length
@@ -685,21 +417,20 @@ jobs:
             } else {
               Write-Host "📁 OUTPUT_DIR contents:"
               Get-ChildItem $OUT | ForEach-Object { Write-Host "  $($_.Name)" }
-              throw "❌ Installer output not found at expected path: $outputFile"
+              throw "❌ Installer not found at expected path: $outputFile"
             }
           }
 
-      - name: Upload packages (release)
-        if: ${{ inputs.build_mode == 'release' }}
+      - name: Upload packages
         uses: actions/upload-artifact@v7
         with:
           name: packages-windows-amd64
-          path: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.exe
+          path: ${{ env.OUTPUT_DIR }}/*.exe
           if-no-files-found: error
           retention-days: 30
 
   # ======================================================================
-  # macOS arm64
+  # macOS arm64 — Compose Desktop native package (.dmg)
   # ======================================================================
   darwin-arm64:
     if: ${{ inputs.darwin_arm64 }}
@@ -711,107 +442,47 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v7
+      - name: Install system deps
+        run: |
+          # macOS 不需要额外系统库，Compose Desktop 自带 Skia / Metal 后端
+          echo "✅ macOS runner 自带 Xcode CLI 和签名工具"
+
+      - uses: actions/setup-java@v4
         with:
-          go-version: '1.26.5'
-          cache: true
-          cache-dependency-path: manager/desktop/go.sum
+          distribution: 'temurin'
+          java-version: '21'
 
-      - name: Verify CGO toolchain
-        run: |
-          which clang || (xcode-select --install && echo "Xcode CLI installed")
-          clang --version
-          go env CGO_ENABLED
+      - uses: gradle/actions/setup-gradle@v3
 
-      - name: Build binary
+      - name: Build native package
         run: |
-          export CGO_ENABLED=1 GOOS=darwin GOARCH=arm64
-          mkdir -p ${{ env.BUILD_ROOT }}/darwin/arm64
+          mkdir -p ${{ env.OUTPUT_DIR }}
           if [ "${{ inputs.build_mode }}" = "release" ]; then
-            go build -ldflags="-s -w" -trimpath -o ${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }} .
+            ./gradlew packageReleaseDistributionForCurrentOS
           else
-            go build -o ${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }} .
+            ./gradlew packageDebugDistributionForCurrentOS
           fi
 
-      - name: Upload binary (debug)
-        if: ${{ inputs.build_mode == 'debug' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ env.APP_NAME }}-darwin-arm64
-          path: ${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }}
-          retention-days: 7
-
-      - name: Package macOS .dmg (release)
-        if: ${{ inputs.build_mode == 'release' }}
+      - name: Collect artifacts
         shell: bash
         run: |
           set -e
-          BIN="${{ env.BUILD_ROOT }}/darwin/arm64/${{ env.APP_NAME }}"
-          test -f "$BIN" || { echo "❌ Binary not found at $BIN"; exit 1; }
+          mkdir -p ${{ env.OUTPUT_DIR }}
+          find ${{ env.SRC_ROOT }}/desktopApp/build/compose/binaries \
+            -name "*.dmg" -exec cp {} ${{ env.OUTPUT_DIR }}/ \;
 
-          APP="${APP_NAME}.app"
-          mkdir -p ${APP}/Contents/MacOS
-          mkdir -p ${APP}/Contents/Resources
+          cd ${{ env.OUTPUT_DIR }}
+          for f in *.dmg; do
+            [ -f "$f" ] && mv "$f" "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg"
+          done
 
-          cp "$BIN" ${APP}/Contents/MacOS/${{ env.APP_NAME }}
-          chmod +x ${APP}/Contents/MacOS/${{ env.APP_NAME }}
+          echo "📦 Output contents:"
+          ls -lh ${{ env.OUTPUT_DIR }}/
 
-          RES="${{ github.workspace }}/manager/resources/darwin"
-          if [ -f "${RES}/LianT.icns" ]; then
-            cp "${RES}/LianT.icns" ${APP}/Contents/Resources/AppIcon.icns
-          elif [ -f "${RES}/LianT.png" ]; then
-            cp "${RES}/LianT.png"  ${APP}/Contents/Resources/AppIcon.png
-          fi
-
-          if [ -d "${RES}" ]; then
-            for f in "${RES}"/*; do
-              fname=$(basename "$f")
-              [ "$fname" = "LianT.icns" ] || [ "$fname" = "LianT.png" ] && continue
-              cp -r "$f" ${APP}/Contents/Resources/ 2>/dev/null || true
-            done
-          fi
-
-          cat > ${APP}/Contents/Info.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleName</key>              <string>${APP_NAME}</string>
-            <key>CFBundleDisplayName</key>       <string>${APP_NAME}</string>
-            <key>CFBundleIdentifier</key>        <string>com.liant.manager</string>
-            <key>CFBundleVersion</key>           <string>${{ env.APP_VERSION }}</string>
-            <key>CFBundleShortVersionString</key><string>${{ env.APP_VERSION }}</string>
-            <key>CFBundleExecutable</key>        <string>${APP_NAME}</string>
-            <key>CFBundlePackageType</key>       <string>APPL</string>
-            <key>CFBundleSignature</key>         <string>????</string>
-            <key>LSMinimumSystemVersion</key>    <string>10.13</string>
-            <key>NSHighResolutionCapable</key>   <true/>
-            <key>LSApplicationCategoryType</key> <string>public.app-category.utilities</string>
-          </dict>
-          </plist>
-          EOF
-
-          echo "✅ .app bundle created"
-
-          DMG_DIR="dmg_stage"
-          mkdir -p ${DMG_DIR}
-          cp -r ${APP} ${DMG_DIR}/
-          ln -sf /Applications ${DMG_DIR}/Applications
-
-          hdiutil create -volname "${APP_NAME}" \
-            -srcfolder ${DMG_DIR} \
-            -ov -format UDZO \
-            "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg"
-
-          echo "✅ Generated .dmg: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg"
-
-          mv "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg" ${{ env.OUTPUT_DIR }}/
-
-      - name: Upload packages (release)
-        if: ${{ inputs.build_mode == 'release' }}
+      - name: Upload packages
         uses: actions/upload-artifact@v7
         with:
           name: packages-darwin-arm64
-          path: ${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg
+          path: ${{ env.OUTPUT_DIR }}/*.dmg
           if-no-files-found: error
           retention-days: 30
