@@ -32,44 +32,65 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-java@v5
-        with: { distribution: 'temurin', java-version: '21' }
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
       - uses: gradle/actions/setup-gradle@v6
-      - run: echo "toolchainVersion=21" > manager/desktop/gradle/gradle-daemon-jvm.properties
+
+      - name: Pin Gradle toolchain
+        run: echo "toolchainVersion=21" > manager/desktop/gradle/gradle-daemon-jvm.properties
+
       - name: Build bare app
         working-directory: manager/desktop
         run: ./gradlew :desktopApp:createDistributable --no-daemon
+
       - name: UPX compress
         working-directory: manager/desktop
         run: |
           7z e -y https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip upx.exe
           ./upx.exe -9 desktopApp/build/compose/binaries/main/app/*.exe
           ./upx.exe -9 desktopApp/build/compose/binaries/main/app/*.dll
+
       - name: Build exe (Inno Setup)
         run: |
           choco install innosetup -y --no-progress
           iscc manager/desktop/installer.iss
           mv manager/desktop/Output/LianT.exe LianT_${{ inputs.version }}_amd64.exe
+
       - uses: actions/upload-artifact@v7
-        with: { name: LianT-Windows, path: LianT_${{ inputs.version }}_amd64.exe }
+        with:
+          name: LianT-Windows
+          path: LianT_${{ inputs.version }}_amd64.exe
 
   darwin-arm64:
     if: ${{ inputs.darwin_arm64 }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-java@v5
-        with: { distribution: 'temurin', java-version: '21', architecture: 'arm64' }
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          architecture: 'arm64'
+
       - uses: gradle/actions/setup-gradle@v6
-      - run: echo "toolchainVersion=21" > manager/desktop/gradle/gradle-daemon-jvm.properties
+
+      - name: Pin Gradle toolchain
+        run: echo "toolchainVersion=21" > manager/desktop/gradle/gradle-daemon-jvm.properties
+
       - name: Build bare app
         working-directory: manager/desktop
         run: ./gradlew :desktopApp:createDistributable --no-daemon
+
       - name: Make app bundle
         run: |
           APP="manager/desktop/desktopApp/build/compose/binaries/main/app"
           mkdir -p LianT.app/Contents/{MacOS,Resources}
-          cp -r $APP/* LianT.app/Contents/MacOS/
+          cp -r "$APP"/* LianT.app/Contents/MacOS/
           cp manager/resources/darwin/LianT.icns LianT.app/Contents/Resources/
           cat << 'EOF' > LianT.app/Contents/Info.plist
           <?xml version="1.0"?>
@@ -82,27 +103,41 @@ jobs:
             <key>CFBundlePackageType</key><string>APPL</string>
           </dict></plist>
           EOF
-      - run: hdiutil create -volname LianT -srcfolder LianT.app -ov -format UDZO LianT_${{ inputs.version }}_arm64.dmg
+
+      - name: Create dmg
+        run: hdiutil create -volname LianT -srcfolder LianT.app -ov -format UDZO LianT_${{ inputs.version }}_arm64.dmg
+
       - uses: actions/upload-artifact@v7
-        with: { name: LianT-macOS-ARM64, path: LianT_${{ inputs.version }}_arm64.dmg }
+        with:
+          name: LianT-macOS-ARM64
+          path: LianT_${{ inputs.version }}_arm64.dmg
 
   darwin-amd64:
     if: ${{ inputs.darwin_amd64 }}
     runs-on: macos-13
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-java@v5
-        with: { distribution: 'temurin', java-version: '21', architecture: 'x64' }
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          architecture: 'x64'
+
       - uses: gradle/actions/setup-gradle@v6
-      - run: echo "toolchainVersion=21" > manager/desktop/gradle/gradle-daemon-jvm.properties
+
+      - name: Pin Gradle toolchain
+        run: echo "toolchainVersion=21" > manager/desktop/gradle/gradle-daemon-jvm.properties
+
       - name: Build bare app
         working-directory: manager/desktop
         run: ./gradlew :desktopApp:createDistributable --no-daemon
+
       - name: Make app bundle
         run: |
           APP="manager/desktop/desktopApp/build/compose/binaries/main/app"
           mkdir -p LianT.app/Contents/{MacOS,Resources}
-          cp -r $APP/* LianT.app/Contents/MacOS/
+          cp -r "$APP"/* LianT.app/Contents/MacOS/
           cp manager/resources/darwin/LianT.icns LianT.app/Contents/Resources/
           cat << 'EOF' > LianT.app/Contents/Info.plist
           <?xml version="1.0"?>
@@ -115,47 +150,62 @@ jobs:
             <key>CFBundlePackageType</key><string>APPL</string>
           </dict></plist>
           EOF
-      - run: hdiutil create -volname LianT -srcfolder LianT.app -ov -format UDZO LianT_${{ inputs.version }}_amd64.dmg
+
+      - name: Create dmg
+        run: hdiutil create -volname LianT -srcfolder LianT.app -ov -format UDZO LianT_${{ inputs.version }}_amd64.dmg
+
       - uses: actions/upload-artifact@v7
-        with: { name: LianT-macOS-Intel, path: LianT_${{ inputs.version }}_amd64.dmg }
+        with:
+          name: LianT-macOS-Intel
+          path: LianT_${{ inputs.version }}_amd64.dmg
 
   linux:
     if: ${{ inputs.linux_amd64 || inputs.linux_arm64 }}
     strategy:
       matrix:
         include:
-          - { name: amd64, runner: ubuntu-latest }
-          - { name: arm64, runner: ubuntu-24.04-arm }
+          - name: amd64
+            runner: ubuntu-latest
+          - name: arm64
+            runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-java@v5
-        with: { distribution: 'temurin', java-version: '21' }
-      - uses: gradle/actions/setup-gradle@v6
-      - run: |
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Prep apt and toolchain pin
+        run: |
           sudo sed -i 's|azure.archive.ubuntu.com|archive.ubuntu.com|g; /packages.microsoft.com/d' /etc/apt/sources.list
           sudo apt-get update -y && sudo apt-get install -y fakeroot
           echo "toolchainVersion=21" > manager/desktop/gradle/gradle-daemon-jvm.properties
+
+      - uses: gradle/actions/setup-gradle@v6
+
       - name: Build bare app
         working-directory: manager/desktop
         run: ./gradlew :desktopApp:createDistributable --no-daemon
+
       - name: Package deb
         run: |
           APP="manager/desktop/desktopApp/build/compose/binaries/main/app"
           PKG="pkg"
-          rm -rf $PKG
-          mkdir -p $PKG/DEBIAN
-          mkdir -p $PKG/usr/bin
-          mkdir -p $PKG/usr/share/applications
+          rm -rf "$PKG"
+          mkdir -p "$PKG"/DEBIAN
+          mkdir -p "$PKG"/usr/bin
+          mkdir -p "$PKG"/usr/share/applications
           for d in manager/resources/linux/*; do
-            sz=$(basename $d)
+            sz=$(basename "$d")
             [[ "$sz" =~ ^[0-9]+$ ]] || continue
-            mkdir -p $PKG/usr/share/icons/hicolor/${sz}x${sz}/apps
-            cp $d/LianT.png $PKG/usr/share/icons/hicolor/${sz}x${sz}/apps/
+            mkdir -p "$PKG"/usr/share/icons/hicolor/${sz}x${sz}/apps
+            cp "$d"/LianT.png "$PKG"/usr/share/icons/hicolor/${sz}x${sz}/apps/
           done
-          cp $APP/LianT $PKG/usr/bin/ && chmod +x $PKG/usr/bin/LianT
-          sed "s|^Exec=.*|Exec=/usr/bin/LianT|; s|^Icon=.*|Icon=LianT|" manager/resources/linux/LianT.desktop > $PKG/usr/share/applications/LianT.desktop
-          cat << 'EOF' > $PKG/DEBIAN/control
+          cp "$APP"/LianT "$PKG"/usr/bin/ && chmod +x "$PKG"/usr/bin/LianT
+          sed "s|^Exec=.*|Exec=/usr/bin/LianT|; s|^Icon=.*|Icon=LianT|" manager/resources/linux/LianT.desktop > "$PKG"/usr/share/applications/LianT.desktop
+          cat << EOF > "$PKG"/DEBIAN/control
           Package: liant
           Version: ${{ inputs.version }}
           Section: utils
@@ -165,6 +215,9 @@ jobs:
           Description: LianT Manager Desktop
            Cross-platform manager tool for LianT service.
           EOF
-          fakeroot dpkg-deb --build $PKG LianT_${{ inputs.version }}_${{ matrix.name }}.deb
+          fakeroot dpkg-deb --build "$PKG" LianT_${{ inputs.version }}_${{ matrix.name }}.deb
+
       - uses: actions/upload-artifact@v7
-        with: { name: LianT-Linux-${{ matrix.name }}, path: LianT_${{ inputs.version }}_${{ matrix.name }}.deb }
+        with:
+          name: LianT-Linux-${{ matrix.name }}
+          path: LianT_${{ inputs.version }}_${{ matrix.name }}.deb
