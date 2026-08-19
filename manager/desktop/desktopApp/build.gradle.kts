@@ -28,6 +28,7 @@ compose.desktop {
                 bundleID = "com.bailensn.liant"
             }
             linux {
+                // 不写死图标，后面你自己的deb脚本控
             }
         }
     }

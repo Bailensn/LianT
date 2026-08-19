@@ -3,372 +3,149 @@ name: Build Manager Desktop (CMP)
 on:
   workflow_dispatch:
     inputs:
-      build_mode:
-        description: 'Build mode'
-        required: true
-        default: 'release'
-        type: choice
-        options:
-          - release
-          - debug
       version:
         description: 'Version'
         required: true
         default: '1.0.0'
-        type: string
-      windows_amd64:
-        description: 'Build Windows amd64'
-        required: false
-        default: true
+      windows:
         type: boolean
+        default: false
       darwin_arm64:
-        description: 'Build macOS arm64'
-        required: false
-        default: false
         type: boolean
+        default: false
       linux_amd64:
-        description: 'Build Linux amd64'
-        required: false
-        default: false
         type: boolean
+        default: false
       linux_arm64:
-        description: 'Build Linux arm64'
-        required: false
-        default: false
         type: boolean
+        default: false
 
 jobs:
-  # ─────────────────────────────────────────────
-  # Windows amd64 → Inno Setup → .exe 安装包
-  # ─────────────────────────────────────────────
-  windows_amd64:
-    if: ${{ inputs.windows_amd64 == true }}
+  # ================== Windows ==================
+  windows:
+    if: ${{ inputs.windows }}
     runs-on: windows-latest
-    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 21 (Temurin)
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
-          java-version: '21'
           distribution: 'temurin'
+          java-version: '21'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+      - uses: gradle/actions/setup-gradle@v3
 
-      - name: Grant execute permission for gradlew
-        run: |
-          cd manager/desktop
-          attrib -R gradlew
-        shell: cmd
-
-      - name: Build CMP bare directory (no MSI)
+      - name: Build bare app
         working-directory: manager/desktop
         run: ./gradlew :desktopApp:createDistributable --no-daemon
-        shell: bash
 
-      - name: Verify bare directory
+      - name: UPX compress
         working-directory: manager/desktop
         run: |
-          ls -la desktopApp/build/compose/binaries/main/app/
-          ls -la desktopApp/build/compose/binaries/main/app/LianT*.exe || echo "check exe name"
-        shell: bash
+          7z e -y https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip upx.exe
+          ./upx.exe -9 desktopApp/build/compose/binaries/main/app/*.exe
+          ./upx.exe -9 desktopApp/build/compose/binaries/main/app/*.dll
 
-      - name: Download UPX
+      # 你的 Inno Setup 脚本自己控，Source 指向下面这个目录
+      - name: Build installer (Inno Setup)
         run: |
-          curl -L -o upx.zip https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip
-          unzip -o upx.zip -d upx-temp
-          move upx-temp\upx-5.2.0-win64\upx.exe upx.exe
-          del upx.zip
-          rmdir /s /q upx-temp
-          .\upx.exe --version
-        shell: cmd
-
-      - name: UPX compress all .exe and .dll
-        working-directory: manager/desktop
-        run: |
-          $ErrorActionPreference = "Continue"
-          Get-ChildItem -Path desktopApp/build/compose/binaries/main/app -Recurse -Include *.exe,*.dll |
-            ForEach-Object {
-              Write-Host "Compressing $($_.FullName)"
-              & "..\..\..\upx.exe" --best --compress-exports=1 --strip-relocs=1 $_.FullName
-            }
-        shell: pwsh
-
-      - name: Download Inno Setup
-        run: |
-          curl -L -o innosetup.exe https://files.jrsoftware.org/is/6/innosetup-6.4.3.exe
-          Start-Process -FilePath .\innosetup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/ALLUSERS" -Wait
-        shell: pwsh
-
-      - name: Generate Inno Setup script
-        run: |
-          $version = "${{ inputs.version }}"
-          $appDir  = Resolve-Path "manager/desktop/desktopApp/build/compose/binaries/main/app"
-          $iss = @"
-          [Setup]
-          AppName=LianT
-          AppVersion=$version
-          AppPublisher=LianT Team
-          DefaultDirName={pf}\LianT
-          DefaultGroupName=LianT
-          OutputDir=.
-          OutputBaseFilename=LianT_${version}_amd64
-          SetupIconFile=manager/resources/windows/LianT.ico
-          Compression=lzma2
-          SolidCompression=yes
-          PrivilegesRequired=admin
-
-          [Files]
-          Source: "$appDir\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
-
-          [Icons]
-          Name: "{group}\LianT"; Filename: "{app}\LianT.exe"; IconFilename: "{app}\LianT.exe"
-          Name: "{commondesktop}\LianT"; Filename: "{app}\LianT.exe"; IconFilename: "{app}\LianT.exe"
-
-          [Run]
-          Filename: "{app}\LianT.exe"; Description: "Launch LianT"; Flags: nowait postinstall skipifsilent
-          "@
-          $iss | Out-File -FilePath LianT.iss -Encoding UTF8
-          Write-Host "--- LianT.iss ---"
-          Get-Content LianT.iss
-        shell: pwsh
-
-      - name: Build installer with Inno Setup
-        run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" LianT.iss
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ls LianT_*.exe
-        shell: pwsh
-
-      - name: Rename artifact
-        run: |
-          $ver = "${{ inputs.version }}"
-          Move-Item -Force "LianT_${ver}_amd64.exe" "LianT_${ver}_amd64.exe"
-        shell: pwsh
+          choco install innosetup -y
+          iscc manager/desktop/installer.iss
+          mv manager/desktop/Output/LianT.exe LianT_${{ inputs.version }}_amd64.exe
 
       - uses: actions/upload-artifact@v4
         with:
-          name: LianT-windows-amd64
+          name: LianT-Windows
           path: LianT_${{ inputs.version }}_amd64.exe
 
-  # ─────────────────────────────────────────────
-  # macOS arm64 → hdiutil → .dmg
-  # ─────────────────────────────────────────────
-  darwin_arm64:
-    if: ${{ inputs.darwin_arm64 == true }}
-    runs-on: macos-14
-    timeout-minutes: 40
+  # ================== macOS ==================
+  darwin:
+    if: ${{ inputs.darwin_arm64 }}
+    runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 21 (Temurin)
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
-          java-version: '21'
           distribution: 'temurin'
+          java-version: '21'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+      - uses: gradle/actions/setup-gradle@v3
 
-      - name: Build CMP bare directory
+      - name: Build bare app
         working-directory: manager/desktop
         run: ./gradlew :desktopApp:createDistributable --no-daemon
 
-      - name: Verify bare directory
-        working-directory: manager/desktop
-        run: ls -la desktopApp/build/compose/binaries/main/app/
-
-      - name: Prepare .app bundle
+      - name: Create .app bundle
         run: |
-          APP_DIR="manager/desktop/desktopApp/build/compose/binaries/main/app"
-          BUNDLE="LianT.app"
-          mkdir -p "$BUNDLE/Contents/MacOS"
-          mkdir -p "$BUNDLE/Contents/Resources"
-          cp -R "$APP_DIR/." "$BUNDLE/Contents/MacOS/"
-          cp manager/resources/darwin/LianT.icns "$BUNDLE/Contents/Resources/"
-
-          cat > "$BUNDLE/Contents/Info.plist" <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleName</key><string>LianT</string>
-            <key>CFBundleDisplayName</key><string>LianT</string>
-            <key>CFBundleIdentifier</key><string>com.bailensn.liant</string>
-            <key>CFBundleExecutable</key><string>LianT</string>
-            <key>CFBundleIconFile</key><string>LianT.icns</string>
-            <key>CFBundlePackageType</key><string>APPL</string>
-            <key>CFBundleShortVersionString</key><string>${{ inputs.version }}</string>
-            <key>LSMinimumSystemVersion</key><string>11.0</string>
-          </dict>
-          </plist>
+          APP="manager/desktop/desktopApp/build/compose/binaries/main/app"
+          mkdir -p LianT.app/Contents/MacOS
+          mkdir -p LianT.app/Contents/Resources
+          cp -r $APP/* LianT.app/Contents/MacOS/
+          cp manager/resources/darwin/LianT.icns LianT.app/Contents/Resources/
+          cat > LianT.app/Contents/Info.plist << EOF
+          <?xml version="1.0"?>
+          <plist><dict>
+          <key>CFBundleName</key><string>LianT</string>
+          <key>CFBundleExecutable</key><string>LianT</string>
+          <key>CFBundleIdentifier</key><string>com.bailensn.liant</string>
+          <key>CFBundleVersion</key><string>${{ inputs.version }}</string>
+          <key>CFBundleIconFile</key><string>LianT.icns</string>
+          </dict></plist>
           EOF
 
-          chmod +x "$BUNDLE/Contents/MacOS/LianT"
-
-      - name: Create DMG
+      - name: Package dmg
         run: |
-          hdiutil create -volname "LianT" -srcfolder "LianT.app" -ov -format UDZO "LianT_${{ inputs.version }}_arm64.dmg"
+          hdiutil create -volname LianT -srcfolder LianT.app -ov -format UDZO LianT_${{ inputs.version }}_arm64.dmg
 
       - uses: actions/upload-artifact@v4
         with:
-          name: LianT-macos-arm64
+          name: LianT-macOS
           path: LianT_${{ inputs.version }}_arm64.dmg
 
-  # ─────────────────────────────────────────────
-  # Linux amd64 → 多尺寸图标 + .desktop → .deb
-  # ─────────────────────────────────────────────
-  linux_amd64:
-    if: ${{ inputs.linux_amd64 == true }}
-    runs-on: ubuntu-22.04
-    timeout-minutes: 40
+  # ================== Linux ==================
+  linux:
+    if: ${{ inputs.linux_amd64 || inputs.linux_arm64 }}
+    strategy:
+      matrix:
+        arch: [ { name: "amd64", flag: "linux_amd64" }, { name: "arm64", flag: "linux_arm64" } ]
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 21 (Temurin)
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
-          java-version: '21'
           distribution: 'temurin'
+          java-version: '21'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+      - uses: gradle/actions/setup-gradle@v3
 
-      - name: Install packaging tools
-        run: sudo apt-get update && sudo apt-get install -y fakeroot dpkg-deb
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y fakeroot
 
-      - name: Build CMP bare directory
+      - name: Build bare app
         working-directory: manager/desktop
         run: ./gradlew :desktopApp:createDistributable --no-daemon
 
-      - name: Verify bare directory
-        working-directory: manager/desktop
-        run: ls -la desktopApp/build/compose/binaries/main/app/
-
-      - name: Prepare Debian package layout (动态多尺寸图标)
+      - name: Package deb
         run: |
-          set -e
-          APP_BIN="manager/desktop/desktopApp/build/compose/binaries/main/app/LianT"
-          PKG="LianT-pkg"
-          mkdir -p "$PKG/usr/bin"
-          mkdir -p "$PKG/usr/share/applications"
-
-          # 遍历 resources/linux/ 下所有数字尺寸目录
+          APP_DIR="manager/desktop/desktopApp/build/compose/binaries/main/app"
+          PKG="pkg"
+          rm -rf $PKG && mkdir -p $PKG/usr/bin
+          mkdir -p $PKG/usr/share/applications
           for d in manager/resources/linux/*; do
-            size=$(basename "$d")
-            if [[ "$size" =~ ^[0-9]+$ ]]; then
-              mkdir -p "$PKG/usr/share/icons/hicolor/${size}x${size}/apps"
-              cp "$d/LianT.png" "$PKG/usr/share/icons/hicolor/${size}x${size}/apps/LianT.png"
-              echo "Installed icon: ${size}x${size}"
-            fi
+            sz=$(basename $d)
+            [[ "$sz" =~ ^[0-9]+$ ]] || continue
+            mkdir -p $PKG/usr/share/icons/hicolor/${sz}x${sz}/apps
+            cp $d/LianT.png $PKG/usr/share/icons/hicolor/${sz}x${sz}/apps/
           done
-
-          # 二进制
-          cp "$APP_BIN" "$PKG/usr/bin/LianT"
-          chmod +x "$PKG/usr/bin/LianT"
-
-          # .desktop 模板：动态替换 Exec 和 Icon
+          cp $APP_DIR/LianT $PKG/usr/bin/
+          chmod +x $PKG/usr/bin/LianT
           sed "s|^Exec=.*|Exec=/usr/bin/LianT|; s|^Icon=.*|Icon=LianT|" \
-            manager/resources/linux/LianT.desktop > "$PKG/usr/share/applications/LianT.desktop"
-
-          # DEBIAN/control
-          mkdir -p "$PKG/DEBIAN"
-          cat > "$PKG/DEBIAN/control" <<EOF
-          Package: liant
-          Version: ${{ inputs.version }}
-          Section: utils
-          Priority: optional
-          Architecture: amd64
-          Maintainer: LianT Team <maintainer@liant.local>
-          Description: LianT Manager - Desktop application
-           Cross-platform desktop manager built with Compose Multiplatform.
-          EOF
-
-          echo "--- Package layout ---"
-          find "$PKG" -type f | sort
-
-      - name: Build .deb
-        run: |
-          fakeroot dpkg-deb --build LianT-pkg "LianT_${{ inputs.version }}_amd64.deb"
-          ls -la "LianT_${{ inputs.version }}_amd64.deb"
+            manager/resources/linux/LianT.desktop > $PKG/usr/share/applications/LianT.desktop
+          fakeroot dpkg-deb --build $PKG LianT_${{ inputs.version }}_${{ matrix.arch.name }}.deb
 
       - uses: actions/upload-artifact@v4
         with:
-          name: LianT-linux-amd64
-          path: LianT_${{ inputs.version }}_amd64.deb
-
-  # ─────────────────────────────────────────────
-  # Linux arm64 → 多尺寸图标 + .desktop → .deb
-  # ─────────────────────────────────────────────
-  linux_arm64:
-    if: ${{ inputs.linux_arm64 == true }}
-    runs-on: ubuntu-22.04
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up JDK 21 (Temurin)
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Install packaging tools
-        run: sudo apt-get update && sudo apt-get install -y fakeroot dpkg-deb
-
-      - name: Build CMP bare directory
-        working-directory: manager/desktop
-        run: ./gradlew :desktopApp:createDistributable --no-daemon
-
-      - name: Prepare Debian package layout (动态多尺寸图标)
-        run: |
-          set -e
-          APP_BIN="manager/desktop/desktopApp/build/compose/binaries/main/app/LianT"
-          PKG="LianT-pkg"
-          mkdir -p "$PKG/usr/bin"
-          mkdir -p "$PKG/usr/share/applications"
-
-          for d in manager/resources/linux/*; do
-            size=$(basename "$d")
-            if [[ "$size" =~ ^[0-9]+$ ]]; then
-              mkdir -p "$PKG/usr/share/icons/hicolor/${size}x${size}/apps"
-              cp "$d/LianT.png" "$PKG/usr/share/icons/hicolor/${size}x${size}/apps/LianT.png"
-              echo "Installed icon: ${size}x${size}"
-            fi
-          done
-
-          cp "$APP_BIN" "$PKG/usr/bin/LianT"
-          chmod +x "$PKG/usr/bin/LianT"
-
-          sed "s|^Exec=.*|Exec=/usr/bin/LianT|; s|^Icon=.*|Icon=LianT|" \
-            manager/resources/linux/LianT.desktop > "$PKG/usr/share/applications/LianT.desktop"
-
-          mkdir -p "$PKG/DEBIAN"
-          cat > "$PKG/DEBIAN/control" <<EOF
-          Package: liant
-          Version: ${{ inputs.version }}
-          Section: utils
-          Priority: optional
-          Architecture: arm64
-          Maintainer: LianT Team <maintainer@liant.local>
-          Description: LianT Manager - Desktop application
-           Cross-platform desktop manager built with Compose Multiplatform.
-          EOF
-
-          echo "--- Package layout ---"
-          find "$PKG" -type f | sort
-
-      - name: Build .deb
-        run: |
-          fakeroot dpkg-deb --build LianT-pkg "LianT_${{ inputs.version }}_arm64.deb"
-          ls -la "LianT_${{ inputs.version }}_arm64.deb"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: LianT-linux-arm64
-          path: LianT_${{ inputs.version }}_arm64.deb
+          name: LianT-Linux-${{ matrix.arch.name }}
+          path: LianT_${{ inputs.version }}_${{ matrix.arch.name }}.deb
