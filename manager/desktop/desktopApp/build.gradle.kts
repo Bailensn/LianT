@@ -18,7 +18,7 @@ compose.desktop {
         nativeDistributions {
             packageName = "LianT"
             packageVersion = "1.0.0"
-            windows { createMsi = false; iconFile.set(file("../../resources/windows/LianT.ico")) }
+            windows { iconFile.set(file("../../resources/windows/LianT.ico")) }
             macOS { iconFile.set(file("../../resources/darwin/LianT.icns")); bundleID = "com.bailensn.liant" }
             linux { }
         }
