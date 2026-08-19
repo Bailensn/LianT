@@ -24,7 +24,6 @@ on:
         default: false
 
 env:
-  # 禁用Gradle自动下载toolchain，强制用CI装好的Temurin
   GRADLE_OPTS: -Dorg.gradle.java.installations.auto-download=false
 
 jobs:
@@ -42,15 +41,19 @@ jobs:
         run: ./gradlew :desktopApp:createDistributable --no-daemon
       - name: UPX compress
         working-directory: manager/desktop
+        shell: powershell
         run: |
-          7z e -y https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip upx.exe
+          Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip" -OutFile "upx.zip"
+          Expand-Archive -Path "upx.zip" -DestinationPath "." -Force
+          Get-ChildItem -Path . -Filter "upx.exe" -Recurse | Copy-Item -Destination "."
           ./upx.exe -9 desktopApp/build/compose/binaries/main/app/*.exe
           ./upx.exe -9 desktopApp/build/compose/binaries/main/app/*.dll
       - name: Build exe (Inno Setup)
+        shell: powershell
         run: |
           choco install innosetup -y --no-progress
           iscc manager/desktop/installer.iss
-          mv manager/desktop/Output/LianT.exe LianT_${{ inputs.version }}_amd64.exe
+          Move-Item -Path manager/desktop/Output/LianT.exe -Destination "LianT_${{ inputs.version }}_amd64.exe"
       - uses: actions/upload-artifact@v7
         with: { name: LianT-Windows, path: LianT_${{ inputs.version }}_amd64.exe }
 
@@ -87,7 +90,6 @@ jobs:
       - uses: actions/upload-artifact@v7
         with: { name: LianT-macOS-ARM64, path: LianT_${{ inputs.version }}_arm64.dmg }
 
-  # ================== macOS Intel ==================
   darwin-amd64:
     if: ${{ inputs.darwin_amd64 }}
     runs-on: macos-13
@@ -121,14 +123,17 @@ jobs:
       - uses: actions/upload-artifact@v7
         with: { name: LianT-macOS-Intel, path: LianT_${{ inputs.version }}_amd64.dmg }
 
-  # ================== Linux ==================
   linux:
-    if: ${{ inputs.linux_amd64 || inputs.linux_arm64 }}
     strategy:
       matrix:
         include:
-          - { name: amd64, runner: ubuntu-latest }
-          - { name: arm64, runner: ubuntu-24.04-arm }
+          - name: amd64
+            runner: ubuntu-latest
+            enable: ${{ inputs.linux_amd64 }}
+          - name: arm64
+            runner: ubuntu-24.04-arm
+            enable: ${{ inputs.linux_arm64 }}
+    if: ${{ matrix.enable }}
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
@@ -142,16 +147,14 @@ jobs:
       - name: Build bare app
         working-directory: manager/desktop
         run: ./gradlew :desktopApp:createDistributable --no-daemon
-      - name: Package deb（补control+删无效目录）
+      - name: Package deb
         run: |
           APP="manager/desktop/desktopApp/build/compose/binaries/main/app"
           PKG="pkg"
           rm -rf $PKG
-          # 只建需要的目录，不写*通配符
           mkdir -p $PKG/DEBIAN
           mkdir -p $PKG/usr/bin
           mkdir -p $PKG/usr/share/applications
-          # 动态多尺寸图标
           for d in manager/resources/linux/*; do
             sz=$(basename $d)
             [[ "$sz" =~ ^[0-9]+$ ]] || continue
