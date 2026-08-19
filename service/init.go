@@ -13,18 +13,18 @@ func initCommand() {
 	/*==config.go==*/
 
 	// 创建默认配置
-	_,err:=os.ReadFile(
+	_, err := os.ReadFile(
 		config.ConfigPath(),
 	)
-	if os.IsNotExist(err){
-		cfg:=config.Config{}
-		cfg.Proxy.Enabled=false
-		cfg.Proxy.URL=""
-		cfg.Storage.Database=
+	if os.IsNotExist(err) {
+		cfg := config.Config{}
+		cfg.Proxy.Enabled = false
+		cfg.Proxy.URL = ""
+		cfg.Storage.Database =
 			"data/bots.db"
-		cfg.Storage.Key=
+		cfg.Storage.Key =
 			"data/master.key"
-		cfg.Connect.Url=
+		cfg.Connect.Url =
 			"https://api.telegram.org"
 		config.SaveConfig(
 			cfg,
@@ -34,9 +34,9 @@ func initCommand() {
 	/*==bot.go==*/
 
 	// 初始化data数据库
-	db:=openBotDB()
+	db := openBotDB()
 	defer db.Close()
-	_,err=db.Exec(
+	_, err = db.Exec(
 		`
 CREATE TABLE IF NOT EXISTS bots(
 bot_id INTEGER PRIMARY KEY,
@@ -46,7 +46,7 @@ first_name TEXT
 )
 `,
 	)
-	if err!=nil{
+	if err != nil {
 		panic(err)
 	}
 

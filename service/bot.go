@@ -3,13 +3,13 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	_ "github.com/glebarez/go-sqlite"
+	"golang.org/x/term"
+	"gopkg.in/telebot.v4"
 	"net/http"
 	"net/url"
-	"strconv"
 	"os"
-	"golang.org/x/term"
-	_ "github.com/glebarez/go-sqlite"
-	"gopkg.in/telebot.v4"
+	"strconv"
 )
 
 import (
@@ -18,26 +18,26 @@ import (
 )
 
 type BotInfo struct {
-	ID int64 `json:"id"`
-	Username string `json:"username"`
+	ID        int64  `json:"id"`
+	Username  string `json:"username"`
 	FirstName string `json:"first_name"`
 }
 
 type TelegramResponse struct {
-	OK bool `json:"ok"`
+	OK     bool    `json:"ok"`
 	Result BotInfo `json:"result"`
 }
 
 // ==========================
 // 数据库
 // ==========================
-func openBotDB()*sql.DB{
-	cfg:=config.LoadConfig()
-	db,err:=sql.Open(
+func openBotDB() *sql.DB {
+	cfg := config.LoadConfig()
+	db, err := sql.Open(
 		"sqlite",
 		cfg.Storage.Database,
 	)
-	if err!=nil{
+	if err != nil {
 		panic(err)
 	}
 	return db
@@ -48,24 +48,24 @@ func openBotDB()*sql.DB{
 // ==========================
 func checkBot(
 	token string,
-)(BotInfo,error){
-	cfg:=config.LoadConfig()
-	settings:=telebot.Settings{
+) (BotInfo, error) {
+	cfg := config.LoadConfig()
+	settings := telebot.Settings{
 		Token: token,
 	}
 	if cfg.Connect.Url != "" {
 		settings.URL = cfg.Connect.Url
 	}
 	if cfg.Proxy.Enabled {
-		proxy,err:=url.Parse(
+		proxy, err := url.Parse(
 			cfg.Proxy.URL,
 		)
-		if err!=nil{
-			return BotInfo{},err
+		if err != nil {
+			return BotInfo{}, err
 		}
-		settings.Client=&http.Client{
-			Transport:&http.Transport{
-				Proxy:http.ProxyURL(proxy),
+		settings.Client = &http.Client{
+			Transport: &http.Transport{
+				Proxy: http.ProxyURL(proxy),
 			},
 		}
 		fmt.Println(
@@ -73,18 +73,18 @@ func checkBot(
 			cfg.Proxy.URL,
 		)
 	}
-	bot,err:=telebot.NewBot(
+	bot, err := telebot.NewBot(
 		settings,
 	)
-	if err!=nil{
-		return BotInfo{},err
+	if err != nil {
+		return BotInfo{}, err
 	}
-	me:=bot.Me
+	me := bot.Me
 	return BotInfo{
-		ID: me.ID,
-		Username: me.Username,
+		ID:        me.ID,
+		Username:  me.Username,
 		FirstName: me.FirstName,
-	},nil
+	}, nil
 }
 
 // ==========================
@@ -94,10 +94,10 @@ func saveBot(
 	id int64,
 	token string,
 	info BotInfo,
-)error{
-	db:=openBotDB()
+) error {
+	db := openBotDB()
 	defer db.Close()
-	_,err:=db.Exec(
+	_, err := db.Exec(
 		`
 INSERT INTO bots
 (bot_id,token,username,first_name)
@@ -116,26 +116,26 @@ VALUES(?,?,?,?)
 // ==========================
 func removeBot(
 	id int64,
-){
-	db:=openBotDB()
+) {
+	db := openBotDB()
 	defer db.Close()
-	res,err:=db.Exec(
+	res, err := db.Exec(
 		`
 DELETE FROM bots
 WHERE bot_id=?
 `,
 		id,
 	)
-	if err!=nil{
+	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	n,_:=res.RowsAffected()
-	if n==0{
+	n, _ := res.RowsAffected()
+	if n == 0 {
 		fmt.Println(
 			"Bot不存在",
 		)
-	}else{
+	} else {
 		fmt.Println(
 			"删除成功",
 		)
@@ -164,8 +164,8 @@ ORDER BY bot_id
 	found := false
 	for rows.Next() {
 		var (
-			id int64
-			username string
+			id        int64
+			username  string
 			firstName string
 		)
 		err := rows.Scan(
@@ -216,20 +216,19 @@ func inputHidden(prompt string) string {
 	return string(byteToken)
 }
 
-
 // ==========================
 // bot命令
 // ==========================
 func botCommand(
 	args []string,
-){
-	if len(args)<1{
+) {
+	if len(args) < 1 {
 		fmt.Println(
 			"用法: LianT bot add/remove/list",
 		)
 		return
 	}
-	switch args[0]{
+	switch args[0] {
 	case "add":
 		if len(args) != 2 {
 			fmt.Println(
@@ -309,7 +308,7 @@ func botCommand(
 			"保存成功",
 		)
 	case "remove":
-		if len(args)!=2{
+		if len(args) != 2 {
 			fmt.Println(
 				"LianT bot remove <bot_id>",
 			)
@@ -320,7 +319,7 @@ func botCommand(
 			10,
 			64,
 		)
-		if err!=nil{
+		if err != nil {
 			fmt.Println(err)
 			return
 		}
