@@ -12,11 +12,7 @@ on:
         type: boolean
         default: false
 
-      darwin_arm64:
-        type: boolean
-        default: false
-
-      darwin_amd64:
+      linux_arm64:
         type: boolean
         default: false
 
@@ -24,7 +20,11 @@ on:
         type: boolean
         default: false
 
-      linux_arm64:
+      darwin_arm64:
+        type: boolean
+        default: false
+
+      darwin_amd64:
         type: boolean
         default: false
 
