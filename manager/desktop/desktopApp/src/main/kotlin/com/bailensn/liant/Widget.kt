@@ -22,9 +22,7 @@ import com.kyant.backdrop.effects.vibrancy
 import kotlin.math.PI
 import kotlin.math.sin
 import kotlin.random.Random
-import org.jetbrains.compose.resources.painterResource
-import com.bailensn.liant.generated.resources.Res
-import com.bailensn.liant.generated.resources.ic_icon
+import androidx.compose.ui.res.painterResource
 
 @Composable
 fun LiquidGlassContainer(
@@ -107,7 +105,6 @@ fun FloatingGlassIcon(
     size: Dp = 76.dp,
     shape: Shape =
         RoundedCornerShape(24.dp),
-    iconRes: String = "ic_icon"
 ) {
     Box(
         modifier =
@@ -144,9 +141,9 @@ fun FloatingGlassIcon(
             Alignment.Center
     ) {
         Image(
-            painter = painterResource(Res.drawable.ic_icon),
+            painter = painterResource("ic_icon.xml"),
             contentDescription = "Icon"
-)
+        )
     }
 }
 

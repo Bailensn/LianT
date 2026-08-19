@@ -12,6 +12,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowDraggableArea
+import androidx.compose.ui.window.WindowScope
 
 @Composable
 fun WindowRoot() {
@@ -34,12 +35,11 @@ fun WindowRoot() {
 
 
 @Composable
-fun DesktopDragLayout(
+fun WindowScope.DesktopDragLayout(
     content: @Composable () -> Unit
 ) {
     Box(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = Modifier.fillMaxSize()
     ) {
         content()
         WindowDraggableArea {
@@ -48,12 +48,8 @@ fun DesktopDragLayout(
                     .fillMaxWidth()
                     .height(36.dp)
                     .background(
-                        color = Color.White.copy(
+                        Color.White.copy(
                             alpha = 0.85f
-                        ),
-                        shape = RoundedCornerShape(
-                            bottomStart = 16.dp,
-                            bottomEnd = 16.dp
                         )
                     )
             )
