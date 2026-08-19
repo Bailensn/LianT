@@ -51,9 +51,15 @@ jobs:
         working-directory: manager/desktop
         run: |
           Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip" -OutFile upx.zip
-          7z e -y upx.zip upx.exe
-          ./upx.exe -9 desktopApp/build/compose/binaries/main/app/*.exe
-          ./upx.exe -9 desktopApp/build/compose/binaries/main/app/*.dll
+          7z x -y upx.zip
+      
+          Get-ChildItem "desktopApp/build/compose/binaries/main/app" -Filter *.exe -Recurse | ForEach-Object {
+            ./upx-5.2.0-win64/upx.exe -9 $_.FullName
+          }
+      
+          Get-ChildItem "desktopApp/build/compose/binaries/main/app" -Filter *.dll -Recurse | ForEach-Object {
+            ./upx-5.2.0-win64/upx.exe -9 $_.FullName
+          }
 
       - name: Build exe (Inno Setup)
         run: |
