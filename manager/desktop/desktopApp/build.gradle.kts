@@ -31,4 +31,5 @@ compose.desktop {
 
 compose.resources {
     publicResClass = true
+    packageOfResClass = "com.bailensn.liant"
 }

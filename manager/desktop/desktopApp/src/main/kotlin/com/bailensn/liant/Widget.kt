@@ -144,7 +144,8 @@ fun FloatingGlassIcon(
     ) {
         Image(
             painter = painterResource(Res.drawable.ic_icon),
-            contentDescription = "Icon"
+            contentDescription = "Icon",
+            modifier = Modifier.size(size)
         )
     }
 }
