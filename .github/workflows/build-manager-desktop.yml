@@ -50,7 +50,8 @@ jobs:
       - name: UPX compress
         working-directory: manager/desktop
         run: |
-          7z e -y https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip upx.exe
+          Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip" -OutFile upx.zip
+          7z e -y upx.zip upx.exe
           ./upx.exe -9 desktopApp/build/compose/binaries/main/app/*.exe
           ./upx.exe -9 desktopApp/build/compose/binaries/main/app/*.dll
 
@@ -211,7 +212,7 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: ${{ matrix.name }}
-          Maintainer: LianT Team <me@bailensn.com>
+          Maintainer: LianT Team <bailensnn@gmail.com>
           Description: LianT Manager Desktop
            Cross-platform manager tool for LianT service.
           EOF
