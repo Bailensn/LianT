@@ -12,14 +12,12 @@ fun main() = application {
             Alignment.Center
         )
     )
-
     Window(
         onCloseRequest = ::exitApplication,
         title = "LianT",
         state = windowState,
         undecorated = true,
-        transparent = true,
-        resizable = true
+        transparent = true
     ) {
         WindowRoot()
     }

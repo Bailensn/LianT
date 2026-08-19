@@ -73,8 +73,7 @@ fun TheLayout() {
                 ) {
                     FloatingGlassIcon(
                         backdrop = backdrop,
-                        size = iconSize,
-                        iconRes = "ic_icon"
+                        size = iconSize
                     )
                     Spacer(
                         modifier =
