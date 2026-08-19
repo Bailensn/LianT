@@ -250,7 +250,7 @@ jobs:
 
       - name: Install build tools
         run: |
-          sudo sed -i 's|azure.archive.ubuntu.com|archive.ubuntu.com|g; /packages.microsoft.com/d' /etc/apt/sources.list
+          sudo sed -i 's|azure.archive.ubuntu.com|archive.archive.ubuntu.com|g; /packages.microsoft.com/d' /etc/apt/sources.list
 
           sudo apt-get update -y
 
@@ -271,6 +271,7 @@ jobs:
           rm -rf "$PKG"
 
           mkdir -p "$PKG"/DEBIAN
+          mkdir -p "$PKG"/opt/LianT
           mkdir -p "$PKG"/usr/bin
           mkdir -p "$PKG"/usr/share/applications
 
@@ -285,9 +286,10 @@ jobs:
               "$PKG"/usr/share/icons/hicolor/${sz}x${sz}/apps/
           done
 
-          cp "$APP"/LianT "$PKG"/usr/bin/
+          cp -r "$APP"/* "$PKG"/opt/LianT/
 
-          chmod +x "$PKG"/usr/bin/LianT
+          ln -s /opt/LianT/LianT/bin/LianT \
+            "$PKG"/usr/bin/LianT
 
           sed \
             "s|^Exec=.*|Exec=/usr/bin/LianT|; s|^Icon=.*|Icon=LianT|" \
@@ -333,11 +335,15 @@ jobs:
 
           %install
           mkdir -p %{buildroot}/opt/LianT
+          mkdir -p %{buildroot}/usr/bin
 
           cp -r %{_sourcedir}/LianT/* %{buildroot}/opt/LianT/
 
+          ln -s /opt/LianT/LianT/bin/LianT %{buildroot}/usr/bin/LianT
+
           %files
           /opt/LianT
+          /usr/bin/LianT
           EOF
 
           rpmbuild \
@@ -353,7 +359,6 @@ jobs:
           path: |
             LianT_${{ inputs.version }}_amd64.deb
             LianT_${{ inputs.version }}_amd64.rpm
-
 
 
   linux-arm64:
@@ -372,7 +377,7 @@ jobs:
 
       - name: Install build tools
         run: |
-          sudo sed -i 's|azure.archive.ubuntu.com|archive.ubuntu.com|g; /packages.microsoft.com/d' /etc/apt/sources.list
+          sudo sed -i 's|azure.archive.ubuntu.com|archive.archive.ubuntu.com|g; /packages.microsoft.com/d' /etc/apt/sources.list
 
           sudo apt-get update -y
 
@@ -393,6 +398,7 @@ jobs:
           rm -rf "$PKG"
 
           mkdir -p "$PKG"/DEBIAN
+          mkdir -p "$PKG"/opt/LianT
           mkdir -p "$PKG"/usr/bin
           mkdir -p "$PKG"/usr/share/applications
 
@@ -407,9 +413,10 @@ jobs:
               "$PKG"/usr/share/icons/hicolor/${sz}x${sz}/apps/
           done
 
-          cp "$APP"/LianT "$PKG"/usr/bin/
+          cp -r "$APP"/* "$PKG"/opt/LianT/
 
-          chmod +x "$PKG"/usr/bin/LianT
+          ln -s /opt/LianT/LianT/bin/LianT \
+            "$PKG"/usr/bin/LianT
 
           sed \
             "s|^Exec=.*|Exec=/usr/bin/LianT|; s|^Icon=.*|Icon=LianT|" \
@@ -455,11 +462,15 @@ jobs:
 
           %install
           mkdir -p %{buildroot}/opt/LianT
+          mkdir -p %{buildroot}/usr/bin
 
           cp -r %{_sourcedir}/LianT/* %{buildroot}/opt/LianT/
 
+          ln -s /opt/LianT/LianT/bin/LianT %{buildroot}/usr/bin/LianT
+
           %files
           /opt/LianT
+          /usr/bin/LianT
           EOF
 
           rpmbuild \
