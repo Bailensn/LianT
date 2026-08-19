@@ -14,7 +14,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 
 @Composable
-fun App() {
+fun App(onExit: () -> Unit) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
 
@@ -47,7 +47,7 @@ fun App() {
                         color = Color.White
                     )
                     Button(
-                        onClick = { exitApplication() },
+                        onClick = onExit,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.White,
                             contentColor = Color(0xFF3278DC)
@@ -66,6 +66,6 @@ fun main() = application {
         onCloseRequest = ::exitApplication,
         title = "LianT"
     ) {
-        App()
+        App(onExit = ::exitApplication)
     }
 }

@@ -1,7 +1,11 @@
 [versions]
 kotlin = "2.4.10"
 compose = "1.11.1"
+material3 = "1.11.1"
 
 [plugins]
 jetbrains-compose = { id = "org.jetbrains.compose", version.ref = "compose" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+
+[libraries]
+material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "material3" }
