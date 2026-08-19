@@ -23,8 +23,8 @@ import kotlin.math.PI
 import kotlin.math.sin
 import kotlin.random.Random
 import org.jetbrains.compose.resources.painterResource
-import com.bailensn.liant.generated.resources.Res
-import com.bailensn.liant.generated.resources.ic_icon
+import com.bailensn.liant.Res
+import com.bailensn.liant.ic_icon
 
 @Composable
 fun LiquidGlassContainer(
