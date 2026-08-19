@@ -1,4 +1,4 @@
-name: Build Manager Desktop (CMP)
+name: Build Manager Desktop
 
 on:
   workflow_dispatch:
