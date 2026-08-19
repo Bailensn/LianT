@@ -41,19 +41,15 @@ jobs:
         run: ./gradlew :desktopApp:createDistributable --no-daemon
       - name: UPX compress
         working-directory: manager/desktop
-        shell: powershell
         run: |
-          Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip" -OutFile "upx.zip"
-          Expand-Archive -Path "upx.zip" -DestinationPath "." -Force
-          Get-ChildItem -Path . -Filter "upx.exe" -Recurse | Copy-Item -Destination "."
+          7z e -y https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip upx.exe
           ./upx.exe -9 desktopApp/build/compose/binaries/main/app/*.exe
           ./upx.exe -9 desktopApp/build/compose/binaries/main/app/*.dll
       - name: Build exe (Inno Setup)
-        shell: powershell
         run: |
           choco install innosetup -y --no-progress
           iscc manager/desktop/installer.iss
-          Move-Item -Path manager/desktop/Output/LianT.exe -Destination "LianT_${{ inputs.version }}_amd64.exe"
+          mv manager/desktop/Output/LianT.exe LianT_${{ inputs.version }}_amd64.exe
       - uses: actions/upload-artifact@v7
         with: { name: LianT-Windows, path: LianT_${{ inputs.version }}_amd64.exe }
 
@@ -75,7 +71,7 @@ jobs:
           mkdir -p LianT.app/Contents/{MacOS,Resources}
           cp -r $APP/* LianT.app/Contents/MacOS/
           cp manager/resources/darwin/LianT.icns LianT.app/Contents/Resources/
-          cat > LianT.app/Contents/Info.plist << 'EOF'
+          cat << 'EOF' > LianT.app/Contents/Info.plist
           <?xml version="1.0"?>
           <plist version="1.0"><dict>
             <key>CFBundleName</key><string>LianT</string>
@@ -108,7 +104,7 @@ jobs:
           mkdir -p LianT.app/Contents/{MacOS,Resources}
           cp -r $APP/* LianT.app/Contents/MacOS/
           cp manager/resources/darwin/LianT.icns LianT.app/Contents/Resources/
-          cat > LianT.app/Contents/Info.plist << 'EOF'
+          cat << 'EOF' > LianT.app/Contents/Info.plist
           <?xml version="1.0"?>
           <plist version="1.0"><dict>
             <key>CFBundleName</key><string>LianT</string>
@@ -124,16 +120,12 @@ jobs:
         with: { name: LianT-macOS-Intel, path: LianT_${{ inputs.version }}_amd64.dmg }
 
   linux:
+    if: ${{ inputs.linux_amd64 || inputs.linux_arm64 }}
     strategy:
       matrix:
         include:
-          - name: amd64
-            runner: ubuntu-latest
-            enable: ${{ inputs.linux_amd64 }}
-          - name: arm64
-            runner: ubuntu-24.04-arm
-            enable: ${{ inputs.linux_arm64 }}
-    if: ${{ matrix.enable }}
+          - { name: amd64, runner: ubuntu-latest }
+          - { name: arm64, runner: ubuntu-24.04-arm }
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
@@ -163,7 +155,7 @@ jobs:
           done
           cp $APP/LianT $PKG/usr/bin/ && chmod +x $PKG/usr/bin/LianT
           sed "s|^Exec=.*|Exec=/usr/bin/LianT|; s|^Icon=.*|Icon=LianT|" manager/resources/linux/LianT.desktop > $PKG/usr/share/applications/LianT.desktop
-          cat > $PKG/DEBIAN/control << EOF
+          cat << 'EOF' > $PKG/DEBIAN/control
           Package: liant
           Version: ${{ inputs.version }}
           Section: utils
