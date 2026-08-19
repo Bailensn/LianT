@@ -11,7 +11,7 @@ repositories {
 
 dependencies {
     implementation(compose.desktop.currentOs)
-    implementation("org.jetbrains.compose.components:components-resources")
+    implementation(compose.components.resources)
     implementation(libs.material3)
     implementation(libs.backdrop)
 }
