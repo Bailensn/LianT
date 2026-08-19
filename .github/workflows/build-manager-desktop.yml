@@ -5,484 +5,370 @@ on:
     inputs:
       build_mode:
         description: 'Build mode'
+        required: true
+        default: 'release'
         type: choice
         options:
-          - debug
           - release
-        default: release
+          - debug
       version:
         description: 'Version'
-        type: string
+        required: true
         default: '1.0.0'
-      linux_amd64:
-        description: 'Linux amd64 (.deb + .rpm)'
-        type: boolean
-        default: false
-      linux_arm64:
-        description: 'Linux arm64 (.deb + .rpm)'
-        type: boolean
-        default: false
+        type: string
       windows_amd64:
-        description: 'Windows amd64 (.exe installer via Inno Setup)'
+        description: 'Build Windows amd64'
+        required: false
+        default: true
         type: boolean
-        default: false
       darwin_arm64:
-        description: 'macOS arm64 (.dmg)'
-        type: boolean
+        description: 'Build macOS arm64'
+        required: false
         default: false
-
-permissions:
-  contents: read
-
-env:
-  APP_NAME: LianT
-  APP_VERSION: ${{ inputs.version }}
-  SRC_ROOT: ${{ github.workspace }}/manager/desktop
-  OUTPUT_DIR: ${{ github.workspace }}/out
+        type: boolean
+      linux_amd64:
+        description: 'Build Linux amd64'
+        required: false
+        default: false
+        type: boolean
+      linux_arm64:
+        description: 'Build Linux arm64'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
-  # ======================================================================
-  # Linux amd64 — Compose Desktop native packages (.deb + .rpm)
-  # ======================================================================
-  linux-amd64:
-    if: ${{ inputs.linux_amd64 }}
-    name: Linux amd64
-    runs-on: ubuntu-26.04
-    defaults:
-      run:
-        working-directory: ${{ env.SRC_ROOT }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install system deps (Compose / JVM / packaging)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgl1-mesa-dev libvulkan-dev libx11-dev libx11-xcb-dev \
-            libxcursor-dev libxfixes-dev libxkbcommon-dev \
-            libxkbcommon-x11-dev libxrandr-dev libxi-dev \
-            libxinerama-dev libxxf86vm-dev libxext-dev \
-            pkg-config gcc libwayland-dev \
-            dpkg-dev fakeroot rpm
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-
-      - uses: gradle/actions/setup-gradle@v3
-
-      - name: Build native packages (debug / release)
-        run: |
-          mkdir -p ${{ env.OUTPUT_DIR }}
-          if [ "${{ inputs.build_mode }}" = "release" ]; then
-            ./gradlew packageReleaseDistributionForCurrentOS
-          else
-            ./gradlew packageDebugDistributionForCurrentOS
-          fi
-
-      - name: Collect artifacts
-        shell: bash
-        run: |
-          set -e
-          mkdir -p ${{ env.OUTPUT_DIR }}
-          # Compose Desktop 输出到 composeApp/build/compose/binaries/
-          find ${{ env.SRC_ROOT }}/desktopApp/build/compose/binaries \
-            \( -name "*.deb" -o -name "*.rpm" -o -name "*.exe" -o -name "*.msi" -o -name "*.dmg" \) \
-            -exec cp {} ${{ env.OUTPUT_DIR }}/ \;
-
-          # 重命名，统一版本号
-          cd ${{ env.OUTPUT_DIR }}
-          for f in *.deb; do
-            [ -f "$f" ] && mv "$f" "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_amd64.deb"
-          done
-          for f in *.rpm; do
-            [ -f "$f" ] && mv "$f" "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_x86_64.rpm"
-          done
-
-          echo "📦 Output contents:"
-          ls -lh ${{ env.OUTPUT_DIR }}/
-
-      - name: Upload packages
-        uses: actions/upload-artifact@v7
-        with:
-          name: packages-linux-amd64
-          path: |
-            ${{ env.OUTPUT_DIR }}/*.deb
-            ${{ env.OUTPUT_DIR }}/*.rpm
-          if-no-files-found: error
-          retention-days: 30
-
-  # ======================================================================
-  # Linux arm64 — Compose Desktop native packages (.deb + .rpm)
-  # ======================================================================
-  linux-arm64:
-    if: ${{ inputs.linux_arm64 }}
-    name: Linux arm64
-    runs-on: ubuntu-26.04-arm
-    defaults:
-      run:
-        working-directory: ${{ env.SRC_ROOT }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgl1-mesa-dev libvulkan-dev libx11-dev libx11-xcb-dev \
-            libxcursor-dev libxfixes-dev libxkbcommon-dev \
-            libxkbcommon-x11-dev libxrandr-dev libxi-dev \
-            libxinerama-dev libxxf86vm-dev libxext-dev \
-            pkg-config gcc libwayland-dev \
-            dpkg-dev fakeroot rpm
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-
-      - uses: gradle/actions/setup-gradle@v3
-
-      - name: Build native packages
-        run: |
-          mkdir -p ${{ env.OUTPUT_DIR }}
-          if [ "${{ inputs.build_mode }}" = "release" ]; then
-            ./gradlew packageReleaseDistributionForCurrentOS
-          else
-            ./gradlew packageDebugDistributionForCurrentOS
-          fi
-
-      - name: Collect artifacts
-        shell: bash
-        run: |
-          set -e
-          mkdir -p ${{ env.OUTPUT_DIR }}
-          find ${{ env.SRC_ROOT }}/desktopApp/build/compose/binaries \
-            \( -name "*.deb" -o -name "*.rpm" \) \
-            -exec cp {} ${{ env.OUTPUT_DIR }}/ \;
-
-          cd ${{ env.OUTPUT_DIR }}
-          for f in *.deb; do
-            [ -f "$f" ] && mv "$f" "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.deb"
-          done
-          for f in *.rpm; do
-            [ -f "$f" ] && mv "$f" "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_aarch64.rpm"
-          done
-
-          echo "📦 Output contents:"
-          ls -lh ${{ env.OUTPUT_DIR }}/
-
-      - name: Upload packages
-        uses: actions/upload-artifact@v7
-        with:
-          name: packages-linux-arm64
-          path: |
-            ${{ env.OUTPUT_DIR }}/*.deb
-            ${{ env.OUTPUT_DIR }}/*.rpm
-          if-no-files-found: error
-          retention-days: 30
-
-  # ======================================================================
-  # Windows amd64 — CMP build → Inno Setup .exe installer
-  # ======================================================================
-  windows-amd64:
-    if: ${{ inputs.windows_amd64 }}
-    name: Windows amd64
+  # ─────────────────────────────────────────────
+  # Windows amd64 → Inno Setup → .exe 安装包
+  # ─────────────────────────────────────────────
+  windows_amd64:
+    if: ${{ inputs.windows_amd64 == true }}
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: ${{ env.SRC_ROOT }}
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
           java-version: '21'
-
-      - uses: gradle/actions/setup-gradle@v3
-
-      - name: Build CMP distributable (release / debug)
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path "${{ env.OUTPUT_DIR }}" | Out-Null
-          if ("${{ inputs.build_mode }}" -eq "release") {
-            ./gradlew createDistributable
-          } else {
-            ./gradlew createDistributable
-          }
-
-      - name: Verify distributable layout
-        shell: pwsh
-        run: |
-          $dist = "${{ env.SRC_ROOT }}\desktopApp\build\compose\binaries\main\app"
-          if (Test-Path "$dist\LianT.exe") {
-            Write-Host "✅ Found LianT.exe in $dist"
-          } else {
-            Write-Host "🔍 Searching for LianT.exe..."
-            Get-ChildItem "${{ env.SRC_ROOT }}\desktopApp\build" -Recurse -Filter "LianT.exe" |
-              ForEach-Object { Write-Host "  Found: $($_.FullName) ($([math]::Round($_.Length/1MB,2)) MB)" }
-          }
-          Write-Host "📦 Distributable contents:"
-          Get-ChildItem $dist -Recurse -File | ForEach-Object {
-            Write-Host "  $($_.FullName.Replace($dist,'))  ($([math]::Round($_.Length/1KB,1)) KB)"
-          }
-
-      - name: Install Inno Setup
-        shell: pwsh
-        run: |
-          choco install innosetup -y --no-progress
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-          Write-Host "✅ Inno Setup installed"
-
-      - name: Compress binaries with UPX 5.2.0 (release only)
-        if: ${{ inputs.build_mode == 'release' }}
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $DIST = "${{ env.SRC_ROOT }}\desktopApp\build\compose\binaries\main\app"
-          if (-not (Test-Path $DIST)) {
-            $DIST = "${{ env.SRC_ROOT }}\desktopApp\build\compose\binaries\main-release\app"
-          }
-          Write-Host "📦 UPX target dir: $DIST"
-
-          $upxZip = "$env:TEMP\upx520.zip"
-          Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip" -OutFile $upxZip
-          Expand-Archive -Path $upxZip -DestinationPath "$env:TEMP\upx520" -Force
-          $upxExe = Get-ChildItem "$env:TEMP\upx520" -Recurse -Filter "upx.exe" | Select-Object -First 1
-          if (-not $upxExe) { throw "❌ upx.exe not found" }
-          Write-Host "🔧 Using UPX: $($upxExe.FullName)"
-          & $upxExe.FullName --version
-
-          # 压缩主程序
-          $mainExe = "$DIST\${{ env.APP_NAME }}.exe"
-          if (Test-Path $mainExe) {
-            $before = [math]::Round((Get-Item $mainExe).Length/1MB, 2)
-            & $upxExe.FullName $mainExe
-            $after = [math]::Round((Get-Item $mainExe).Length/1MB, 2)
-            Write-Host "📦 Main: $before MB → $after MB"
-          }
-
-          # 顺便压一下其他 EXE/DLL（JVM 相关）
-          Get-ChildItem $DIST -Recurse -Include *.exe,*.dll -File |
-            Where-Object { $_.FullName -ne $upxExe.FullName } |
-            ForEach-Object {
-              $b = [math]::Round($_.Length/1MB,2)
-              & $upxExe.FullName $_.FullName 2>$null
-              $a = [math]::Round((Get-Item $_.FullName).Length/1MB,2)
-              Write-Host "  UPX: $($_.Name) $b MB → $a MB"
-            }
-
-      - name: Build .exe installer with Inno Setup
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $APP     = "${{ env.APP_NAME }}"
-          $VERSION = "${{ env.APP_VERSION }}"
-          $SRC     = "${{ env.SRC_ROOT }}"
-          $DIST    = "$SRC\desktopApp\build\compose\binaries\main\app"
-          $RES     = "${{ github.workspace }}\manager\resources\windows"
-          $PKG     = "$SRC\pkg_win"
-          $OUT     = "${{ env.OUTPUT_DIR }}"
-
-          Write-Host "🔍 APP=$APP  VERSION=$VERSION"
-          Write-Host "🔍 DIST=$DIST"
-          Write-Host "🔍 RES=$RES"
-
-          # ---- 校验主程序 ----
-          $exePath = "$DIST\$APP.exe"
-          if (-not (Test-Path $exePath)) {
-            # 尝试另一种常见路径
-            $altDist = "${{ env.SRC_ROOT }}\desktopApp\build\compose\binaries\main-release\app"
-            if (Test-Path "$altDist\$APP.exe") {
-              $DIST = $altDist
-              $exePath = "$DIST\$APP.exe"
-            } else {
-              Write-Host "🔍 Searching for distributable..."
-              Get-ChildItem "${{ env.SRC_ROOT }}\desktopApp\build" -Recurse -Filter "*.exe" -File |
-                Where-Object { $_.Name -eq "$APP.exe" -or $_.Name -eq "LianT.exe" } |
-                ForEach-Object { Write-Host "  Found: $($_.FullName)" }
-              throw "❌ Main executable not found at $exePath"
-            }
-          }
-          Write-Host "✅ Main executable: $exePath ($([math]::Round((Get-Item $exePath).Length/1MB,2)) MB)"
-
-          # ---- 确定图标 ----
-          $iconFile = ""
-          if (Test-Path "$RES\$APP.ico") {
-            $iconFile = "$RES\$APP.ico"
-          } elseif (Test-Path "$RES\LianT.ico") {
-            $iconFile = "$RES\LianT.ico"
-          } else {
-            $found = Get-ChildItem $RES -Filter "*.ico" -File -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($found) { $iconFile = $found.FullName }
-          }
-          if ($iconFile) { Write-Host "✅ Using icon: $iconFile" }
-          else           { Write-Host "⚠️ No .ico found, installer will use default icon" }
-
-          # ---- 准备打包目录 ----
-          New-Item -ItemType Directory -Force -Path $PKG | Out-Null
-          # 复制整个 distributable 目录内容（含所有 DLL、运行时依赖）
-          Get-ChildItem $DIST -Recurse -File | ForEach-Object {
-            $rel = $_.FullName.Substring($DIST.Length).TrimStart('\','/')
-            $dest = Join-Path $PKG $rel
-            New-Item -ItemType Directory -Force -Path (Split-Path $dest -Parent) | Out-Null
-            Copy-Item $_.FullName $dest -Force
-          }
-          Write-Host "✅ Copied distributable into $PKG\"
-          Write-Host "📦 Package contents (top-level):"
-          Get-ChildItem $PKG -File | ForEach-Object { Write-Host "  $($_.Name)  ($([math]::Round($_.Length/1MB,2)) MB)" }
-
-          if ($iconFile) {
-            Copy-Item $iconFile "$PKG\app.ico" -Force
-            Write-Host "✅ Copied icon → $PKG\app.ico"
-          }
-
-          # ---- 写 Inno Setup 脚本 ----
-          $issPath = "$PKG\installer.iss"
-          $lines = @()
-          $lines += "; -- Inno Setup Script for $APP $VERSION --"
-          $lines += "; Generated by GitHub Actions workflow (CMP build)"
-          $lines += ""
-          $lines += "[Setup]"
-          $lines += "AppName=$APP"
-          $lines += "AppVersion=$VERSION"
-          $lines += "AppPublisher=LianT Team"
-          $lines += "DefaultDirName={pf}\$APP"
-          $lines += "DefaultGroupName=$APP"
-          $lines += "OutputDir=$OUT"
-          $lines += "OutputBaseFilename=${APP}_${VERSION}_amd64"
-          $lines += "Compression=lzma"
-          $lines += "SolidCompression=yes"
-          $lines += "PrivilegesRequired=admin"
-          $lines += "UninstallDisplayIcon={app}\app.ico"
-          if ($iconFile) {
-            $lines += "SetupIconFile=app.ico"
-          }
-          $lines += ""
-          $lines += "[Dirs]"
-          $lines += "Name: ""{app}""; Flags: uninsalwaysuninstall"
-          $lines += ""
-          $lines += "[Files]"
-          # 递归打包整个目录
-          $lines += "Source: ""*""; DestDir: ""{app}""; Flags: ignoreversion recursesubdirs createallsubdirs"
-          $lines += ""
-          $lines += "[Icons]"
-          $lines += "Name: ""{group}\$APP""; Filename: ""{app}\$APP.exe""; IconFilename: ""{app}\app.ico"""
-          $lines += "Name: ""{commondesktop}\$APP""; Filename: ""{app}\$APP.exe""; IconFilename: ""{app}\app.ico""; Tasks: desktopicon"
-          $lines += ""
-          $lines += "[Tasks]"
-          $lines += 'Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"'
-          $lines += ""
-          $lines += "[Run]"
-          $lines += "Filename: ""{app}\$APP.exe""; Description: ""Launch $APP""; Flags: nowait postinstall skipifsilent"
-
-          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-          [System.IO.File]::WriteAllLines($issPath, $lines, $utf8NoBom)
-          Write-Host "📝 installer.iss written"
-
-          # ---- 找 iscc 编译器 ----
-          $iscc = Get-Command iscc -ErrorAction SilentlyContinue
-          if (-not $iscc) {
-            $candidates = @(
-              "$env:ProgramFiles\Inno Setup 6\iscc.exe",
-              "${env:ProgramFiles(x86)}\Inno Setup 6\iscc.exe",
-              "$env:LOCALAPPDATA\Programs\Inno Setup 6\iscc.exe",
-              "C:\tools\Inno Setup 6\iscc.exe"
-            )
-            foreach ($c in $candidates) {
-              if (Test-Path $c) { $iscc = $c; break }
-            }
-          }
-          if (-not $iscc) { throw "❌ iscc.exe not found after Inno Setup installation" }
-          Write-Host "🔧 Using iscc: $iscc"
-
-          # ---- 编译 ----
-          Push-Location $PKG
-          & $iscc "installer.iss"
-          $exitCode = $LASTEXITCODE
-          Pop-Location
-          if ($exitCode -ne 0) { throw "❌ Inno Setup 编译失败 (exit code $exitCode)" }
-
-          # ---- 确认产物 ----
-          $outputFile = "$OUT\${APP}_${VERSION}_amd64.exe"
-          if (Test-Path $outputFile) {
-            $size = (Get-Item $outputFile).Length
-            Write-Host "✅ Generated installer: $outputFile ($([math]::Round($size/1MB,2)) MB)"
-          } else {
-            $generated = Get-ChildItem "$OUT\*.exe" -File | Where-Object { $_.Name -match "^${APP}.*amd64\.exe$" } | Select-Object -First 1
-            if ($generated) {
-              Write-Host "✅ Generated installer: $($generated.FullName) ($([math]::Round($generated.Length/1MB,2)) MB)"
-            } else {
-              Write-Host "📁 OUTPUT_DIR contents:"
-              Get-ChildItem $OUT | ForEach-Object { Write-Host "  $($_.Name)" }
-              throw "❌ Installer not found at expected path: $outputFile"
-            }
-          }
-
-      - name: Upload packages
-        uses: actions/upload-artifact@v7
-        with:
-          name: packages-windows-amd64
-          path: ${{ env.OUTPUT_DIR }}/*.exe
-          if-no-files-found: error
-          retention-days: 30
-
-  # ======================================================================
-  # macOS arm64 — Compose Desktop native package (.dmg)
-  # ======================================================================
-  darwin-arm64:
-    if: ${{ inputs.darwin_arm64 }}
-    name: macOS arm64
-    runs-on: macos-14
-    defaults:
-      run:
-        working-directory: ${{ env.SRC_ROOT }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install system deps
-        run: |
-          # macOS 不需要额外系统库，Compose Desktop 自带 Skia / Metal 后端
-          echo "✅ macOS runner 自带 Xcode CLI 和签名工具"
-
-      - uses: actions/setup-java@v4
-        with:
           distribution: 'temurin'
-          java-version: '21'
 
-      - uses: gradle/actions/setup-gradle@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
 
-      - name: Build native package
+      - name: Grant execute permission for gradlew
         run: |
-          mkdir -p ${{ env.OUTPUT_DIR }}
-          if [ "${{ inputs.build_mode }}" = "release" ]; then
-            ./gradlew packageReleaseDistributionForCurrentOS
-          else
-            ./gradlew packageDebugDistributionForCurrentOS
-          fi
+          cd manager/desktop
+          attrib -R gradlew
+        shell: cmd
 
-      - name: Collect artifacts
+      - name: Build CMP bare directory (no MSI)
+        working-directory: manager/desktop
+        run: ./gradlew :desktopApp:createDistributable --no-daemon
         shell: bash
+
+      - name: Verify bare directory
+        working-directory: manager/desktop
+        run: |
+          ls -la desktopApp/build/compose/binaries/main/app/
+          ls -la desktopApp/build/compose/binaries/main/app/LianT*.exe || echo "check exe name"
+        shell: bash
+
+      - name: Download UPX
+        run: |
+          curl -L -o upx.zip https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip
+          unzip -o upx.zip -d upx-temp
+          move upx-temp\upx-5.2.0-win64\upx.exe upx.exe
+          del upx.zip
+          rmdir /s /q upx-temp
+          .\upx.exe --version
+        shell: cmd
+
+      - name: UPX compress all .exe and .dll
+        working-directory: manager/desktop
+        run: |
+          $ErrorActionPreference = "Continue"
+          Get-ChildItem -Path desktopApp/build/compose/binaries/main/app -Recurse -Include *.exe,*.dll |
+            ForEach-Object {
+              Write-Host "Compressing $($_.FullName)"
+              & "..\..\..\upx.exe" --best --compress-exports=1 --strip-relocs=1 $_.FullName
+            }
+        shell: pwsh
+
+      - name: Download Inno Setup
+        run: |
+          curl -L -o innosetup.exe https://files.jrsoftware.org/is/6/innosetup-6.4.3.exe
+          Start-Process -FilePath .\innosetup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/ALLUSERS" -Wait
+        shell: pwsh
+
+      - name: Generate Inno Setup script
+        run: |
+          $version = "${{ inputs.version }}"
+          $appDir  = Resolve-Path "manager/desktop/desktopApp/build/compose/binaries/main/app"
+          $iss = @"
+          [Setup]
+          AppName=LianT
+          AppVersion=$version
+          AppPublisher=LianT Team
+          DefaultDirName={pf}\LianT
+          DefaultGroupName=LianT
+          OutputDir=.
+          OutputBaseFilename=LianT_${version}_amd64
+          SetupIconFile=manager/resources/windows/LianT.ico
+          Compression=lzma2
+          SolidCompression=yes
+          PrivilegesRequired=admin
+
+          [Files]
+          Source: "$appDir\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{group}\LianT"; Filename: "{app}\LianT.exe"; IconFilename: "{app}\LianT.exe"
+          Name: "{commondesktop}\LianT"; Filename: "{app}\LianT.exe"; IconFilename: "{app}\LianT.exe"
+
+          [Run]
+          Filename: "{app}\LianT.exe"; Description: "Launch LianT"; Flags: nowait postinstall skipifsilent
+          "@
+          $iss | Out-File -FilePath LianT.iss -Encoding UTF8
+          Write-Host "--- LianT.iss ---"
+          Get-Content LianT.iss
+        shell: pwsh
+
+      - name: Build installer with Inno Setup
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" LianT.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ls LianT_*.exe
+        shell: pwsh
+
+      - name: Rename artifact
+        run: |
+          $ver = "${{ inputs.version }}"
+          Move-Item -Force "LianT_${ver}_amd64.exe" "LianT_${ver}_amd64.exe"
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LianT-windows-amd64
+          path: LianT_${{ inputs.version }}_amd64.exe
+
+  # ─────────────────────────────────────────────
+  # macOS arm64 → hdiutil → .dmg
+  # ─────────────────────────────────────────────
+  darwin_arm64:
+    if: ${{ inputs.darwin_arm64 == true }}
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build CMP bare directory
+        working-directory: manager/desktop
+        run: ./gradlew :desktopApp:createDistributable --no-daemon
+
+      - name: Verify bare directory
+        working-directory: manager/desktop
+        run: ls -la desktopApp/build/compose/binaries/main/app/
+
+      - name: Prepare .app bundle
+        run: |
+          APP_DIR="manager/desktop/desktopApp/build/compose/binaries/main/app"
+          BUNDLE="LianT.app"
+          mkdir -p "$BUNDLE/Contents/MacOS"
+          mkdir -p "$BUNDLE/Contents/Resources"
+          cp -R "$APP_DIR/." "$BUNDLE/Contents/MacOS/"
+          cp manager/resources/darwin/LianT.icns "$BUNDLE/Contents/Resources/"
+
+          cat > "$BUNDLE/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key><string>LianT</string>
+            <key>CFBundleDisplayName</key><string>LianT</string>
+            <key>CFBundleIdentifier</key><string>com.bailensn.liant</string>
+            <key>CFBundleExecutable</key><string>LianT</string>
+            <key>CFBundleIconFile</key><string>LianT.icns</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>${{ inputs.version }}</string>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+          </dict>
+          </plist>
+          EOF
+
+          chmod +x "$BUNDLE/Contents/MacOS/LianT"
+
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "LianT" -srcfolder "LianT.app" -ov -format UDZO "LianT_${{ inputs.version }}_arm64.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LianT-macos-arm64
+          path: LianT_${{ inputs.version }}_arm64.dmg
+
+  # ─────────────────────────────────────────────
+  # Linux amd64 → 多尺寸图标 + .desktop → .deb
+  # ─────────────────────────────────────────────
+  linux_amd64:
+    if: ${{ inputs.linux_amd64 == true }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Install packaging tools
+        run: sudo apt-get update && sudo apt-get install -y fakeroot dpkg-deb
+
+      - name: Build CMP bare directory
+        working-directory: manager/desktop
+        run: ./gradlew :desktopApp:createDistributable --no-daemon
+
+      - name: Verify bare directory
+        working-directory: manager/desktop
+        run: ls -la desktopApp/build/compose/binaries/main/app/
+
+      - name: Prepare Debian package layout (动态多尺寸图标)
         run: |
           set -e
-          mkdir -p ${{ env.OUTPUT_DIR }}
-          find ${{ env.SRC_ROOT }}/desktopApp/build/compose/binaries \
-            -name "*.dmg" -exec cp {} ${{ env.OUTPUT_DIR }}/ \;
+          APP_BIN="manager/desktop/desktopApp/build/compose/binaries/main/app/LianT"
+          PKG="LianT-pkg"
+          mkdir -p "$PKG/usr/bin"
+          mkdir -p "$PKG/usr/share/applications"
 
-          cd ${{ env.OUTPUT_DIR }}
-          for f in *.dmg; do
-            [ -f "$f" ] && mv "$f" "${{ env.APP_NAME }}_${{ env.APP_VERSION }}_arm64.dmg"
+          # 遍历 resources/linux/ 下所有数字尺寸目录
+          for d in manager/resources/linux/*; do
+            size=$(basename "$d")
+            if [[ "$size" =~ ^[0-9]+$ ]]; then
+              mkdir -p "$PKG/usr/share/icons/hicolor/${size}x${size}/apps"
+              cp "$d/LianT.png" "$PKG/usr/share/icons/hicolor/${size}x${size}/apps/LianT.png"
+              echo "Installed icon: ${size}x${size}"
+            fi
           done
 
-          echo "📦 Output contents:"
-          ls -lh ${{ env.OUTPUT_DIR }}/
+          # 二进制
+          cp "$APP_BIN" "$PKG/usr/bin/LianT"
+          chmod +x "$PKG/usr/bin/LianT"
 
-      - name: Upload packages
-        uses: actions/upload-artifact@v7
+          # .desktop 模板：动态替换 Exec 和 Icon
+          sed "s|^Exec=.*|Exec=/usr/bin/LianT|; s|^Icon=.*|Icon=LianT|" \
+            manager/resources/linux/LianT.desktop > "$PKG/usr/share/applications/LianT.desktop"
+
+          # DEBIAN/control
+          mkdir -p "$PKG/DEBIAN"
+          cat > "$PKG/DEBIAN/control" <<EOF
+          Package: liant
+          Version: ${{ inputs.version }}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: LianT Team <maintainer@liant.local>
+          Description: LianT Manager - Desktop application
+           Cross-platform desktop manager built with Compose Multiplatform.
+          EOF
+
+          echo "--- Package layout ---"
+          find "$PKG" -type f | sort
+
+      - name: Build .deb
+        run: |
+          fakeroot dpkg-deb --build LianT-pkg "LianT_${{ inputs.version }}_amd64.deb"
+          ls -la "LianT_${{ inputs.version }}_amd64.deb"
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: packages-darwin-arm64
-          path: ${{ env.OUTPUT_DIR }}/*.dmg
-          if-no-files-found: error
-          retention-days: 30
+          name: LianT-linux-amd64
+          path: LianT_${{ inputs.version }}_amd64.deb
+
+  # ─────────────────────────────────────────────
+  # Linux arm64 → 多尺寸图标 + .desktop → .deb
+  # ─────────────────────────────────────────────
+  linux_arm64:
+    if: ${{ inputs.linux_arm64 == true }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Install packaging tools
+        run: sudo apt-get update && sudo apt-get install -y fakeroot dpkg-deb
+
+      - name: Build CMP bare directory
+        working-directory: manager/desktop
+        run: ./gradlew :desktopApp:createDistributable --no-daemon
+
+      - name: Prepare Debian package layout (动态多尺寸图标)
+        run: |
+          set -e
+          APP_BIN="manager/desktop/desktopApp/build/compose/binaries/main/app/LianT"
+          PKG="LianT-pkg"
+          mkdir -p "$PKG/usr/bin"
+          mkdir -p "$PKG/usr/share/applications"
+
+          for d in manager/resources/linux/*; do
+            size=$(basename "$d")
+            if [[ "$size" =~ ^[0-9]+$ ]]; then
+              mkdir -p "$PKG/usr/share/icons/hicolor/${size}x${size}/apps"
+              cp "$d/LianT.png" "$PKG/usr/share/icons/hicolor/${size}x${size}/apps/LianT.png"
+              echo "Installed icon: ${size}x${size}"
+            fi
+          done
+
+          cp "$APP_BIN" "$PKG/usr/bin/LianT"
+          chmod +x "$PKG/usr/bin/LianT"
+
+          sed "s|^Exec=.*|Exec=/usr/bin/LianT|; s|^Icon=.*|Icon=LianT|" \
+            manager/resources/linux/LianT.desktop > "$PKG/usr/share/applications/LianT.desktop"
+
+          mkdir -p "$PKG/DEBIAN"
+          cat > "$PKG/DEBIAN/control" <<EOF
+          Package: liant
+          Version: ${{ inputs.version }}
+          Section: utils
+          Priority: optional
+          Architecture: arm64
+          Maintainer: LianT Team <maintainer@liant.local>
+          Description: LianT Manager - Desktop application
+           Cross-platform desktop manager built with Compose Multiplatform.
+          EOF
+
+          echo "--- Package layout ---"
+          find "$PKG" -type f | sort
+
+      - name: Build .deb
+        run: |
+          fakeroot dpkg-deb --build LianT-pkg "LianT_${{ inputs.version }}_arm64.deb"
+          ls -la "LianT_${{ inputs.version }}_arm64.deb"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LianT-linux-arm64
+          path: LianT_${{ inputs.version }}_arm64.deb

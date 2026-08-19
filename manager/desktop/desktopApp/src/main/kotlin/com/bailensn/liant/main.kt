@@ -19,7 +19,7 @@ fun App() {
     LaunchedEffect(Unit) { visible = true }
 
     MaterialTheme(
-        colorScheme = lightColorScheme(primary = Color(0xFF3278DC)) // 你原来的蓝
+        colorScheme = lightColorScheme(primary = Color(0xFF3278DC))
     ) {
         AnimatedVisibility(visible, enter = fadeIn(tween(200))) {
             Surface(
