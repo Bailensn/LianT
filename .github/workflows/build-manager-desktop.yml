@@ -65,7 +65,7 @@ jobs:
         run: |
           choco install innosetup -y --no-progress
           iscc manager/desktop/installer.iss
-          mv manager/desktop/Output/LianT.exe LianT_${{ inputs.version }}_amd64.exe
+          Move-Item manager/desktop/Output/LianT.exe LianT_${{ inputs.version }}_amd64.exe
 
       - uses: actions/upload-artifact@v7
         with:
