@@ -1,5 +1,3 @@
-rootProject.name = "LianT"
-
 pluginManagement {
     repositories {
         gradlePluginPortal()
@@ -8,4 +6,12 @@ pluginManagement {
     }
 }
 
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "LianT"
 include(":desktopApp")
