@@ -12,14 +12,14 @@ import com.bailensn.liant.titlebar.DesktopTitleBar
 
 /**
  * Windows / Linux 使用的无边框窗口。
- * 隐藏系统标题栏（undecorated），改用我们自己的"小白条"当窗口控制按钮。
+ * 隐藏系统的标题栏（undecorated），改成我们自绘的透明仿系统标题栏。
  * transparent 让窗口透明，配合后面的玻璃毛玻璃效果。
  */
 @Composable
 fun DesktopWindow(
     onExit: () -> Unit
 ) {
-    // 用一个 WindowState 统一管理窗口的尺寸/位置/最小化，改它的属性窗口就会跟着变
+    // 用一个 WindowState 统一管理窗口尺寸/位置，改它的属性窗口就会跟着变
     val windowState = rememberWindowState(
         width = 900.dp,
         height = 600.dp,
@@ -28,21 +28,17 @@ fun DesktopWindow(
         )
     )
 
-    // Column 是普通布局；Window { } 内部自带 WindowScope，所以这里能直接
-    // 调用 WindowScope.DesktopTitleBar(...)（它就是那个作用域的扩展函数）
+    // Window { } 内部自带 WindowScope，所以能直接调用
+    // WindowScope.DesktopTitleBar(...)（它就是那个作用域的扩展函数）
     Window(
-        undecorated = true,     // 不要系统的窗口边框，用我们自己的小白条
-        transparent = true,     // 窗口背景透明，方便做玻璃效果
+        undecorated = true,   // 不要系统的标题栏，用我们自己的透明标题栏
+        transparent = true,   // 窗口背景透明，方便做玻璃效果
         state = windowState,
         onCloseRequest = onExit // 关窗口时退出应用
     ) {
         Column {
             DesktopTitleBar(
-                onMinimize = {
-                    // 点小白条的"最小化" → 窗口最小化
-                    windowState.isMinimized = true
-                },
-                onClose = onExit // 点小白条的"关闭" → 退出
+                onClose = onExit // 点标题栏的"关闭" → 退出
             )
             AppContent()
         }
