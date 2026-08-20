@@ -1,4 +1,4 @@
-package com.bailensn.liant
+package com.bailensn.liant.component
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image

@@ -1,24 +1,10 @@
 package com.bailensn.liant
 
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.*
-import androidx.compose.ui.Alignment
+import androidx.compose.ui.window.application
+import com.bailensn.liant.window.AppWindow
 
-fun main() = application {
-    val windowState = rememberWindowState(
-        width = 430.dp,
-        height = 800.dp,
-        position = WindowPosition.Aligned(
-            Alignment.Center
-        )
-    )
-    Window(
-        onCloseRequest = ::exitApplication,
-        title = "LianT",
-        state = windowState,
-        undecorated = true,
-        transparent = true
-    ) {
-        WindowRoot()
+fun main() {
+    application {
+        AppWindow()
     }
 }

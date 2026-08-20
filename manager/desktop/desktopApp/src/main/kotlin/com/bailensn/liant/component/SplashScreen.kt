@@ -1,4 +1,4 @@
-package com.bailensn.liant
+package com.bailensn.liant.component
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -13,28 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun LianTTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    content: @Composable () -> Unit
-) {
-    val colorScheme =
-        if (darkTheme) {
-            darkColorScheme()
-        } else {
-            lightColorScheme()
-        }
-    MaterialTheme(
-        colorScheme = colorScheme,
-        shapes = Shapes(
-            large = RoundedCornerShape(32.dp),
-            extraLarge = RoundedCornerShape(36.dp)
-        ),
-        content = content
-    )
-}
-
-@Composable
-fun TheLayout() {
+fun SplashScreen() {
     val textColor =
         if (isSystemInDarkTheme())
             Color.White
