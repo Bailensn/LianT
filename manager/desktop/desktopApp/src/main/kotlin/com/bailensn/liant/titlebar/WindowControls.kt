@@ -1,7 +1,7 @@
 package com.bailensn.liant.titlebar
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -23,9 +23,8 @@ import androidx.compose.ui.unit.sp
 /**
  * 小白条 · 窗口控制条
  *
- * 一个圆角的小白条，装着三个圆形按钮：
+ * 一个圆角的小白条，装着两个圆形按钮：
  *   ─  最小化
- *   ▢  最大化 / 还原
  *   ✕  关闭
  *
  * 它自己不关心窗口是谁，只负责把"用户点了哪个按钮"用回调告诉外面。
@@ -34,9 +33,7 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun WindowControls(
     modifier: Modifier = Modifier,
-    isMaximized: Boolean = false,
     onMinimize: () -> Unit,
-    onToggleMaximize: () -> Unit,
     onClose: () -> Unit
 ) {
     Row(
@@ -55,12 +52,6 @@ fun WindowControls(
             label = "─",
             color = Color(0xFF9AA0A8)
         ) { onMinimize() }
-
-        // 最大化 / 还原（图标会随状态切换）
-        ControlDot(
-            label = if (isMaximized) "▣" else "▢",
-            color = Color(0xFF757B84)
-        ) { onToggleMaximize() }
 
         // 关闭（红色，提醒这个是危险操作）
         ControlDot(

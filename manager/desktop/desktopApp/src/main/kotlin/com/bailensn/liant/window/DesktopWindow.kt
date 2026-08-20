@@ -19,7 +19,7 @@ import com.bailensn.liant.titlebar.DesktopTitleBar
 fun DesktopWindow(
     onExit: () -> Unit
 ) {
-    // 用一个 WindowState 统一管理窗口的尺寸/位置/最大化/最小化，改它的属性窗口就会跟着变
+    // 用一个 WindowState 统一管理窗口的尺寸/位置/最小化，改它的属性窗口就会跟着变
     val windowState = rememberWindowState(
         width = 900.dp,
         height = 600.dp,
@@ -28,6 +28,8 @@ fun DesktopWindow(
         )
     )
 
+    // Column 是普通布局；Window { } 内部自带 WindowScope，所以这里能直接
+    // 调用 WindowScope.DesktopTitleBar(...)（它就是那个作用域的扩展函数）
     Window(
         undecorated = true,     // 不要系统的窗口边框，用我们自己的小白条
         transparent = true,     // 窗口背景透明，方便做玻璃效果
@@ -36,15 +38,9 @@ fun DesktopWindow(
     ) {
         Column {
             DesktopTitleBar(
-                isMaximized = windowState.isMaximized,
                 onMinimize = {
                     // 点小白条的"最小化" → 窗口最小化
                     windowState.isMinimized = true
-                },
-                onToggleMaximize = {
-                    // 点小白条的"最大化/还原" → 切换状态
-                    windowState.isMaximized =
-                        !windowState.isMaximized
                 },
                 onClose = onExit // 点小白条的"关闭" → 退出
             )
