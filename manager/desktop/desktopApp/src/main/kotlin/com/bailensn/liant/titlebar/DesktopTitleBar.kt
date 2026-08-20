@@ -24,12 +24,14 @@ fun DesktopTitleBar(){
                     Color.White
                 )
                 .pointerInput(Unit){
-                    detectTapGestures(
-                        onSecondaryTap = {
-                            expand =
-                                !expand
+                    awaitPointerEventScope {
+                        while(true){
+                            val event = awaitPointerEvent()
+                            if(event.buttons.isSecondaryPressed){
+                                expand = !expand
+                            }
                         }
-                    )
+                    }
                 }
     ){
         if(expand){
