@@ -32,8 +32,8 @@ fun DesktopWindow(
         undecorated = true,
         transparent = true,
         state = windowState,
-        onCloseRequest = onExit
-        title = "LianT"
+        onCloseRequest = onExit,
+        title = "LianT",
         icon = painterResource(Res.drawable.ic_launcher)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
