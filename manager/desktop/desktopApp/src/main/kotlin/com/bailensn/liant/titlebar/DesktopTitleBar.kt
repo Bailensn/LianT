@@ -24,8 +24,8 @@ import java.awt.Frame
 import kotlinx.coroutines.withTimeoutOrNull
 
 // 漂浮白条的尺寸（一个居中的小圆角条）
-private val BarWidth = 170.dp
-private val BarHeight = 30.dp
+private val BarWidth = 150.dp
+private val BarHeight = 15.dp
 
 /** 两次右键点击间隔小于这个值就当作双击 */
 private const val DoubleClickWindowMillis = 300L
