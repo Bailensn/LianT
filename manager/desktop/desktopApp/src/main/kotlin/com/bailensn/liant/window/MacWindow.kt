@@ -1,18 +1,20 @@
 package com.bailensn.liant.window
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.window.*
+import androidx.compose.ui.window.Window
 import com.bailensn.liant.component.AppContent
-import androidx.compose.ui.window.exitApplication
 
+/**
+ * macOS 窗口：直接用系统的原生标题栏和红绿灯按钮，所以不需要小白条。
+ */
 @Composable
-fun MacWindow(){
+fun MacWindow(
+    onExit: () -> Unit
+) {
     Window(
-        onCloseRequest =
-            ::exitApplication,
-        title =
-            "LianT"
-    ){
+        title = "LianT",
+        onCloseRequest = onExit
+    ) {
         AppContent()
     }
 }
