@@ -51,7 +51,7 @@ compose.resources {
 }
 
 val rceditLocal: File = file("../../tools/rcedit-x64.exe") 
-val rceditUrl = "https:
+val rceditUrl = "https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe"
 val rceditFile = layout.buildDirectory.file("rcedit/rcedit-x64.exe")
 
 fun resolveRcedit(): File = if (rceditLocal.exists()) rceditLocal else rceditFile.get().asFile
