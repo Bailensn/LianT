@@ -12,9 +12,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowScope
@@ -25,7 +26,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 private val BarWidth = 170.dp
 private val BarHeight = 30.dp
 
-/** 两次点击间隔小于这个值就当作双击 */
+/** 两次右键点击间隔小于这个值就当作双击 */
 private const val DoubleClickWindowMillis = 300L
 
 /**
@@ -36,6 +37,9 @@ private const val DoubleClickWindowMillis = 300L
  *   左键按住拖动   → 拖动整个窗口
  *   右键单击      → 窗口最小化
  *   右键双击      → 窗口最大化 / 还原
+ *
+ * 左键拖动用官方 [WindowDraggableArea]；
+ * 右键单击/双击用自定义手势（稳定 API：PointerInputScope + buttons）自己区分。
  *
  * 窗口最小化/最大化直接用底层的 java.awt.Frame.extendedState，
  * 是长期稳定 API，和 Compose 版本无关，不会遇到 API 改名的问题。
@@ -86,8 +90,8 @@ fun WindowScope.DesktopTitleBar(
  * 逻辑：一次右键完整点击（按下→松开）后，先等地一下（DoubleClickWindowMillis），
  * 如果这段时间内又来了一次"右键按下"，就说明是双击；否则就是单击。
  *
- * 这里全部用挂起等待实现（withTimeoutOrNull / awaitPointerEvent），
- * 不需要额外的 CoroutineScope，所以能安全地在 PointerInputScope 里运行。
+ * 全部用挂起等待实现（withTimeoutOrNull / awaitPointerEvent），
+ * 不需要额外的 CoroutineScope，能安全地在 PointerInputScope 里运行。
  */
 private suspend fun PointerInputScope.detectRightClicks(
     onSingleClick: () -> Unit,
@@ -104,7 +108,7 @@ private suspend fun PointerInputScope.detectRightClicks(
         } != null
 
     if (secondClickCame) {
-        // 是双击：把第二次点击也消费掉（等它松开），然后触发双击
+        // 是双击：等第二次点击松开，然后触发双击
         awaitSecondaryUp()
         onDoubleClick()
     } else {
@@ -113,7 +117,7 @@ private suspend fun PointerInputScope.detectRightClicks(
     }
 }
 
-/** 一直等到出现"鼠标右键按下"的那一帧（任意一次新的按下）。 */
+/** 一直等到出现"鼠标右键按下"的那一帧。 */
 private suspend fun AwaitPointerEventScope.awaitSecondaryDown(): PointerEvent {
     while (true) {
         val event = awaitPointerEvent(PointerEventPass.Main)
