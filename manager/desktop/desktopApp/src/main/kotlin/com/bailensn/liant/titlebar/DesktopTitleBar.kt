@@ -12,17 +12,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.pointer.*
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowScope
 import java.awt.Frame
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 // 漂浮白条的尺寸（一个居中的小圆角条）
 private val BarWidth = 170.dp
 private val BarHeight = 30.dp
+
+/** 两次点击间隔小于这个值就当作双击 */
+private const val DoubleClickWindowMillis = 300L
 
 /**
  * 漂浮白条（Windows / Linux 用）。
@@ -78,44 +82,39 @@ fun WindowScope.DesktopTitleBar(
 
 /**
  * 识别右键的单击 / 双击。
- * 关键点：单击不能立即触发，要等地一下，
- * 看会不会很快来第二次（那样才算双击）。
+ *
+ * 逻辑：一次右键完整点击（按下→松开）后，先等地一下（DoubleClickWindowMillis），
+ * 如果这段时间内又来了一次"右键按下"，就说明是双击；否则就是单击。
+ *
+ * 这里全部用挂起等待实现（withTimeoutOrNull / awaitPointerEvent），
+ * 不需要额外的 CoroutineScope，所以能安全地在 PointerInputScope 里运行。
  */
 private suspend fun PointerInputScope.detectRightClicks(
     onSingleClick: () -> Unit,
     onDoubleClick: () -> Unit
-) {
-    // 两次点击间隔小于这个值就当作双击
-    val doubleClickWindowMillis = 300L
-    var lastClickAt = 0L
-    var singleJob: Job? = null
+) = awaitEachGesture {
+    // 一次完整的右键点击 = 右键按下 → 右键松开
+    awaitSecondaryDown()
+    awaitSecondaryUp()
 
-    awaitEachGesture {
-        // 等到右键按下，再等到右键松开（一次完整的点击）
-        awaitSecondaryDown() ?: return@awaitEachGesture
+    // 抬起后再等地一下，看是否立刻又按下（⇢ 那是第二次点击 = 双击）
+    val secondClickCame =
+        withTimeoutOrNull(DoubleClickWindowMillis) {
+            awaitSecondaryDown()
+        } != null
+
+    if (secondClickCame) {
+        // 是双击：把第二次点击也消费掉（等它松开），然后触发双击
         awaitSecondaryUp()
-
-        val now = System.currentTimeMillis()
-        if (lastClickAt != 0L && now - lastClickAt <= doubleClickWindowMillis) {
-            // 第二次点击凑成了双击 → 取消之前挂起的单击，只触发双击
-            singleJob?.cancel()
-            singleJob = null
-            lastClickAt = 0L
-            onDoubleClick()
-        } else {
-            // 第一次点击 → 先挂起，等一会儿看是不是双击；不是的话再触发单击
-            lastClickAt = now
-            singleJob?.cancel()
-            singleJob = launch {
-                delay(doubleClickWindowMillis)
-                onSingleClick()
-            }
-        }
+        onDoubleClick()
+    } else {
+        // 是单击
+        onSingleClick()
     }
 }
 
-/** 一直等到出现"鼠标右键按下"的那一帧；若是其它键按下则继续等。 */
-private suspend fun AwaitPointerEventScope.awaitSecondaryDown(): PointerEvent? {
+/** 一直等到出现"鼠标右键按下"的那一帧（任意一次新的按下）。 */
+private suspend fun AwaitPointerEventScope.awaitSecondaryDown(): PointerEvent {
     while (true) {
         val event = awaitPointerEvent(PointerEventPass.Main)
         if (event.buttons.isSecondaryPressed && event.changes.any { it.pressed }) {
