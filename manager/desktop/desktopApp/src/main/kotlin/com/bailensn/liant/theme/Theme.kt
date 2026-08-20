@@ -12,7 +12,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** 应用统一主题：根据系统深浅色自动切换亮色/暗色配色 */
 @Composable
 fun LianTTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
