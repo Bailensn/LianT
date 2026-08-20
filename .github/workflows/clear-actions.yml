@@ -1,0 +1,101 @@
+name: Clear Runs and Caches
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  clear-all:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel and delete all workflow runs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const activeStatuses = ['queued', 'in_progress', 'waiting', 'requested', 'pending'];
+            for (const status of activeStatuses) {
+              const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+                owner,
+                repo,
+                status,
+                per_page: 100
+              });
+              
+              for (const run of data.workflow_runs) {
+                if (run.id === context.runId) continue;
+                console.log(`Cancelling run: ${run.id}`);
+                try {
+                  await github.rest.actions.cancelWorkflowRun({ owner, repo, run_id: run.id });
+                } catch (e) {
+                  console.log(`Failed to cancel ${run.id}: ${e.message}`);
+                }
+              }
+            }
+
+            await new Promise(r => setTimeout(r, 5000));
+
+            let hasMore = true;
+            while (hasMore) {
+              const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+                owner,
+                repo,
+                per_page: 100
+              });
+
+              const runsToDelete = data.workflow_runs.filter(r => r.id !== context.runId);
+              if (runsToDelete.length === 0) {
+                hasMore = false;
+                break;
+              }
+
+              for (const run of runsToDelete) {
+                console.log(`Deleting run: ${run.id}`);
+                try {
+                  await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
+                } catch (e) {
+                  console.log(`Failed to delete ${run.id}: ${e.message}`);
+                }
+              }
+            }
+
+      - name: Delete all GitHub Actions Caches
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            let page = 1;
+            let hasMore = true;
+
+            while (hasMore) {
+              const { data } = await github.rest.actions.getActionsCacheList({
+                owner,
+                repo,
+                per_page: 100,
+                page
+              });
+
+              if (data.actions_caches.length === 0) {
+                hasMore = false;
+                break;
+              }
+
+              for (const cache of data.actions_caches) {
+                console.log(`Deleting cache key: ${cache.key} (ID: ${cache.id})`);
+                try {
+                  await github.rest.actions.deleteActionsCacheById({
+                    owner,
+                    repo,
+                    cache_id: cache.id
+                  });
+                } catch (e) {
+                  console.log(`Failed to delete cache ${cache.id}: ${e.message}`);
+                }
+              }
+            }
