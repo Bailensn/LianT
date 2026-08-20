@@ -1,6 +1,3 @@
-; 脚本名：installer.iss
-; 位置：manager/desktop/installer.iss
-
 [Setup]
 AppName=LianT
 AppVersion=1.0.0
@@ -22,10 +19,10 @@ Source: "desktopApp\build\compose\binaries\main\app\*"; DestDir: "{app}"; Flags:
 
 [Icons]
 ; 开始菜单快捷方式
-Name: "{group}\LianT"; Filename: "{app}\LianT.exe"; IconFilename: "{app}\LianT.exe"
+Name: "{group}\LianT"; Filename: "{app}\LianT\LianT.exe"; IconFilename: "{app}\LianT\LianT.exe"
 
 ; 桌面快捷方式
-Name: "{autodesktop}\LianT"; Filename: "{app}\LianT.exe"; IconFilename: "{app}\LianT.exe"
+Name: "{autodesktop}\LianT"; Filename: "{app}\LianT\LianT.exe"; IconFilename: "{app}\LianT\LianT.exe"
 
 [Run]
 ; 不自动启动
