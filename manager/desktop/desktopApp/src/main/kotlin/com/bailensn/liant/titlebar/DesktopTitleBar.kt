@@ -77,7 +77,6 @@ private suspend fun PointerInputScope.detectRightClicks(
         awaitSecondaryUp()
         onDoubleClick()
     } else {
-        // 是单击
         onSingleClick()
     }
 }

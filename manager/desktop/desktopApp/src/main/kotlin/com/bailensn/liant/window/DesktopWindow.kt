@@ -12,6 +12,9 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
 import com.bailensn.liant.component.AppContent
 import com.bailensn.liant.titlebar.DesktopTitleBar
+import org.jetbrains.compose.resources.painterResource
+import com.bailensn.liant.Res
+import com.bailensn.liant.ic_launcher
 
 @Composable
 fun DesktopWindow(
@@ -30,6 +33,8 @@ fun DesktopWindow(
         transparent = true,
         state = windowState,
         onCloseRequest = onExit
+        title = "LianT"
+        icon = painterResource(Res.drawable.ic_launcher)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             AppContent()
