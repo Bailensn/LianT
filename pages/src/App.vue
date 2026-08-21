@@ -3,7 +3,6 @@ import { ref } from "vue"
 import LogoIcon from "./components/LogoIcon.vue"
 
 const menuOpen = ref(false)
-const year = new Date().getFullYear()
 
 function closeMenu() {
   menuOpen.value = false
