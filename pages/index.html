@@ -2,45 +2,11 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
-    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/logo-256.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#0a0b0f" />
-    <script>
-      // Set the theme before paint to avoid a flash of the wrong theme.
-      ;(function () {
-        try {
-          var saved = window.localStorage.getItem('liant-theme')
-          var theme =
-            saved === 'dark' || saved === 'light'
-              ? saved
-              : window.matchMedia('(prefers-color-scheme: light)').matches
-                ? 'light'
-                : 'dark'
-          document.documentElement.setAttribute('data-theme', theme)
-        } catch (e) {}
-      })()
-    </script>
-
-    <title>LianT · 联T — Telegram Bot 管理器，服务器自备</title>
-    <meta name="description" content="LianT（联T）是一款基于 Telegram Bot API 的管理工具：Service 部署在你自己的服务器上运行 Bot，Manager 是跨平台的图形管理端。你的 Bot，你的服务器，你的掌控。" />
-
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="LianT · 联T — Telegram Bot 管理器，服务器自备" />
-    <meta property="og:description" content="Service 部署在你自己的服务器上运行 Bot，Manager 是跨平台图形管理端。你的 Bot，你的服务器，你的掌控。" />
-    <meta property="og:image" content="/logo.png" />
-    <meta name="twitter:card" content="summary" />
-
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LianT · 联T</title>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
