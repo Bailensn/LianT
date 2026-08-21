@@ -53,15 +53,4 @@ function closeMenu() {
       <component :is="Component" />
     </transition>
   </router-view>
-
-  <footer class="footer">
-    <div class="container footer-inner">
-      <LogoIcon :size="18" />
-      <span class="footer-brand">LianT</span>
-      <span class="footer-sep">·</span>
-      <span>© {{ year }}</span>
-      <span class="footer-sep">·</span>
-      <span>服务器自备</span>
-    </div>
-  </footer>
 </template>
