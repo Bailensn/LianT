@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 )
 
@@ -59,7 +60,9 @@ func handle(conn net.Conn) bool {
 	}
 	switch req.Action {
 	case "start":
-		startBot(req.ID)
+		startBotEcho(req.ID, conn)
+		// 保持连接，直到 bot 的 WSS 信息回显完成并关闭连接
+		io.Copy(io.Discard, conn)
 	case "stop":
 		stopBot(req.ID)
 	case "list":

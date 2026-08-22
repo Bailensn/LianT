@@ -49,6 +49,7 @@ onMounted(async () => {
           v-for="item in builds"
           :key="item.os + item.arch"
           :build="item"
+          :product="tag"
           :release="release"
         />
       </div>

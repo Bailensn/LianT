@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -82,6 +83,17 @@ func send(req Request) {
 	}
 	defer conn.Close()
 	json.NewEncoder(conn).Encode(req)
+	if req.Action=="start" {
+		// 回显 bot 的 WSS 信息，直到 daemon 关闭连接（WSS_READY 之后）
+		reader := bufio.NewReader(conn)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				break
+			}
+			fmt.Print(line)
+		}
+	}
 	if req.Action=="daemon-stop" {
 		var bots []BotInfo
 		err:=json.NewDecoder(conn).Decode(
