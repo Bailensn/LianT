@@ -1,0 +1,53 @@
+name: Deploy on Release
+
+# 每次发布新 Release 时：
+# 1) 用 GitHub 自动注入的 GITHUB_TOKEN 抓取最新版本数据并提交回仓库的 pages/ 目录
+# 2) 触发 Vercel 重新构建部署（此时直接读取仓库里的静态数据，无需再访问 GitHub API）
+#
+# 说明：本页面项目位于仓库的 pages/ 子目录，故相关路径均以 pages/ 为前缀。
+on:
+  release:
+    types: [published]
+
+# 让 Actions 的提交能推回本仓库
+permissions:
+  contents: write
+
+jobs:
+  refresh-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fetch latest releases data
+        working-directory: pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/fetch-releases.mjs
+
+      - name: Commit updated release data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pages/src/data/releases.generated.json
+          if git diff --cached --quiet; then
+            echo "数据无变化，跳过提交"
+          else
+            git commit -m "chore: refresh release data"
+            git push
+          fi
+
+      - name: Trigger Vercel Deploy Hook
+        run: |
+          curl -f -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"event_type": "release"}' \
+            "${{ secrets.VERCEL_DEPLOY_HOOK }}"

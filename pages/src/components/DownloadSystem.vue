@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import DownloadArch from "./DownloadArch.vue"
-import { onMounted, ref } from "vue"
 import type { Build } from "../data/downloads"
 import { getLatestRelease, type Release } from "../data/github"
 
@@ -13,20 +12,8 @@ const props = defineProps<{
   num?: string
 }>()
 
-const release = ref<Release>()
-const error = ref<string>()
-const loading = ref(true)
-
-onMounted(async () => {
-  try {
-    // 自动获取该产品最新版本（tag 形如 "Manager-v0.01" / "Service-v0.01"）
-    release.value = await getLatestRelease(props.product)
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    loading.value = false
-  }
-})
+// Release 数据在构建期由 scripts/fetch-releases.mjs 静态化，运行时直接读取
+const release = getLatestRelease(props.product) as Release | undefined
 </script>
 
 <template>
@@ -41,9 +28,8 @@ onMounted(async () => {
           <p v-if="description" class="muted">{{ description }}</p>
         </div>
 
-        <span v-if="loading" class="pill pill-loading">加载中…</span>
-        <span v-else-if="release" class="pill">版本 {{ release.name }}</span>
-        <span v-else-if="error" class="pill pill-error">{{ error }}</span>
+        <span v-if="release" class="pill">版本 {{ release.name }}</span>
+        <span v-else class="pill pill-error">暂无 Release 数据</span>
       </div>
 
       <div class="systems">
