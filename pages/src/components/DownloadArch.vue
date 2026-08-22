@@ -11,15 +11,11 @@ const props = defineProps<{
   release: Release | undefined
 }>()
 
-function getVersion(release: Release) {
-  return release.name?.trim() || release.tag_name
-}
-
 function getUrl(asset: { ext: string }) {
   if (!props.release) return undefined
   const filename = buildReleaseFileName({
     product: props.product,
-    version: getVersion(props.release),
+    tag: props.release.tag_name,
     os: props.build.os,
     arch: props.build.arch,
     ext: asset.ext,

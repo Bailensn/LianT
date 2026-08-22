@@ -73,26 +73,32 @@ const OS_KEY: Record<string, string> = {
   macOS: "Darwin",
 }
 
-/** 版本号统一补上 v 前缀（release.name 可能是 "0.0.1" 而 tag_name 是 "v0.0.1"） */
-function withVersionPrefix(version: string): string {
-  return version.startsWith("v") ? version : `v${version}`
+/**
+ * 从 tag 中提取版本号，并补上 v 前缀。
+ * tag 形如 "Manager-v0.01" / "Service-v0.01"，取最后一个 "-" 之后的部分，
+ * 即 "v0.01"（若写成 "0.01" 也会补成 "v0.01"）。
+ * 优先使用 tag 而非 Release 标题，因为标题可能是随意的非版本描述。
+ */
+export function versionFromTag(tag: string): string {
+  const part = tag.slice(tag.lastIndexOf("-") + 1).trim()
+  return part.startsWith("v") ? part : `v${part}`
 }
 
 /**
  * 拼接 Release 产物文件名。
- * - Manager：LianT-Manager-v0.0.1-Linux_arm64.deb
- * - Service：除 Windows 外均无后缀，例如 LianT-Service-v0.0.1-Linux_arm64
+ * - Manager：LianT-Manager-v0.01-Linux-amd64.deb
+ * - Service：除 Windows 外均无后缀，例如 LianT-Service-v0.01-Linux-amd64
  */
 export function buildReleaseFileName(params: {
   product: string
-  version: string
+  tag: string
   os: string
   arch: string
   ext: string
 }): string {
-  const { product, version, os, arch, ext } = params
+  const { product, tag, os, arch, ext } = params
   const osKey = OS_KEY[os] ?? os
-  // 实际产物中 os 与 arch 之间用连字符分隔：LianT-Manager-v0.01-Linux-amd64.deb
-  const base = `LianT-${product}-${withVersionPrefix(version)}-${osKey}-${arch}`
+  // 版本号取自 tag（优先级高于 Release 标题）；os 与 arch 之间用连字符分隔
+  const base = `LianT-${product}-${versionFromTag(tag)}-${osKey}-${arch}`
   return ext ? `${base}.${ext}` : base
 }
