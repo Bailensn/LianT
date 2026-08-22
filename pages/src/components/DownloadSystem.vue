@@ -2,13 +2,14 @@
 import DownloadArch from "./DownloadArch.vue"
 import { onMounted, ref } from "vue"
 import type { Build } from "../data/downloads"
-import { getRelease, type Release } from "../data/github"
+import { getLatestRelease, type Release } from "../data/github"
 
 const props = defineProps<{
   title: string
   description?: string
   builds: Build[]
-  tag: string
+  /** 文件名与 tag 前缀中的产品名，例如 "Manager" / "Service" */
+  product: string
   num?: string
 }>()
 
@@ -18,7 +19,8 @@ const loading = ref(true)
 
 onMounted(async () => {
   try {
-    release.value = await getRelease(props.tag)
+    // 自动获取该产品最新版本（tag 形如 "Manager-v0.01" / "Service-v0.01"）
+    release.value = await getLatestRelease(props.product)
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -49,7 +51,7 @@ onMounted(async () => {
           v-for="item in builds"
           :key="item.os + item.arch"
           :build="item"
-          :product="tag"
+          :product="product"
           :release="release"
         />
       </div>

@@ -8,7 +8,7 @@ import { serviceBuilds } from "../data/downloads"
     title="下载 Service"
     description="服务端组件"
     :builds="serviceBuilds"
-    tag="Service"
+    product="Service"
     num="02"
   />
 </template>

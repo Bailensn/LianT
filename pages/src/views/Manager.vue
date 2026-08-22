@@ -8,7 +8,7 @@ import { managerBuilds } from "../data/downloads"
     title="下载 Manager"
     description="Telegram Bot 管理器客户端"
     :builds="managerBuilds"
-    tag="Manager"
+    product="Manager"
     num="01"
   />
 </template>
