@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"net"
 	"os"
+)
 
+import (
 	"github.com/Bailensn/LianT/service/wss"
+	"github.com/Bailensn/LianT/service/botruntime"
 )
 
 func BotCommand(args []string){
@@ -33,8 +36,6 @@ func BotCommand(args []string){
 			err,
 		)
 	}else{
-		// WSS 信息打印到 stderr（避免污染 stdout 上的 IPC 地址），不落盘。
-		// 结尾的 WSS_READY 标记用于让 daemon 判断回显内容何时结束。
 		fmt.Fprintf(
 			os.Stderr,
 			"WSS:\nwss://%s:%d/ws\n\nTOKEN:\n%s\n\n",
@@ -48,7 +49,7 @@ func BotCommand(args []string){
 		)
 		_ = wsURL
 	}
-	go messageLoop(
+	go botruntime.Run(
 		id,
 		ws,
 	)
@@ -71,22 +72,6 @@ func BotCommand(args []string){
 			return
 		}
 		conn.Close()
-	}
-}
-
-func messageLoop(id string,ws *wss.Server){
-	for{
-		select{
-		case msg:=<-ws.Receive:
-			// 收到来自 WSS 客户端的消息
-			fmt.Fprintf(
-				os.Stderr,
-				"\nwss client: %s\n",
-				msg,
-			)
-		default:
-			// Telegram消息处理
-		}
 	}
 }
 

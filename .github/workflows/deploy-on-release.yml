@@ -1,15 +1,9 @@
 name: Deploy on Release
 
-# 每次发布新 Release 时：
-# 1) 用 GitHub 自动注入的 GITHUB_TOKEN 抓取最新版本数据并提交回仓库的 pages/ 目录
-# 2) 触发 Vercel 重新构建部署（此时直接读取仓库里的静态数据，无需再访问 GitHub API）
-#
-# 说明：本页面项目位于仓库的 pages/ 子目录，故相关路径均以 pages/ 为前缀。
 on:
   release:
     types: [published]
 
-# 让 Actions 的提交能推回本仓库
 permissions:
   contents: write
 

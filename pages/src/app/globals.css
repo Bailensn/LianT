@@ -194,6 +194,7 @@ a{
   z-index: 100;
   display: flex;
   flex-direction: column;
+  animation: menuIn 0.22s var(--ease);
 }
 .menu-popover a{
   padding: 12px 18px;
@@ -213,29 +214,31 @@ a{
   font-weight: 600;
 }
 
-/* 菜单动画 */
-.menu-enter-active,
-.menu-leave-active{
-  transition: opacity 0.22s var(--ease), transform 0.22s var(--ease);
-}
-.menu-enter-from,
-.menu-leave-to{
-  opacity: 0;
-  transform: translateY(-8px) scale(0.96);
+@keyframes menuIn{
+  from{
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  to{
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* ========== 页面切换动画 ========== */
-.page-enter-active,
-.page-leave-active{
-  transition: opacity 0.25s var(--ease), transform 0.25s var(--ease);
+.page-transition{
+  animation: pageIn 0.25s var(--ease);
 }
-.page-enter-from{
-  opacity: 0;
-  transform: translateY(12px);
-}
-.page-leave-to{
-  opacity: 0;
-  transform: translateY(-8px);
+
+@keyframes pageIn{
+  from{
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to{
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ========== Hero ========== */

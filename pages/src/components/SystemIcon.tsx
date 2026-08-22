@@ -1,13 +1,3 @@
-<script setup lang="ts">
-import { computed } from "vue"
-
-const props = defineProps<{
-  os: string
-  size?: number
-}>()
-
-const sizePx = computed(() => props.size ?? 28)
-
 interface IconPath {
   d: string
   fill?: string
@@ -28,27 +18,22 @@ const iconData: Record<string, IconPath[]> = {
   // macOS —— Finder 笑脸（蓝灰双色 + 白色五官）
   macOS: [
     {
-      // 左半脸
       d: "M12,2 A10,10 0 0,0 12,22 Z",
       fill: "#4B9BF4",
     },
     {
-      // 右半脸
       d: "M12,2 A10,10 0 0,1 12,22 Z",
       fill: "#3A3A3C",
     },
     {
-      // 左眼
       d: "M7.4,7.4 A1.1,1.1 0 1,0 7.4,9.6 A1.1,1.1 0 1,0 7.4,7.4 Z",
       fill: "#FFFFFF",
     },
     {
-      // 右眼
       d: "M16.6,7.4 A1.1,1.1 0 1,0 16.6,9.6 A1.1,1.1 0 1,0 16.6,7.4 Z",
       fill: "#FFFFFF",
     },
     {
-      // 微笑
       d: "M7,14.5 Q12,17.8 17,14.5",
       fill: "none",
       stroke: "#FFFFFF",
@@ -74,25 +59,27 @@ const iconData: Record<string, IconPath[]> = {
   ],
 }
 
-const currentIcon = computed(() => iconData[props.os] ?? iconData.Linux)
-</script>
-
-<template>
-  <svg
-    :width="sizePx"
-    :height="sizePx"
-    viewBox="0 0 24 24"
-    xmlns="http://www.w3.org/2000/svg"
-    aria-hidden="true"
-  >
-    <path
-      v-for="(p, i) in currentIcon"
-      :key="i"
-      :d="p.d"
-      :fill="p.fill ?? 'none'"
-      :stroke="p.stroke"
-      :stroke-width="p.strokeWidth"
-      :stroke-linecap="p.strokeLinecap"
-    />
-  </svg>
-</template>
+/** 系统图标（Windows / macOS / Android / Linux） */
+export default function SystemIcon({ os, size = 28 }: { os: string; size?: number }) {
+  const paths = iconData[os] ?? iconData.Linux
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      {paths.map((p, i) => (
+        <path
+          key={i}
+          d={p.d}
+          fill={p.fill ?? "none"}
+          stroke={p.stroke}
+          strokeWidth={p.strokeWidth}
+          strokeLinecap={p.strokeLinecap}
+        />
+      ))}
+    </svg>
+  )
+}
