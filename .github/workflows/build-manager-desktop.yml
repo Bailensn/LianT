@@ -50,30 +50,15 @@ jobs:
         working-directory: manager/desktop
         run: cargo build --release
 
-      # cargo-packager reads Packager.toml, packages the release binary as an
-      # NSIS setup .exe, uses the Windows icon and writes output to ../release.
-      - name: Package NSIS installer (cargo-packager)
+      - name: Inject version into Cargo.toml
         working-directory: manager/desktop
         shell: pwsh
         run: |
-          @'
-          product-name = "LianT"
-          version = "${{ inputs.version }}"
-          identifier = "com.bailensn.liant"
+          (Get-Content Cargo.toml) -replace '^version = ".*"', 'version = "${{ inputs.version }}"' | Set-Content -Encoding ASCII Cargo.toml
 
-          before-packaging-command = "cargo build --release"
-
-          out-dir = "../release"
-          formats = ["nsis"]
-
-          icons = ["../resources/windows/LianT.ico"]
-
-          [nsis]
-          installer-icon = "../resources/windows/LianT.ico"
-          install-mode = "currentUser"
-          '@ | Set-Content -Encoding UTF8 Packager.toml
-
-          cargo packager --release
+      - name: Package installer
+        working-directory: manager/desktop
+        run: cargo packager --release
 
       - name: Rename setup artifact
         shell: pwsh

@@ -1,0 +1,11 @@
+product-name = "LianT"
+identifier = "com.bailensn.liant"
+
+out-dir = "../release"
+formats = ["nsis"]
+
+icons = ["../resources/windows/LianT.ico"]
+
+[nsis]
+installer-icon = "../resources/windows/LianT.ico"
+install-mode = "currentUser"
