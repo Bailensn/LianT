@@ -1,0 +1,238 @@
+import { Palette } from "std-widgets.slint";
+
+export struct WindowCtrl {
+    cmd: int,
+}
+
+export struct TitleEvent {
+    kind: int,
+    button: int,
+    x: float,
+    y: float,
+}
+
+export component MainWindow inherits Window {
+    callback window-control(WindowCtrl);
+    callback title-event(TitleEvent);
+
+    in-out property <int> theme-mode: 0;
+    in-out property <bool> is-dark: Palette.color-scheme == ColorScheme.dark;
+
+    property <bool> eff-dark: {
+        if (theme-mode == 1) { return true; }
+        else if (theme-mode == 2) { return false; }
+        return is-dark;
+    }
+
+    width: 920px;
+    height: 620px;
+    title: "LianT";
+    no-frame: true;
+    background: eff-dark ? #0c0c0d : #e3e3e5;
+
+    private property <length> one-px: 1px;
+    private property <color> c-bg: eff-dark ? #1B1B1B : #D7D7D7;
+    private property <color> c-bg-2: eff-dark ? #262626 : #C7C7C7;
+    private property <color> c-panel: eff-dark ? #161616 : #c7c7c7;
+    private property <color> c-title: eff-dark ? #212121 : #cfe0e3;
+    private property <color> c-fg: eff-dark ? #C4C4C4 : #292929;
+    private property <color> c-fg-dim: eff-dark ? #909090 : #4a4a4a;
+    private property <color> c-border: eff-dark ? #ffffff1a : #00000020;
+    private property <color> c-accent: eff-dark ? #63D0DF : #00525A;
+    private property <color> c-accent-fg: eff-dark ? #161616 : #FFFFFF;
+    private property <color> c-hover: eff-dark ? #ffffff12 : #00000010;
+    private property <color> c-close-hover: eff-dark ? #e05c5c : #d94f4f;
+    private property <color> c-close-fg: eff-dark ? #ffffff : #ffffff;
+
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 10px;
+        clip: true;
+        background: c-bg;
+
+        Rectangle {
+            width: 100%;
+            height: 46px;
+            background: c-title;
+            border-radius: 10px;
+
+            drag := TouchArea {
+                width: 100%;
+                height: 100%;
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) {
+                        root.title-event({ kind: 0, button: e.button == PointerEventButton.left ? 0 : 1, x: drag.mouse-x / one-px, y: drag.mouse-y / one-px });
+                    } else if (e.kind == PointerEventKind.up) {
+                        root.title-event({ kind: 1, button: e.button == PointerEventButton.left ? 0 : 1, x: drag.mouse-x / one-px, y: drag.mouse-y / one-px });
+                    } else if (e.kind == PointerEventKind.move) {
+                        root.title-event({ kind: 2, button: 0, x: drag.mouse-x / one-px, y: drag.mouse-y / one-px });
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                width: 100%;
+                height: 100%;
+                padding-left: 16px;
+                padding-right: 8px;
+                spacing: 8px;
+                alignment: center;
+
+                Rectangle {
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 3px;
+                    background: c-accent;
+                }
+                Text {
+                    text: "LianT";
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: c-fg;
+                }
+
+                Rectangle { horizontal-stretch: 1.0; height: 1px; }
+
+                btnmin := Rectangle {
+                    width: 28px; height: 28px; border-radius: 6px;
+                    background: transparent;
+                    states [
+                        hovered-touch when btnmin-touch.has-hover : {
+                            background: c-hover;
+                        }
+                    ]
+                    btnmin-touch := TouchArea {
+                        width: 100%; height: 100%;
+                        clicked => { root.window-control({ cmd: 0 }); }
+                    }
+                    Rectangle {
+                        width: 10px; height: 1.5px;
+                        y: parent.height / 2 - 1px;
+                        x: parent.width / 2 - 5px;
+                        background: c-fg;
+                    }
+                }
+
+                btnmax := Rectangle {
+                    width: 28px; height: 28px; border-radius: 6px;
+                    background: transparent;
+                    states [
+                        hovered-touch when btnmax-touch.has-hover : {
+                            background: c-hover;
+                        }
+                    ]
+                    btnmax-touch := TouchArea {
+                        width: 100%; height: 100%;
+                        clicked => { root.window-control({ cmd: 1 }); }
+                    }
+                    Rectangle {
+                        width: 11px; height: 11px;
+                        border-radius: 2px;
+                        border-width: 1.5px;
+                        border-color: c-fg;
+                        x: parent.width / 2 - 6px;
+                        y: parent.height / 2 - 6px;
+                    }
+                }
+
+                btnclose := Rectangle {
+                    width: 28px; height: 28px; border-radius: 6px;
+                    background: transparent;
+                    states [
+                        hover when btnclose-touch.has-hover : {
+                            background: c-close-hover;
+                        }
+                    ]
+                    btnclose-touch := TouchArea {
+                        width: 100%; height: 100%;
+                        clicked => { root.window-control({ cmd: 2 }); }
+                    }
+                    Text {
+                        text: "\u{00d7}"; // multiplication sign as the close glyph
+                        color: c-fg;
+                        font-size: 20px;
+                        width: 100%; height: 100%;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        VerticalLayout {
+            x: 0px;
+            y: 46px;
+            width: 100%;
+            height: root.height - 46px;
+            padding-left: 32px;
+            padding-right: 32px;
+            padding-top: 44px;
+            padding-bottom: 28px;
+
+            VerticalLayout {
+                alignment: start;
+                spacing: 0px;
+
+                Rectangle {
+                    width: 46px; height: 5px; border-radius: 3px; background: c-accent;
+                }
+                Rectangle { height: 18px; width: 1px; }
+                Text {
+                    text: "欢迎回来";
+                    font-size: 30px;
+                    font-weight: 600;
+                    color: c-fg;
+                    horizontal-alignment: left;
+                }
+                Rectangle { height: 6px; width: 1px; }
+                Text {
+                    text: "请选择要登录的 bot";
+                    font-size: 16px;
+                    color: c-fg-dim;
+                    horizontal-alignment: left;
+                }
+            }
+
+            Rectangle { height: 26px; width: 1px; }
+
+            Rectangle {
+                width: 100%;
+                vertical-stretch: 1.0;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: c-border;
+                background: c-panel;
+
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 6px;
+                    width: 100%;
+
+                    Rectangle { width: 100%; height: 42px; border-radius: 6px; background: c-bg-2; }
+                    Rectangle { width: 100%; height: 42px; border-radius: 6px; background: c-bg-2; }
+                    Rectangle { width: 100%; height: 42px; border-radius: 6px; background: c-bg-2; }
+                }
+            }
+
+            Rectangle { height: 22px; width: 1px; }
+
+            Rectangle {
+                width: 100%;
+                height: 42px;
+                border-radius: 8px;
+                background: c-accent;
+
+                Text {
+                    text: "继续";
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: c-accent-fg;
+                    width: 100%; height: 100%;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}

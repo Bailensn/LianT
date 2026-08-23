@@ -1,0 +1,15 @@
+[package]
+name = "liant"
+version = "0.1.0"
+edition = "2021"
+description = "LianT — COSMIC-style LLM bot sign-in UI (Rust + Slint)"
+license = "Apache-2.0"
+
+[dependencies]
+slint = "1.9"
+
+[build-dependencies]
+slint-build = "1.9"
+
+[profile.release]
+opt-level = 2

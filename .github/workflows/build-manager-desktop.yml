@@ -29,10 +29,6 @@ on:
         default: false
 
 
-env:
-  GRADLE_OPTS: -Dorg.gradle.java.installations.auto-download=false
-
-
 jobs:
 
   windows-amd64:
@@ -42,46 +38,54 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          distribution: temurin
-          java-version: '21'
+          cache: true
 
-      - uses: gradle/actions/setup-gradle@v6
-
-      - name: Pin Gradle toolchain
-        run: echo "toolchainVersion=21" > manager/desktop/gradle/gradle-daemon-jvm.properties
+      - name: Install cargo-packager
+        working-directory: manager/desktop
+        run: cargo install cargo-packager --locked
 
       - name: Build bare app
         working-directory: manager/desktop
-        run: ./gradlew :desktopApp:createDistributable --no-daemon
+        run: cargo build --release
 
-      - name: UPX compress
+      # cargo-packager reads Packager.toml, packages the release binary as an
+      # NSIS setup .exe, uses the Windows icon and writes output to ../release.
+      - name: Package NSIS installer (cargo-packager)
         working-directory: manager/desktop
+        shell: pwsh
         run: |
-          Invoke-WebRequest `
-            -Uri "https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip" `
-            -OutFile upx.zip
+          @'
+          product-name = "LianT"
+          version = "${{ inputs.version }}"
+          identifier = "com.bailensn.liant"
 
-          7z x -y upx.zip
+          before-packaging-command = "cargo build --release"
 
-          Get-ChildItem "desktopApp/build/compose/binaries/main/app" -Filter *.exe -Recurse | ForEach-Object {
-            ./upx-5.2.0-win64/upx.exe -9 $_.FullName
-          }
+          out-dir = "../release"
+          formats = ["nsis"]
 
-          Get-ChildItem "desktopApp/build/compose/binaries/main/app" -Filter *.dll -Recurse | ForEach-Object {
-            ./upx-5.2.0-win64/upx.exe -9 $_.FullName
-          }
+          icons = ["../resources/windows/LianT.ico"]
 
-      - name: Build installer
+          [nsis]
+          installer-icon = "../resources/windows/LianT.ico"
+          install-mode = "currentUser"
+          '@ | Set-Content -Encoding UTF8 Packager.toml
+
+          cargo packager --release
+
+      - name: Rename setup artifact
+        shell: pwsh
         run: |
-          choco install innosetup -y --no-progress
+          $exe = Get-ChildItem "../release" -Filter *.exe | Select-Object -First 1
 
-          iscc manager/desktop/installer.iss
+          if ($null -eq $exe) { throw "NSIS setup exe not found in ../release" }
 
           Move-Item `
-            manager/desktop/Output/LianT.exe `
-            LianT_${{ inputs.version }}_amd64.exe
+            -Force `
+            $exe.FullName `
+            "LianT_${{ inputs.version }}_amd64.exe"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -95,29 +99,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          distribution: temurin
-          java-version: '21'
-          architecture: arm64
-
-      - uses: gradle/actions/setup-gradle@v6
-
-      - name: Pin Gradle toolchain
-        run: echo "toolchainVersion=21" > manager/desktop/gradle/gradle-daemon-jvm.properties
+          cache: true
 
       - name: Build bare app
         working-directory: manager/desktop
-        run: ./gradlew :desktopApp:createDistributable --no-daemon
+        run: cargo build --release
 
       - name: Make app bundle
         run: |
-          APP="manager/desktop/desktopApp/build/compose/binaries/main/app"
-
           mkdir -p LianT.app/Contents/MacOS
           mkdir -p LianT.app/Contents/Resources
 
-          cp -r "$APP"/* LianT.app/Contents/MacOS/
+          cp manager/desktop/target/release/liant LianT.app/Contents/MacOS/LianT
 
           cp manager/resources/darwin/LianT.icns \
             LianT.app/Contents/Resources/
@@ -168,29 +163,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          distribution: temurin
-          java-version: '21'
-          architecture: x64
-
-      - uses: gradle/actions/setup-gradle@v6
-
-      - name: Pin Gradle toolchain
-        run: echo "toolchainVersion=21" > manager/desktop/gradle/gradle-daemon-jvm.properties
+          cache: true
 
       - name: Build bare app
         working-directory: manager/desktop
-        run: ./gradlew :desktopApp:createDistributable --no-daemon
+        run: cargo build --release
 
       - name: Make app bundle
         run: |
-          APP="manager/desktop/desktopApp/build/compose/binaries/main/app"
-
           mkdir -p LianT.app/Contents/MacOS
           mkdir -p LianT.app/Contents/Resources
 
-          cp -r "$APP"/* LianT.app/Contents/MacOS/
+          cp manager/desktop/target/release/liant LianT.app/Contents/MacOS/LianT
 
           cp manager/resources/darwin/LianT.icns \
             LianT.app/Contents/Resources/
@@ -241,12 +227,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          distribution: temurin
-          java-version: '21'
-
-      - uses: gradle/actions/setup-gradle@v6
+          cache: true
 
       - name: Install build tools
         run: |
@@ -254,18 +237,24 @@ jobs:
 
           sudo apt-get update -y
 
-          sudo apt-get install -y fakeroot rpm
-
-      - name: Pin Gradle toolchain
-        run: echo "toolchainVersion=21" > manager/desktop/gradle/gradle-daemon-jvm.properties
+          sudo apt-get install -y \
+            pkg-config \
+            libfontconfig1-dev \
+            libxkbcommon-dev \
+            libgl1-mesa-dev \
+            libegl1-mesa-dev \
+            libssl-dev \
+            libxkbcommon-x11-0 \
+            fonts-noto-cjk \
+            fakeroot \
+            rpm
 
       - name: Build bare app
         working-directory: manager/desktop
-        run: ./gradlew :desktopApp:createDistributable --no-daemon
+        run: cargo build --release
 
       - name: Package deb
         run: |
-          APP="manager/desktop/desktopApp/build/compose/binaries/main/app"
           PKG="pkg-deb"
 
           rm -rf "$PKG"
@@ -286,9 +275,9 @@ jobs:
               "$PKG"/usr/share/icons/hicolor/${sz}x${sz}/apps/
           done
 
-          cp -r "$APP"/* "$PKG"/opt/LianT/
+          cp manager/desktop/target/release/liant "$PKG"/opt/LianT/
 
-          ln -s /opt/LianT/LianT/bin/LianT \
+          ln -s /opt/LianT/liant \
             "$PKG"/usr/bin/LianT
 
           sed \
@@ -314,20 +303,18 @@ jobs:
 
       - name: Package rpm
         run: |
-          APP="manager/desktop/desktopApp/build/compose/binaries/main/app"
-
           mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS}
 
           mkdir -p rpmbuild/SOURCES/LianT
 
-          cp -r "$APP"/* rpmbuild/SOURCES/LianT/
+          cp manager/desktop/target/release/liant rpmbuild/SOURCES/LianT/
 
           cat << EOF > rpmbuild/SPECS/liant.spec
           Name: liant
           Version: ${{ inputs.version }}
           Release: 1
           Summary: LianT Manager Desktop
-          License: GPL
+          License: Apache-2.0
           BuildArch: x86_64
 
           %description
@@ -337,9 +324,9 @@ jobs:
           mkdir -p %{buildroot}/opt/LianT
           mkdir -p %{buildroot}/usr/bin
 
-          cp -r %{_sourcedir}/LianT/* %{buildroot}/opt/LianT/
+          cp %{_sourcedir}/LianT/liant %{buildroot}/opt/LianT/
 
-          ln -s /opt/LianT/LianT/bin/LianT %{buildroot}/usr/bin/LianT
+          ln -s /opt/LianT/liant %{buildroot}/usr/bin/LianT
 
           %files
           /opt/LianT
@@ -368,12 +355,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          distribution: temurin
-          java-version: '21'
-
-      - uses: gradle/actions/setup-gradle@v6
+          cache: true
 
       - name: Install build tools
         run: |
@@ -381,18 +365,24 @@ jobs:
 
           sudo apt-get update -y
 
-          sudo apt-get install -y fakeroot rpm
-
-      - name: Pin Gradle toolchain
-        run: echo "toolchainVersion=21" > manager/desktop/gradle/gradle-daemon-jvm.properties
+          sudo apt-get install -y \
+            pkg-config \
+            libfontconfig1-dev \
+            libxkbcommon-dev \
+            libgl1-mesa-dev \
+            libegl1-mesa-dev \
+            libssl-dev \
+            libxkbcommon-x11-0 \
+            fonts-noto-cjk \
+            fakeroot \
+            rpm
 
       - name: Build bare app
         working-directory: manager/desktop
-        run: ./gradlew :desktopApp:createDistributable --no-daemon
+        run: cargo build --release
 
       - name: Package deb
         run: |
-          APP="manager/desktop/desktopApp/build/compose/binaries/main/app"
           PKG="pkg-deb"
 
           rm -rf "$PKG"
@@ -413,9 +403,9 @@ jobs:
               "$PKG"/usr/share/icons/hicolor/${sz}x${sz}/apps/
           done
 
-          cp -r "$APP"/* "$PKG"/opt/LianT/
+          cp manager/desktop/target/release/liant "$PKG"/opt/LianT/
 
-          ln -s /opt/LianT/LianT/bin/LianT \
+          ln -s /opt/LianT/liant \
             "$PKG"/usr/bin/LianT
 
           sed \
@@ -441,20 +431,18 @@ jobs:
 
       - name: Package rpm
         run: |
-          APP="manager/desktop/desktopApp/build/compose/binaries/main/app"
-
           mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS}
 
           mkdir -p rpmbuild/SOURCES/LianT
 
-          cp -r "$APP"/* rpmbuild/SOURCES/LianT/
+          cp manager/desktop/target/release/liant rpmbuild/SOURCES/LianT/
 
           cat << EOF > rpmbuild/SPECS/liant.spec
           Name: liant
           Version: ${{ inputs.version }}
           Release: 1
           Summary: LianT Manager Desktop
-          License: GPL
+          License: Apache-2.0
           BuildArch: aarch64
 
           %description
@@ -464,9 +452,9 @@ jobs:
           mkdir -p %{buildroot}/opt/LianT
           mkdir -p %{buildroot}/usr/bin
 
-          cp -r %{_sourcedir}/LianT/* %{buildroot}/opt/LianT/
+          cp %{_sourcedir}/LianT/liant %{buildroot}/opt/LianT/
 
-          ln -s /opt/LianT/LianT/bin/LianT %{buildroot}/usr/bin/LianT
+          ln -s /opt/LianT/liant %{buildroot}/usr/bin/LianT
 
           %files
           /opt/LianT
