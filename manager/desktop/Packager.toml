@@ -2,15 +2,16 @@ name = "LianT"
 product-name = "LianT"
 identifier = "com.bailensn.liant"
 
-version = "1.0.0"
+version = "0.0.0"
 
 out-dir = "../release"
 formats = ["nsis"]
 
-[[binaries]]
-name = "liant"
-
 icons = ["../resources/windows/LianT.ico"]
+
+[[binaries]]
+path = "liant"
+main = true
 
 [nsis]
 installer-icon = "../resources/windows/LianT.ico"
