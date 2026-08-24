@@ -10,7 +10,7 @@ formats = ["nsis"]
 icons = ["../resources/windows/LianT.ico"]
 
 [[binaries]]
-name = "LianT"
+path = "LianT"
 main = true
 
 [nsis]
