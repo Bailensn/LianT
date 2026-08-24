@@ -25,7 +25,7 @@ export default function DownloadSystem({ title, description, builds, product, nu
             {description && <p className="muted">{description}</p>}
           </div>
           {release ? (
-          <span className="pill">版本 {versionFromTag(release.name)}</span>
+          <span className="pill">版本 {release.name}</span>
           ) : (
           <span className="pill pill-error">暂无Release数据</span>
           )}
