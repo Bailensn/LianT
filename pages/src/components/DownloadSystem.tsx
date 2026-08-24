@@ -1,5 +1,6 @@
 import DownloadArch from "./DownloadArch";
 import { getLatestRelease } from "@/data/github";
+import { versionFromTag } from "@/data/downloads";
 import type { Build } from "@/data/downloads";
 
 interface Props {
@@ -15,7 +16,9 @@ interface Props {
 export default function DownloadSystem({ title, description, builds, product, num }: Props) {
   // Release 数据在构建期由 scripts/fetch-releases.mjs 静态化，运行时直接读取
   const release = getLatestRelease(product)
-  const versionName = versionFromTag(release.name)
+  const versionName = release
+  ? `版本: ${versionFromTag(release.name)}`
+  : "None"
 
   return (
     <section className="section">
@@ -28,12 +31,7 @@ export default function DownloadSystem({ title, description, builds, product, nu
             </h1>
             {description && <p className="muted">{description}</p>}
           </div>
-
-          {release ? (
-            <span className="pill">版本 {versionName}</span>
-          ) : (
-            <span className="pill pill-error">暂无 Release 数据</span>
-          )}
+          <span className="pill">{versionName}</span>
         </div>
 
         <div className="systems">
