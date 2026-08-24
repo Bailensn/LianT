@@ -1,0 +1,46 @@
+version = 2
+
+[module]
+type = "android-app"
+name = "app"
+languageLevel = "JAVA_21"
+output = "build/classes"
+
+[sourceSets.debug]
+scope = "IMPLEMENTATION"
+assets = ["src/debug/assets"]
+java = ["src/debug/java", "src/debug/kotlin"]
+jniLibs = ["src/debug/jniLibs"]
+res = ["src/debug/res"]
+resources = ["src/debug/resources"]
+
+[sourceSets.main]
+scope = "IMPLEMENTATION"
+assets = ["src/main/assets"]
+java = ["src/main/java", "src/main/kotlin"]
+jniLibs = ["src/main/jniLibs"]
+res = ["src/main/res"]
+resources = ["src/main/resources"]
+
+[sourceSets.release]
+scope = "IMPLEMENTATION"
+assets = ["src/release/assets"]
+java = ["src/release/java", "src/release/kotlin"]
+jniLibs = ["src/release/jniLibs"]
+res = ["src/release/res"]
+resources = ["src/release/resources"]
+
+[dependencies]
+implementation = ["kotlin-stdlib", "androidx.activity:activity-compose:1.13.0", "androidx.compose.ui:ui:1.12.0-rc01", "androidx.compose.material3:material3:1.5.0-alpha26", "androidx.compose.foundation:foundation:1.13.0-alpha01", "androidx.navigation:navigation-compose:2.10.0-rc01", "androidx.compose.material:material-icons-extended:1.7.8", "io.github.kyant0:backdrop:2.0.0", "androidx.compose.ui:ui-tooling-preview:1.7.5"]
+
+[android]
+namespace = "com.bailensn.LianT"
+compileSdk = 37
+minSdk = 28
+targetSdk = 36
+manifest = "src/main/AndroidManifest.xml"
+versionCode = 1
+versionName = "1.0"
+isApplication = true
+buildTypes = [{ name = "debug", debuggable = true, minifyEnabled = false, shrinkResources = false, signingConfig = "picked-bailensn" }, { name = "release", debuggable = false, minifyEnabled = false, shrinkResources = true, proguardFiles = ["proguard-android-optimize.txt", "proguard-rules.pro"], signingConfig = "picked-bailensn" }]
+compose = true

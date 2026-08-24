@@ -1,0 +1,10 @@
+v=3
+app|androidx.activity:activity-compose:1.13.0|
+app|androidx.compose.foundation:foundation:1.13.0-alpha01|
+app|androidx.compose.material3:material3:1.5.0-alpha26|
+app|androidx.compose.material:material-icons-extended:1.7.8|
+app|androidx.compose.ui:ui-tooling-preview:1.7.5|
+app|androidx.compose.ui:ui:1.12.0-rc01|
+app|androidx.navigation:navigation-compose:2.10.0-rc01|
+app|io.github.kyant0:backdrop:2.0.0|
+app|kotlin-stdlib|

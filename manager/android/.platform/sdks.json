@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "sdks": [
+    {
+      "name": "android",
+      "bootClasspath": [
+        "/storage/emulated/0/Android/data/com.tyron.code/files/codeassist/android.jar",
+        "/storage/emulated/0/Android/data/com.tyron.code/files/codeassist/core-lambda-stubs.jar"
+      ],
+      "buildTools": null,
+      "kind": "ANDROID"
+    },
+    {
+      "name": "core-java",
+      "bootClasspath": [
+        "/storage/emulated/0/Android/data/com.tyron.code/files/codeassist/.platform/caches/core-platform/core-java-27768026-v1.jar",
+        "/storage/emulated/0/Android/data/com.tyron.code/files/codeassist/core-lambda-stubs.jar"
+      ],
+      "buildTools": null,
+      "kind": "JVM"
+    }
+  ]
+}
