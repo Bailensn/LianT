@@ -1,9 +1,8 @@
 import { Palette } from "std-widgets.slint";
 
-// 小白条交互事件。
 export struct BarEvent {
-    kind: int,      // 0 = down, 1 = up, 2 = move
-    button: int,    // 0 = left, 1 = right
+    kind: int,
+    button: int,
     x: float,
     y: float,
 }
@@ -11,7 +10,6 @@ export struct BarEvent {
 export component MainWindow inherits Window {
     callback bar-event(BarEvent);
 
-    // theme-mode: 0 = 跟随系统, 1 = 强制深色, 2 = 强制浅色
     in-out property <int> theme-mode: 0;
     in-out property <bool> is-dark: Palette.color-scheme == ColorScheme.dark;
 
@@ -24,16 +22,11 @@ export component MainWindow inherits Window {
     width: 900px;
     height: 600px;
     title: "LianT";
-    no-frame: true; // 无边框：窗口拖动交给小白条
-    // 穿透式圆角：窗口背景透明，四角露出桌面。
-    // 外层内容矩形靠 border-radius + clip 裁出圆角，圆角外套的部分即为透明区（穿透）。
-    // 平台适配：Windows(DWM)/macOS 以及带合成器的 Linux(Wayland/含合成器的 X11) 都正常；
-    // 仅无合成器的 X11 会把透明角填成黑色，这是系统行为、无法在代码层绕过。
+    no-frame: true;
     background: transparent;
 
     private property <length> one-px: 1px;
 
-    // ---- CMP 配色（对应 AnimatedGradientBackground + Material surface）----
     private property <color> c-base: eff-dark ? #1B1C20 : #EDEEF2;
     private property <color> blue: eff-dark ? #5C93FF : #3D74E8;
     private property <color> c-fg: eff-dark ? #ECECEC : #15161A;
@@ -44,7 +37,6 @@ export component MainWindow inherits Window {
     private property <color> c-item-fg: eff-dark ? #D7D8DD : #23252B;
     private property <color> c-bar: eff-dark ? #0E0E1080 : #FFFFFF80;
     private property <color> c-bar-line: eff-dark ? #ffffff1a : #0000001a;
-    // 窗口投影：浅色主题弱、深色主题强，配合穿透圆角形成柔和边缘。
     private property <color> c-shadow: eff-dark ? #00000066 : #00000030;
 
     Rectangle {
@@ -53,14 +45,11 @@ export component MainWindow inherits Window {
         border-radius: 15px;
         clip: true;
         background: c-base;
-        // 向下 + 四周柔化投影；顶部贴合窗口上边，被窗口边缘裁切正好符合投影逻辑。
         drop-shadow-blur: 42px;
         drop-shadow-color: c-shadow;
         drop-shadow-offset-x: 0px;
         drop-shadow-offset-y: 14px;
 
-        // ---- 渐变背景：还原 CMP AnimatedGradientBackground 的蓝色光晕（静态）----
-        // 深色主题光晕
         Rectangle {
             visible: eff-dark;
             x: -150px; y: -170px; width: 680px; height: 680px;
@@ -76,7 +65,6 @@ export component MainWindow inherits Window {
             x: -80px; y: 260px; width: 620px; height: 620px;
             background: @radial-gradient(circle, #3D74E821 0%, #3D74E800 70%);
         }
-        // 浅色主题光晕
         Rectangle {
             visible: !eff-dark;
             x: -140px; y: -170px; width: 680px; height: 680px;
@@ -93,7 +81,6 @@ export component MainWindow inherits Window {
             background: @radial-gradient(circle, #2E63C81F 0%, #2E63C800 70%);
         }
 
-        // ===================== 小白条（拖动命中区 + 可见胶囊） =====================
         Rectangle {
             width: 280px; height: 40px;
             x: (parent.width - 280px) / 2;
@@ -101,7 +88,6 @@ export component MainWindow inherits Window {
 
             bar_touch := TouchArea {
                 width: 100%; height: 100%;
-                // 手势统一上报给 Rust：左=拖动，右=单击/双击判定
                 pointer-event(e) => {
                     if (e.kind == PointerEventKind.down) {
                         root.bar-event({ kind: 0, button: e.button == PointerEventButton.left ? 0 : 1, x: bar_touch.mouse-x / one-px, y: bar_touch.mouse-y / one-px });
@@ -113,7 +99,6 @@ export component MainWindow inherits Window {
                 }
             }
 
-            // 可见的白色胶囊（保持 CMP 外观：170x17，圆角 15）
             Rectangle {
                 width: 170px; height: 17px;
                 x: (parent.width - 170px) / 2;
@@ -125,19 +110,16 @@ export component MainWindow inherits Window {
             }
         }
 
-        // ===================== 内容区（CMP Splash 布局） =====================
         VerticalLayout {
             x: 0px; y: 0px;
             width: 100%; height: 100%;
             padding-left: 24px; padding-right: 24px;
             padding-top: 70px; padding-bottom: 32px;
 
-            // ---- 顶部问候区 ----
             VerticalLayout {
                 alignment: start;
                 spacing: 0px;
 
-                // 应用图标（普通 Card，替代 FloatingGlassIcon）
                 Rectangle {
                     width: 76px; height: 76px;
                     border-radius: 22px;
@@ -173,7 +155,6 @@ export component MainWindow inherits Window {
 
             Rectangle { height: 24px; width: 1px; }
 
-            // ---- bot 列表普通 Card（GlassSheet -> Card） ----
             Rectangle {
                 width: 100%;
                 vertical-stretch: 1.0;
@@ -187,7 +168,6 @@ export component MainWindow inherits Window {
                     spacing: 8px;
                     width: 100%;
 
-                    // 占位 bot 登录项
                     for item in [1, 2, 3] : Rectangle {
                         width: 100%; height: 46px;
                         border-radius: 14px;

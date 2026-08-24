@@ -1,11 +1,4 @@
-/**
- * 构建期脚本：抓取 LianT 两个产品（Manager / Service）的最新 Release 数据，
- * 写入 src/data/releases.generated.json，运行时前端只读静态文件、不再调用 GitHub API。
- *
- * 用法：node scripts/fetch-releases.mjs
- * 可用环境变量：GITHUB_REPO（默认 LensnTeam/LianT）、GITHUB_TOKEN（可选，未认证时每小时 60 次限额）
- */
-import { writeFile, mkdir } from "node:fs/promises"
+import { writeFile, mkdir, readFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 
@@ -57,7 +50,24 @@ function pickLatest(releases, product) {
 }
 
 async function main() {
-  const releases = await fetchReleases()
+  let releases
+  try {
+    releases = await fetchReleases()
+  } catch (err) {
+    console.warn(`⚠ ${err.message}`)
+    try {
+      const existing = JSON.parse(await readFile(OUT, "utf8"))
+      console.log(`✓ 保留已有数据 ${OUT}`)
+      return
+    } catch {
+      const payload = Object.fromEntries(PRODUCTS.map((p) => [p, null]))
+      await mkdir(path.dirname(OUT), { recursive: true })
+      await writeFile(OUT, JSON.stringify(payload, null, 2))
+      console.log(`✓ 已写入空占位 ${OUT}`)
+      return
+    }
+  }
+
   const payload = Object.fromEntries(
     PRODUCTS.map((p) => [p, pickLatest(releases, p) ?? null])
   )

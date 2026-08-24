@@ -5,42 +5,10 @@ on:
   release:
     types: [published]
 
-permissions:
-  contents: write
-
 jobs:
-  refresh-and-deploy:
+  trigger-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ github.event.repository.default_branch }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-
-      - name: Fetch latest releases data
-        working-directory: pages
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/fetch-releases.mjs
-
-      - name: Commit updated release data
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pages/src/data/releases.generated.json
-          if git diff --cached --quiet; then
-            echo "数据无变化，跳过提交"
-          else
-            git commit -m "chore: refresh release data"
-            git push
-          fi
-
       - name: Trigger Vercel Deploy Hook
         run: |
           curl -f -X POST \
