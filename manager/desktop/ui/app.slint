@@ -31,6 +31,10 @@ export component MainWindow inherits Window {
     height: 600px;
     title: "LianT";
     no-frame: true; // 无边框：窗口拖动交给小白条
+    // 穿透式圆角：窗口背景透明，四角露出桌面。
+    // 外层内容矩形靠 border-radius + clip 裁出圆角，圆角外套的部分即为透明区（穿透）。
+    // 平台适配：Windows(DWM)/macOS 以及带合成器的 Linux(Wayland/含合成器的 X11) 都正常；
+    // 仅无合成器的 X11 会把透明角填成黑色，这是系统行为、无法在代码层绕过。
     background: transparent;
 
     private property <length> one-px: 1px;
@@ -46,13 +50,20 @@ export component MainWindow inherits Window {
     private property <color> c-item-fg: eff-dark ? #D7D8DD : #23252B;
     private property <color> c-bar: eff-dark ? #0E0E1080 : #FFFFFF80;
     private property <color> c-bar-line: eff-dark ? #ffffff1a : #0000001a;
+    // 窗口投影：浅色主题弱、深色主题强，配合穿透圆角形成柔和边缘。
+    private property <color> c-shadow: eff-dark ? #00000066 : #00000030;
 
     Rectangle {
         width: 100%;
         height: 100%;
-        border-radius: 12px;
+        border-radius: 15px;
         clip: true;
         background: c-base;
+        // 向下 + 四周柔化投影；顶部贴合窗口上边，被窗口边缘裁切正好符合投影逻辑。
+        drop-shadow-blur: 42px;
+        drop-shadow-color: c-shadow;
+        drop-shadow-offset-x: 0px;
+        drop-shadow-offset-y: 14px;
 
         // ---- 渐变背景：还原 CMP AnimatedGradientBackground 的蓝色光晕（静态）----
         // 深色主题光晕

@@ -14,8 +14,10 @@ slint::include_modules!();
 /// - 右键单击最小化，右键双击关闭。
 struct WhiteBarState {
     dragging: bool,
-    press_phys: (i32, i32),
-    press_local: (f32, f32),
+    // 拖动用"相邻事件增量"跟随：记录上一次事件的本地坐标与窗口物理位置。
+    // 这样窗口移动导致的本地坐标偏移会被下一帧抵消，避免抖动/跑飞。
+    last_local: (f32, f32),
+    last_phys: (i32, i32),
     last_right_down: Option<Instant>,
     minimize_timer: Timer,
 }
@@ -24,8 +26,8 @@ impl WhiteBarState {
     fn new() -> Self {
         Self {
             dragging: false,
-            press_phys: (0, 0),
-            press_local: (0.0, 0.0),
+            last_local: (0.0, 0.0),
+            last_phys: (0, 0),
             last_right_down: None,
             minimize_timer: Timer::default(),
         }
@@ -58,11 +60,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if ev.kind == 0 {
                 // ---- 按下 ----
                 if ev.button == 0 {
-                    // 左键：记录起点，进入拖动。
+                    // 左键按下：记录起点。
                     let pos = window.position();
                     st.dragging = true;
-                    st.press_phys = (pos.x, pos.y);
-                    st.press_local = (ev.x, ev.y);
+                    st.last_local = (ev.x, ev.y);
+                    st.last_phys = (pos.x, pos.y);
                 } else {
                     // 右键：判定单击 / 双击。
                     let now = Instant::now();
@@ -92,15 +94,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             } else if ev.kind == 2 {
-                // ---- 移动：仅左键拖动时跟随指针（相对按下的偏移）----
+                // ---- 移动：按相邻增量移动，1:1 跟随指针，消除抖动。----
                 if st.dragging && ev.button == 0 {
                     let scale = window.scale_factor();
-                    let dx = ((ev.x - st.press_local.0) * scale) as i32;
-                    let dy = ((ev.y - st.press_local.1) * scale) as i32;
-                    window.set_position(slint::PhysicalPosition::new(
-                        st.press_phys.0 + dx,
-                        st.press_phys.1 + dy,
-                    ));
+                    let dx = ((ev.x - st.last_local.0) * scale) as i32;
+                    let dy = ((ev.y - st.last_local.1) * scale) as i32;
+                    let nx = st.last_phys.0 + dx;
+                    let ny = st.last_phys.1 + dy;
+                    window.set_position(slint::PhysicalPosition::new(nx, ny));
+                    st.last_local = (ev.x, ev.y);
+                    st.last_phys = (nx, ny);
                 }
             } else if ev.kind == 1 {
                 // ---- 抬起：结束拖动（无论左右键）。----
