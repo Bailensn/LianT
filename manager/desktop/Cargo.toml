@@ -7,6 +7,7 @@ license = "Apache-2.0"
 
 [dependencies]
 slint = "1.9"
+i-slint-backend-winit = "1.17"
 
 [build-dependencies]
 slint-build = "1.9"
