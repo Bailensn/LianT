@@ -97,7 +97,7 @@ jobs:
           mkdir -p LianT.app/Contents/MacOS
           mkdir -p LianT.app/Contents/Resources
 
-          cp manager/desktop/target/release/liant LianT.app/Contents/MacOS/LianT
+          cp manager/desktop/target/release/LianT LianT.app/Contents/MacOS/LianT
 
           cp manager/resources/darwin/LianT.icns \
             LianT.app/Contents/Resources/
@@ -161,7 +161,7 @@ jobs:
           mkdir -p LianT.app/Contents/MacOS
           mkdir -p LianT.app/Contents/Resources
 
-          cp manager/desktop/target/release/liant LianT.app/Contents/MacOS/LianT
+          cp manager/desktop/target/release/LianT LianT.app/Contents/MacOS/LianT
 
           cp manager/resources/darwin/LianT.icns \
             LianT.app/Contents/Resources/
@@ -260,9 +260,9 @@ jobs:
               "$PKG"/usr/share/icons/hicolor/${sz}x${sz}/apps/
           done
 
-          cp manager/desktop/target/release/liant "$PKG"/opt/LianT/
+          cp manager/desktop/target/release/LianT "$PKG"/opt/LianT/
 
-          ln -s /opt/LianT/liant \
+          ln -s /opt/LianT/LianT \
             "$PKG"/usr/bin/LianT
 
           sed \
@@ -271,7 +271,7 @@ jobs:
             > "$PKG"/usr/share/applications/LianT.desktop
 
           cat << EOF > "$PKG"/DEBIAN/control
-          Package: liant
+          Package: LianT
           Version: ${{ inputs.version }}
           Section: utils
           Priority: optional
@@ -292,10 +292,10 @@ jobs:
 
           mkdir -p rpmbuild/SOURCES/LianT
 
-          cp manager/desktop/target/release/liant rpmbuild/SOURCES/LianT/
+          cp manager/desktop/target/release/LianT rpmbuild/SOURCES/LianT/
 
-          cat << EOF > rpmbuild/SPECS/liant.spec
-          Name: liant
+          cat << EOF > rpmbuild/SPECS/LianT.spec
+          Name: LianT
           Version: ${{ inputs.version }}
           Release: 1
           Summary: LianT Manager Desktop
@@ -309,9 +309,9 @@ jobs:
           mkdir -p %{buildroot}/opt/LianT
           mkdir -p %{buildroot}/usr/bin
 
-          cp %{_sourcedir}/LianT/liant %{buildroot}/opt/LianT/
+          cp %{_sourcedir}/LianT/LianT %{buildroot}/opt/LianT/
 
-          ln -s /opt/LianT/liant %{buildroot}/usr/bin/LianT
+          ln -s /opt/LianT/LianT %{buildroot}/usr/bin/LianT
 
           %files
           /opt/LianT
@@ -320,7 +320,7 @@ jobs:
 
           rpmbuild \
             --define "_topdir $(pwd)/rpmbuild" \
-            -bb rpmbuild/SPECS/liant.spec
+            -bb rpmbuild/SPECS/LianT.spec
 
           cp rpmbuild/RPMS/x86_64/*.rpm \
             LianT_${{ inputs.version }}_amd64.rpm
@@ -388,9 +388,9 @@ jobs:
               "$PKG"/usr/share/icons/hicolor/${sz}x${sz}/apps/
           done
 
-          cp manager/desktop/target/release/liant "$PKG"/opt/LianT/
+          cp manager/desktop/target/release/LianT "$PKG"/opt/LianT/
 
-          ln -s /opt/LianT/liant \
+          ln -s /opt/LianT/LianT \
             "$PKG"/usr/bin/LianT
 
           sed \
@@ -399,7 +399,7 @@ jobs:
             > "$PKG"/usr/share/applications/LianT.desktop
 
           cat << EOF > "$PKG"/DEBIAN/control
-          Package: liant
+          Package: LianT
           Version: ${{ inputs.version }}
           Section: utils
           Priority: optional
@@ -420,10 +420,10 @@ jobs:
 
           mkdir -p rpmbuild/SOURCES/LianT
 
-          cp manager/desktop/target/release/liant rpmbuild/SOURCES/LianT/
+          cp manager/desktop/target/release/LianT rpmbuild/SOURCES/LianT/
 
-          cat << EOF > rpmbuild/SPECS/liant.spec
-          Name: liant
+          cat << EOF > rpmbuild/SPECS/LianT.spec
+          Name: LianT
           Version: ${{ inputs.version }}
           Release: 1
           Summary: LianT Manager Desktop
@@ -437,9 +437,9 @@ jobs:
           mkdir -p %{buildroot}/opt/LianT
           mkdir -p %{buildroot}/usr/bin
 
-          cp %{_sourcedir}/LianT/liant %{buildroot}/opt/LianT/
+          cp %{_sourcedir}/LianT/LianT %{buildroot}/opt/LianT/
 
-          ln -s /opt/LianT/liant %{buildroot}/usr/bin/LianT
+          ln -s /opt/LianT/LianT %{buildroot}/usr/bin/LianT
 
           %files
           /opt/LianT
@@ -448,7 +448,7 @@ jobs:
 
           rpmbuild \
             --define "_topdir $(pwd)/rpmbuild" \
-            -bb rpmbuild/SPECS/liant.spec
+            -bb rpmbuild/SPECS/LianT.spec
 
           cp rpmbuild/RPMS/aarch64/*.rpm \
             LianT_${{ inputs.version }}_arm64.rpm
