@@ -1,73 +1,41 @@
 {
   "Manager": {
-    "id": 374855970,
-    "tag_name": "Manager-v0.01",
-    "name": "v0.01",
-    "published_at": "2026-08-22T06:59:02Z",
+    "id": 375474875,
+    "tag_name": "Manager-v0.02",
+    "name": "Manager-v0.02",
+    "published_at": "2026-08-24T05:53:58Z",
     "assets": [
       {
-        "name": "LianT-Manager-v0.01-Android-arm64.apk",
-        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Manager-v0.01/LianT-Manager-v0.01-Android-arm64.apk",
-        "size": 1
+        "name": "LianT-Manager-v0.02-Darwin-arm64.dmg",
+        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Manager-v0.02/LianT-Manager-v0.02-Darwin-arm64.dmg",
+        "size": 6408801
       },
       {
-        "name": "LianT-Manager-v0.01-Darwin-arm64.dmg",
-        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Manager-v0.01/LianT-Manager-v0.01-Darwin-arm64.dmg",
-        "size": 74056260
+        "name": "LianT-Manager-v0.02-Linux-amd64.deb",
+        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Manager-v0.02/LianT-Manager-v0.02-Linux-amd64.deb",
+        "size": 7586760
       },
       {
-        "name": "LianT-Manager-v0.01-Linux-amd64.deb",
-        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Manager-v0.01/LianT-Manager-v0.01-Linux-amd64.deb",
-        "size": 57159058
+        "name": "LianT-Manager-v0.02-Linux-amd64.rpm",
+        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Manager-v0.02/LianT-Manager-v0.02-Linux-amd64.rpm",
+        "size": 9815499
       },
       {
-        "name": "LianT-Manager-v0.01-Linux-amd64.rpm",
-        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Manager-v0.01/LianT-Manager-v0.01-Linux-amd64.rpm",
-        "size": 66972772
+        "name": "LianT-Manager-v0.02-Linux-arm64.deb",
+        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Manager-v0.02/LianT-Manager-v0.02-Linux-arm64.deb",
+        "size": 7349462
       },
       {
-        "name": "LianT-Manager-v0.01-Linux-arm64.deb",
-        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Manager-v0.01/LianT-Manager-v0.01-Linux-arm64.deb",
-        "size": 56357538
+        "name": "LianT-Manager-v0.02-Linux-arm64.rpm",
+        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Manager-v0.02/LianT-Manager-v0.02-Linux-arm64.rpm",
+        "size": 9810785
       },
       {
-        "name": "LianT-Manager-v0.01-Linux-arm64.rpm",
-        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Manager-v0.01/LianT-Manager-v0.01-Linux-arm64.rpm",
-        "size": 66063286
-      },
-      {
-        "name": "LianT-Manager-v0.01-Windows-amd64.exe",
-        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Manager-v0.01/LianT-Manager-v0.01-Windows-amd64.exe",
-        "size": 53719602
+        "name": "LianT-Manager-v0.02-Windows-amd64.exe",
+        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Manager-v0.02/LianT-Manager-v0.02-Windows-amd64.exe",
+        "size": 6545983
       }
     ]
   },
-  "Service": {
-    "id": 374857034,
-    "tag_name": "Service-v0.01",
-    "name": "v0.01",
-    "published_at": "2026-08-22T07:02:03Z",
-    "assets": [
-      {
-        "name": "LianT-Service-v0.01-Darwin-arm64",
-        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Service-v0.01/LianT-Service-v0.01-Darwin-arm64",
-        "size": 10283410
-      },
-      {
-        "name": "LianT-Service-v0.01-Linux-amd64",
-        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Service-v0.01/LianT-Service-v0.01-Linux-amd64",
-        "size": 10612898
-      },
-      {
-        "name": "LianT-Service-v0.01-Linux-arm64",
-        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Service-v0.01/LianT-Service-v0.01-Linux-arm64",
-        "size": 10027170
-      },
-      {
-        "name": "LianT-Service-v0.01-Windows-amd64.exe",
-        "browser_download_url": "https://github.com/Bailensn/LianT/releases/download/Service-v0.01/LianT-Service-v0.01-Windows-amd64.exe",
-        "size": 10891264
-      }
-    ]
-  }
+  "Service": null
 }
