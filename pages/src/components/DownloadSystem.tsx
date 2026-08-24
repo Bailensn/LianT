@@ -1,6 +1,5 @@
 import DownloadArch from "./DownloadArch";
 import { getLatestRelease } from "@/data/github";
-import { versionFromTag } from "@/data/downloads";
 import type { Build } from "@/data/downloads";
 
 interface Props {
@@ -26,7 +25,7 @@ export default function DownloadSystem({ title, description, builds, product, nu
             {description && <p className="muted">{description}</p>}
           </div>
           {release ? (
-          <span className="pill">版本 ${versionFromTag(release.name)}</span>
+          <span className="pill">版本 {versionFromTag(release.name)}</span>
           ) : (
           <span className="pill pill-error">暂无Release数据</span>
           )}
@@ -45,4 +44,8 @@ export default function DownloadSystem({ title, description, builds, product, nu
       </div>
     </section>
   )
+}
+
+export function versionFromTag(tag: string) {
+  return tag.match(/v\d+\.\d+/)?.[0] ?? "None"
 }
