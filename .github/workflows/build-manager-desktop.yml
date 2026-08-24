@@ -46,23 +46,19 @@ jobs:
         working-directory: manager/desktop
         run: cargo install cargo-packager --locked
 
-      # 把 workflow 顶部的 inputs.version 注入 Cargo.toml 的 version。
-      # cargo-packager 会从 Cargo.toml 读取 version（静态 Packager.toml 不写死 version）。
-      - name: Inject version into Cargo.toml
+      - name: Inject version into Packager.toml
         working-directory: manager/desktop
         shell: pwsh
         run: |
-          (Get-Content Cargo.toml) -replace '^version = ".*"', 'version = "${{ inputs.version }}"' | Set-Content -Encoding ASCII Cargo.toml
+          (Get-Content Packager.toml) -replace '^version = ".*"', 'version = "${{ inputs.version }}"' | Set-Content -Encoding ASCII Packager.toml
 
       - name: Build bare app
         working-directory: manager/desktop
         run: cargo build --release
 
-      # 打包 NSIS 安装包：读取仓库内静态 Packager.toml，输出到 ../release。
-      # 注意：必须 working-directory: manager/desktop，否则在根目录检测不到配置。
       - name: Package NSIS installer (cargo-packager)
         working-directory: manager/desktop
-        run: cargo packager --release
+        run: cargo packager --release -c ./Packager.toml
 
       - name: Rename setup artifact
         shell: pwsh

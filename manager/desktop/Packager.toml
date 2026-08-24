@@ -1,8 +1,13 @@
+name = "LianT"
 product-name = "LianT"
 identifier = "com.bailensn.liant"
 
+version = "1.0.0"
+
 out-dir = "../release"
 formats = ["nsis"]
+
+binaries = ["liant"]
 
 icons = ["../resources/windows/LianT.ico"]
 

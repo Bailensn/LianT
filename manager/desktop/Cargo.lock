@@ -3,6 +3,14 @@
 version = 4
 
 [[package]]
+name = "LianT"
+version = "0.1.0"
+dependencies = [
+ "slint",
+ "slint-build",
+]
+
+[[package]]
 name = "ab_glyph"
 version = "0.2.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2579,14 +2587,6 @@ name = "lebe"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
-
-[[package]]
-name = "liant"
-version = "0.1.0"
-dependencies = [
- "slint",
- "slint-build",
-]
 
 [[package]]
 name = "libc"

@@ -1,8 +1,8 @@
 [package]
-name = "liant"
+name = "LianT"
 version = "0.1.0"
 edition = "2021"
-description = "LianT — COSMIC-style LLM bot sign-in UI (Rust + Slint)"
+description = "LianT — COSMIC-style (Rust + Slint)"
 license = "Apache-2.0"
 
 [dependencies]
