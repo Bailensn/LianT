@@ -6,7 +6,6 @@ fn main() {
     .expect("Slint UI compilation failed");
     println!("cargo:rerun-if-changed=ui/app.slint");
 
-    // Windows: 把 LianT.ico 作为主程序图标嵌入 exe 的资源段
     #[cfg(target_os = "windows")]
     {
         let mut res = winresource::WindowsResource::new();

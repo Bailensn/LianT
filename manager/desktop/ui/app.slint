@@ -1,20 +1,23 @@
+// LianT — CMP 风格界面 (Rust + Slint)
+// - 主题默认跟随系统 (Palette.color-scheme)，`theme-mode` 预留手动切换接口。
+// - 无边框窗口、圆角、无系统标题栏。
+// - 恢复原 CMP Splash 布局：渐变背景 + 问候区 + 普通 Card（不再有 liquid glass）。
+// - 顶部居中"小白条"：左键拖动移动窗口，右键单击最小化，右键双击关闭。
+
 import { Palette } from "std-widgets.slint";
 
-export struct WindowCtrl {
-    cmd: int,
-}
-
-export struct TitleEvent {
-    kind: int,
-    button: int,
-    x: float,
+// 小白条交互事件。
+export struct BarEvent {
+    kind: int,      // 0 = down, 1 = up, 2 = move
+    button: int,    // 0 = left, 1 = right
+    x: float,       // logical px，相对小白条命中区域
     y: float,
 }
 
 export component MainWindow inherits Window {
-    callback window-control(WindowCtrl);
-    callback title-event(TitleEvent);
+    callback bar-event(BarEvent);
 
+    // theme-mode: 0 = 跟随系统, 1 = 强制深色, 2 = 强制浅色
     in-out property <int> theme-mode: 0;
     in-out property <bool> is-dark: Palette.color-scheme == ColorScheme.dark;
 
@@ -24,213 +27,187 @@ export component MainWindow inherits Window {
         return is-dark;
     }
 
-    width: 920px;
-    height: 620px;
+    width: 900px;
+    height: 600px;
     title: "LianT";
-    no-frame: true;
-    background: eff-dark ? #0c0c0d : #e3e3e5;
+    no-frame: true; // 无边框：窗口拖动交给小白条
+    background: transparent;
 
     private property <length> one-px: 1px;
-    private property <color> c-bg: eff-dark ? #1B1B1B : #D7D7D7;
-    private property <color> c-bg-2: eff-dark ? #262626 : #C7C7C7;
-    private property <color> c-panel: eff-dark ? #161616 : #c7c7c7;
-    private property <color> c-title: eff-dark ? #212121 : #cfe0e3;
-    private property <color> c-fg: eff-dark ? #C4C4C4 : #292929;
-    private property <color> c-fg-dim: eff-dark ? #909090 : #4a4a4a;
-    private property <color> c-border: eff-dark ? #ffffff1a : #00000020;
-    private property <color> c-accent: eff-dark ? #63D0DF : #00525A;
-    private property <color> c-accent-fg: eff-dark ? #161616 : #FFFFFF;
-    private property <color> c-hover: eff-dark ? #ffffff12 : #00000010;
-    private property <color> c-close-hover: eff-dark ? #e05c5c : #d94f4f;
-    private property <color> c-close-fg: eff-dark ? #ffffff : #ffffff;
+
+    // ---- CMP 配色（对应 AnimatedGradientBackground + Material surface）----
+    private property <color> c-base: eff-dark ? #1B1C20 : #EDEEF2;
+    private property <color> blue: eff-dark ? #5C93FF : #3D74E8;
+    private property <color> c-fg: eff-dark ? #ECECEC : #15161A;
+    private property <color> c-fg-dim: eff-dark ? #ECECECC2 : #15161AC2;
+    private property <color> c-card: eff-dark ? #22242A : #F8F9FC;
+    private property <color> c-card-border: eff-dark ? #ffffff1f : #00000014;
+    private property <color> c-item: eff-dark ? #2D3038 : #EDEFF4;
+    private property <color> c-item-fg: eff-dark ? #D7D8DD : #23252B;
+    private property <color> c-bar: eff-dark ? #0E0E1080 : #FFFFFF80;
+    private property <color> c-bar-line: eff-dark ? #ffffff1a : #0000001a;
 
     Rectangle {
         width: 100%;
         height: 100%;
-        border-radius: 10px;
+        border-radius: 12px;
         clip: true;
-        background: c-bg;
+        background: c-base;
 
+        // ---- 渐变背景：还原 CMP AnimatedGradientBackground 的蓝色光晕（静态）----
+        // 深色主题光晕
         Rectangle {
-            width: 100%;
-            height: 46px;
-            background: c-title;
-            border-radius: 10px;
+            visible: eff-dark;
+            x: -150px; y: -170px; width: 680px; height: 680px;
+            background: @radial-gradient(circle, #5C93FF2E 0%, #5C93FF00 68%);
+        }
+        Rectangle {
+            visible: eff-dark;
+            x: 300px; y: -120px; width: 560px; height: 560px;
+            background: @radial-gradient(circle, #7AA7FF26 0%, #7AA7FF00 70%);
+        }
+        Rectangle {
+            visible: eff-dark;
+            x: -80px; y: 260px; width: 620px; height: 620px;
+            background: @radial-gradient(circle, #3D74E821 0%, #3D74E800 70%);
+        }
+        // 浅色主题光晕
+        Rectangle {
+            visible: !eff-dark;
+            x: -140px; y: -170px; width: 680px; height: 680px;
+            background: @radial-gradient(circle, #3D74E82E 0%, #3D74E800 68%);
+        }
+        Rectangle {
+            visible: !eff-dark;
+            x: 320px; y: -100px; width: 540px; height: 540px;
+            background: @radial-gradient(circle, #5A8CF026 0%, #5A8CF000 70%);
+        }
+        Rectangle {
+            visible: !eff-dark;
+            x: -70px; y: 290px; width: 600px; height: 600px;
+            background: @radial-gradient(circle, #2E63C81F 0%, #2E63C800 70%);
+        }
 
-            drag := TouchArea {
-                width: 100%;
-                height: 100%;
+        // ===================== 小白条（拖动命中区 + 可见胶囊） =====================
+        Rectangle {
+            width: 280px; height: 40px;
+            x: (parent.width - 280px) / 2;
+            y: 8px;
+
+            bar_touch := TouchArea {
+                width: 100%; height: 100%;
+                // 手势统一上报给 Rust：左=拖动，右=单击/双击判定
                 pointer-event(e) => {
                     if (e.kind == PointerEventKind.down) {
-                        root.title-event({ kind: 0, button: e.button == PointerEventButton.left ? 0 : 1, x: drag.mouse-x / one-px, y: drag.mouse-y / one-px });
+                        root.bar-event({ kind: 0, button: e.button == PointerEventButton.left ? 0 : 1, x: bar_touch.mouse-x / one-px, y: bar_touch.mouse-y / one-px });
                     } else if (e.kind == PointerEventKind.up) {
-                        root.title-event({ kind: 1, button: e.button == PointerEventButton.left ? 0 : 1, x: drag.mouse-x / one-px, y: drag.mouse-y / one-px });
+                        root.bar-event({ kind: 1, button: e.button == PointerEventButton.left ? 0 : 1, x: bar_touch.mouse-x / one-px, y: bar_touch.mouse-y / one-px });
                     } else if (e.kind == PointerEventKind.move) {
-                        root.title-event({ kind: 2, button: 0, x: drag.mouse-x / one-px, y: drag.mouse-y / one-px });
+                        root.bar-event({ kind: 2, button: 0, x: bar_touch.mouse-x / one-px, y: bar_touch.mouse-y / one-px });
                     }
                 }
             }
 
-            HorizontalLayout {
-                width: 100%;
-                height: 100%;
-                padding-left: 16px;
-                padding-right: 8px;
-                spacing: 8px;
-                alignment: center;
+            // 可见的白色胶囊（保持 CMP 外观：170x17，圆角 15）
+            Rectangle {
+                width: 170px; height: 17px;
+                x: (parent.width - 170px) / 2;
+                y: (parent.height - 17px) / 2;
+                border-radius: 17px;
+                border-width: 1px;
+                border-color: c-bar-line;
+                background: c-bar;
+            }
+        }
 
+        // ===================== 内容区（CMP Splash 布局） =====================
+        VerticalLayout {
+            x: 0px; y: 0px;
+            width: 100%; height: 100%;
+            padding-left: 24px; padding-right: 24px;
+            padding-top: 70px; padding-bottom: 32px;
+
+            // ---- 顶部问候区 ----
+            VerticalLayout {
+                alignment: start;
+                spacing: 0px;
+
+                // 应用图标（普通 Card，替代 FloatingGlassIcon）
                 Rectangle {
-                    width: 12px;
-                    height: 12px;
-                    border-radius: 3px;
-                    background: c-accent;
-                }
-                Text {
-                    text: "LianT";
-                    font-size: 14px;
-                    font-weight: 600;
-                    color: c-fg;
-                }
-
-                Rectangle { horizontal-stretch: 1.0; height: 1px; }
-
-                btnmin := Rectangle {
-                    width: 28px; height: 28px; border-radius: 6px;
-                    background: transparent;
-                    states [
-                        hovered-touch when btnmin-touch.has-hover : {
-                            background: c-hover;
-                        }
-                    ]
-                    btnmin-touch := TouchArea {
-                        width: 100%; height: 100%;
-                        clicked => { root.window-control({ cmd: 0 }); }
-                    }
-                    Rectangle {
-                        width: 10px; height: 1.5px;
-                        y: parent.height / 2 - 1px;
-                        x: parent.width / 2 - 5px;
-                        background: c-fg;
-                    }
-                }
-
-                btnmax := Rectangle {
-                    width: 28px; height: 28px; border-radius: 6px;
-                    background: transparent;
-                    states [
-                        hovered-touch when btnmax-touch.has-hover : {
-                            background: c-hover;
-                        }
-                    ]
-                    btnmax-touch := TouchArea {
-                        width: 100%; height: 100%;
-                        clicked => { root.window-control({ cmd: 1 }); }
-                    }
-                    Rectangle {
-                        width: 11px; height: 11px;
-                        border-radius: 2px;
-                        border-width: 1.5px;
-                        border-color: c-fg;
-                        x: parent.width / 2 - 6px;
-                        y: parent.height / 2 - 6px;
-                    }
-                }
-
-                btnclose := Rectangle {
-                    width: 28px; height: 28px; border-radius: 6px;
-                    background: transparent;
-                    states [
-                        hover when btnclose-touch.has-hover : {
-                            background: c-close-hover;
-                        }
-                    ]
-                    btnclose-touch := TouchArea {
-                        width: 100%; height: 100%;
-                        clicked => { root.window-control({ cmd: 2 }); }
-                    }
+                    width: 76px; height: 76px;
+                    border-radius: 22px;
+                    background: blue;
                     Text {
-                        text: "\u{00d7}"; // multiplication sign as the close glyph
-                        color: c-fg;
-                        font-size: 20px;
+                        text: "L";
+                        color: eff-dark ? #0B0C0E : #FFFFFF;
+                        font-size: 40px;
+                        font-weight: 800;
                         width: 100%; height: 100%;
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
                 }
-            }
-        }
 
-        VerticalLayout {
-            x: 0px;
-            y: 46px;
-            width: 100%;
-            height: root.height - 46px;
-            padding-left: 32px;
-            padding-right: 32px;
-            padding-top: 44px;
-            padding-bottom: 28px;
+                Rectangle { height: 24px; width: 1px; }
 
-            VerticalLayout {
-                alignment: start;
-                spacing: 0px;
-
-                Rectangle {
-                    width: 46px; height: 5px; border-radius: 3px; background: c-accent;
-                }
-                Rectangle { height: 18px; width: 1px; }
                 Text {
                     text: "欢迎回来";
                     font-size: 30px;
-                    font-weight: 600;
+                    font-weight: 800;
                     color: c-fg;
-                    horizontal-alignment: left;
                 }
-                Rectangle { height: 6px; width: 1px; }
+
+                Rectangle { height: 8px; width: 1px; }
+
                 Text {
                     text: "请选择要登录的 bot";
-                    font-size: 16px;
+                    font-size: 17px;
                     color: c-fg-dim;
-                    horizontal-alignment: left;
                 }
             }
 
-            Rectangle { height: 26px; width: 1px; }
+            Rectangle { height: 24px; width: 1px; }
 
+            // ---- bot 列表普通 Card（GlassSheet -> Card） ----
             Rectangle {
                 width: 100%;
                 vertical-stretch: 1.0;
-                border-radius: 8px;
+                border-radius: 32px;
                 border-width: 1px;
-                border-color: c-border;
-                background: c-panel;
+                border-color: c-card-border;
+                background: c-card;
 
                 VerticalLayout {
-                    padding: 10px;
-                    spacing: 6px;
+                    padding: 12px;
+                    spacing: 8px;
                     width: 100%;
 
-                    Rectangle { width: 100%; height: 42px; border-radius: 6px; background: c-bg-2; }
-                    Rectangle { width: 100%; height: 42px; border-radius: 6px; background: c-bg-2; }
-                    Rectangle { width: 100%; height: 42px; border-radius: 6px; background: c-bg-2; }
-                }
-            }
+                    // 占位 bot 登录项
+                    for item in [1, 2, 3] : Rectangle {
+                        width: 100%; height: 46px;
+                        border-radius: 14px;
+                        background: c-item;
 
-            Rectangle { height: 22px; width: 1px; }
+                        HorizontalLayout {
+                            width: 100%; height: 100%;
+                            padding-left: 14px; padding-right: 14px;
+                            spacing: 12px;
+                            alignment: center;
 
-            Rectangle {
-                width: 100%;
-                height: 42px;
-                border-radius: 8px;
-                background: c-accent;
-
-                Text {
-                    text: "继续";
-                    font-size: 15px;
-                    font-weight: 600;
-                    color: c-accent-fg;
-                    width: 100%; height: 100%;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
+                            Rectangle {
+                                width: 22px; height: 22px;
+                                border-radius: 11px;
+                                background: blue;
+                            }
+                            Text {
+                                text: "Bot 登录项";
+                                font-size: 15px;
+                                font-weight: 600;
+                                color: c-item-fg;
+                                horizontal-stretch: 1.0;
+                            }
+                        }
+                    }
                 }
             }
         }
