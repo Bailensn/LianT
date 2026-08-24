@@ -15,6 +15,7 @@ interface Props {
 export default function DownloadSystem({ title, description, builds, product, num }: Props) {
   // Release 数据在构建期由 scripts/fetch-releases.mjs 静态化，运行时直接读取
   const release = getLatestRelease(product)
+  const versionName = versionFromTag(release.name)
 
   return (
     <section className="section">
@@ -29,7 +30,7 @@ export default function DownloadSystem({ title, description, builds, product, nu
           </div>
 
           {release ? (
-            <span className="pill">版本 {release.name}</span>
+            <span className="pill">版本 {versionName}</span>
           ) : (
             <span className="pill pill-error">暂无 Release 数据</span>
           )}
