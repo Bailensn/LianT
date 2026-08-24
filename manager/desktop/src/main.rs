@@ -1,4 +1,3 @@
-// 不弹出控制台窗口（Windows 下 GUI 应用）。
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 use std::cell::RefCell;
@@ -14,8 +13,6 @@ slint::include_modules!();
 /// - 右键单击最小化，右键双击关闭。
 struct WhiteBarState {
     dragging: bool,
-    // 拖动用"相邻事件增量"跟随：记录上一次事件的本地坐标与窗口物理位置。
-    // 这样窗口移动导致的本地坐标偏移会被下一帧抵消，避免抖动/跑飞。
     last_local: (f32, f32),
     last_phys: (i32, i32),
     last_right_down: Option<Instant>,
@@ -34,14 +31,12 @@ impl WhiteBarState {
     }
 }
 
-// 右键双击判定窗口 (ms) 与单击动作最小化延迟 (ms)。
 const DOUBLE_CLICK_MS: u64 = 300;
 const SINGLE_CLICK_DELAY_MS: u64 = 350;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui = MainWindow::new()?;
 
-    // theme-mode: 0 = 跟随系统, 1 = 深色, 2 = 浅色（为将来手动选择预留接口）。
     let theme_mode = match std::env::var("LIANT_THEME").ok().as_deref() {
         Some("dark") => 1,
         Some("light") => 2,
@@ -58,28 +53,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state.borrow_mut();
 
             if ev.kind == 0 {
-                // ---- 按下 ----
                 if ev.button == 0 {
-                    // 左键按下：记录起点。
                     let pos = window.position();
                     st.dragging = true;
                     st.last_local = (ev.x, ev.y);
                     st.last_phys = (pos.x, pos.y);
                 } else {
-                    // 右键：判定单击 / 双击。
                     let now = Instant::now();
                     let is_double = st
                         .last_right_down
                         .map_or(false, |t| now.duration_since(t) < Duration::from_millis(DOUBLE_CLICK_MS));
 
                     if is_double {
-                        // 右键双击：关闭窗口（并取消挂起的单击最小化）。
                         st.last_right_down = None;
                         st.minimize_timer.stop();
                         let _ = window.hide();
                         let _ = slint::quit_event_loop();
                     } else {
-                        // 右键单击：延时最小化（给双击留出判定窗口）。
                         st.last_right_down = Some(now);
                         let weak = ui.as_weak();
                         st.minimize_timer.start(
@@ -94,7 +84,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             } else if ev.kind == 2 {
-                // ---- 移动：按相邻增量移动，1:1 跟随指针，消除抖动。----
                 if st.dragging && ev.button == 0 {
                     let scale = window.scale_factor();
                     let dx = ((ev.x - st.last_local.0) * scale) as i32;
@@ -106,13 +95,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     st.last_phys = (nx, ny);
                 }
             } else if ev.kind == 1 {
-                // ---- 抬起：结束拖动（无论左右键）。----
                 st.dragging = false;
             }
         }
     });
-
-    // 保持强引用，避免事件循环退出竞态。
     let _handle = ui.clone_strong();
     ui.run()?;
     Ok(())
