@@ -1,6 +1,5 @@
 import { LOGO_PATHS } from "@/lib/logo";
 
-/** LianT 品牌 Logo（SVG） */
 export default function LogoIcon({ size = 30 }: { size?: number }) {
   return (
     <svg

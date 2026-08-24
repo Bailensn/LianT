@@ -11,7 +11,6 @@ const NAV_LINKS = [
   { href: "/service", label: "Service" },
 ];
 
-/** 顶部导航（含移动端汉堡菜单） */
 export default function Nav() {
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
