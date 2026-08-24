@@ -32,7 +32,6 @@ DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\{#AppExeName}
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
