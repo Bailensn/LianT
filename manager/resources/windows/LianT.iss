@@ -31,10 +31,6 @@ ArchitecturesInstallIn64BitMode=x64
 
 DisableProgramGroupPage=yes
 
-; Use a clean, predictable uninstaller filename instead of unins000.exe / unins000.dat
-UninstallFilesDir={app}
-UninstallFilesName=uninstall
-
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
@@ -53,3 +49,50 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Filename: "{app}\{#AppExeName}"; \
   Description: "Launch {#AppName} now"; \
   Flags: nowait postinstall skipifsilent
+
+[Code]
+// Inno Setup always writes its uninstaller as unins000.exe / unins000.dat.
+// After install completes, rename them to the predictable uninstall.exe /
+// uninstall.dat and point the registry uninstall entry at the new name.
+procedure RenameUninstaller;
+var
+  Uninstaller: String;
+  DataFile: String;
+  NewUninstaller: String;
+  NewDataFile: String;
+  UninstallPath: String;
+  Failed: Boolean;
+begin
+  Uninstaller := ExpandConstant('{app}\unins000.exe');
+  DataFile    := ExpandConstant('{app}\unins000.dat');
+  NewUninstaller := ExpandConstant('{app}\uninstall.exe');
+  NewDataFile    := ExpandConstant('{app}\uninstall.dat');
+  Failed := False;
+
+  if FileExists(Uninstaller) then
+  begin
+    if not RenameFile(Uninstaller, NewUninstaller) then
+      Failed := True;
+  end;
+  if FileExists(DataFile) then
+  begin
+    if not RenameFile(DataFile, NewDataFile) then
+      Failed := True;
+  end;
+
+  // Update the registry uninstall entry so it points to the renamed exe.
+  UninstallPath := ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\') + '{#AppName}_is1';
+  if not Failed then
+  begin
+    RegWriteStringValue(HKCU, UninstallPath, 'UninstallString', '"' + NewUninstaller + '"');
+    RegWriteStringValue(HKCU, UninstallPath, 'QuietUninstallString', '"' + NewUninstaller + '" /VERYSILENT /NORESTART');
+    RegWriteStringValue(HKCU, UninstallPath, 'ModifyPath', '"' + NewUninstaller + '"');
+    RegWriteStringValue(HKCU, UninstallPath, 'DisplayIcon', NewUninstaller);
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    RenameUninstaller;
+end;
