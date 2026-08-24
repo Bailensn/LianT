@@ -1,6 +1,6 @@
 # LianT
 
-[简体中文](README.zh-CN.md) | [English](README.md)
+[简体中文](README.zh-CN.md) | English
 
 A Telegram Bot API management system with self-hosted server support.
 

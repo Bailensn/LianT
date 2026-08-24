@@ -1,6 +1,6 @@
 # 联T
 
-[简体中文](README.zh-CN.md) | [English](README.md)
+简体中文 | [English](README.md)
 
 一款基于 Telegram Bot API 的管理器，支持自托管服务器。
 
