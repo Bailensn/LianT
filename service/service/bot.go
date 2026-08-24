@@ -7,8 +7,8 @@ import (
 )
 
 import (
-	"github.com/Bailensn/LianT/service/wss"
-	"github.com/Bailensn/LianT/service/botruntime"
+	"github.com/LensnTeam/LianT/service/wss"
+	"github.com/LensnTeam/LianT/service/botruntime"
 )
 
 func BotCommand(args []string){

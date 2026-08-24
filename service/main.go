@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Bailensn/LianT/service/config"
-	"github.com/Bailensn/LianT/service/service"
+	"github.com/LensnTeam/LianT/service/config"
+	"github.com/LensnTeam/LianT/service/service"
 )
 
 func main() {

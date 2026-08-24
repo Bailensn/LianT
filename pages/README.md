@@ -36,7 +36,7 @@ npm run dev          # 启动开发服务器（已内置 --webpack）
 npm run fetch:releases
 ```
 
-可选环境变量：`GITHUB_REPO`（默认 `Bailensn/LianT`）、`GITHUB_TOKEN`（未认证时每小时 60 次限额）。
+可选环境变量：`GITHUB_REPO`（默认 `LensnTeam/LianT`）、`GITHUB_TOKEN`（未认证时每小时 60 次限额）。
 
 ## 自动化（GitHub Actions + Vercel Deploy Hook）
 

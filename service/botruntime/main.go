@@ -18,9 +18,9 @@ import (
 	_ "github.com/glebarez/go-sqlite"
 	tele "gopkg.in/telebot.v4"
 
-	"github.com/Bailensn/LianT/service/config"
-	"github.com/Bailensn/LianT/service/crypto"
-	"github.com/Bailensn/LianT/service/wss"
+	"github.com/LensnTeam/LianT/service/config"
+	"github.com/LensnTeam/LianT/service/crypto"
+	"github.com/LensnTeam/LianT/service/wss"
 )
 
 func getTokenByID(id int64) (string, error) {

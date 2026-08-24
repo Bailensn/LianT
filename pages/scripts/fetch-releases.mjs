@@ -3,7 +3,7 @@
  * 写入 src/data/releases.generated.json，运行时前端只读静态文件、不再调用 GitHub API。
  *
  * 用法：node scripts/fetch-releases.mjs
- * 可用环境变量：GITHUB_REPO（默认 Bailensn/LianT）、GITHUB_TOKEN（可选，未认证时每小时 60 次限额）
+ * 可用环境变量：GITHUB_REPO（默认 LensnTeam/LianT）、GITHUB_TOKEN（可选，未认证时每小时 60 次限额）
  */
 import { writeFile, mkdir } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
@@ -12,7 +12,7 @@ import path from "node:path"
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const OUT = path.join(__dirname, "../src/data/releases.generated.json")
 
-const repo = process.env.GITHUB_REPO || "Bailensn/LianT"
+const repo = process.env.GITHUB_REPO || "LensnTeam/LianT"
 const token = process.env.GITHUB_TOKEN || ""
 const PRODUCTS = ["Manager", "Service"]
 

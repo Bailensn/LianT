@@ -6,7 +6,7 @@ import (
 )
 
 import (
-	"github.com/Bailensn/LianT/service/config"
+	"github.com/LensnTeam/LianT/service/config"
 )
 
 func initCommand() {
