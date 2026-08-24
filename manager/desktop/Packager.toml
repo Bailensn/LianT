@@ -15,4 +15,4 @@ main = true
 
 [nsis]
 installer-icon = "../resources/windows/LianT.ico"
-install-mode = "currentUser"
+installer-mode = "currentUser"
