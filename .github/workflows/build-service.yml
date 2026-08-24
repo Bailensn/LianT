@@ -19,11 +19,11 @@ on:
         type: boolean
         default: false
       windows_amd64:
-        description: 'Windows amd64 (.exe)'
+        description: 'Windows amd64'
         type: boolean
         default: false
       darwin_arm64:
-        description: 'macOS arm64 (Apple Silicon)'
+        description: 'Darwin arm64'
         type: boolean
         default: false
 
@@ -53,15 +53,15 @@ jobs:
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-              go build -ldflags="-s -w" -trimpath -o service-linux-amd64 .
+              go build -ldflags="-s -w" -trimpath -o LianT-Service-Linux-amd64 .
           else
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-              go build -o service-linux-amd64 .
+              go build -o LianT-Service-Linux-amd64 .
           fi
       - uses: actions/upload-artifact@v7
         with:
-          name: service-linux-amd64
-          path: service/service-linux-amd64
+          name: LianT-Service-Linux-amd64
+          path: service/LianT-Service-Linux-amd64
 
   # ============================================================
   # Linux arm64
@@ -85,15 +85,15 @@ jobs:
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-              go build -ldflags="-s -w" -trimpath -o service-linux-arm64 .
+              go build -ldflags="-s -w" -trimpath -o LianT-Service-Linux-arm64 .
           else
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-              go build -o service-linux-arm64 .
+              go build -o LianT-Service-Linux-arm64 .
           fi
       - uses: actions/upload-artifact@v7
         with:
-          name: service-linux-arm64
-          path: service/service-linux-arm64
+          name: LianT-Service-Linux-arm64
+          path: service/LianT-Service-Linux-arm64
 
   # ============================================================
   # Windows amd64
@@ -117,14 +117,14 @@ jobs:
         shell: pwsh
         run: |
           if ($env:BUILD_MODE -eq "release") {
-            go build -ldflags="-s -w" -trimpath -o service-windows-amd64.exe .
+            go build -ldflags="-s -w" -trimpath -o LianT-Service-Windows-amd64.exe .
           } else {
-            go build -o service-windows-amd64.exe .
+            go build -o LianT-Service-Windows-amd64.exe .
           }
       - uses: actions/upload-artifact@v7
         with:
           name: service-windows-amd64
-          path: service/service-windows-amd64.exe
+          path: service/LianT-Service-Windows-amd64.exe
 
   # ============================================================
   # macOS arm64
@@ -148,12 +148,12 @@ jobs:
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
             CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
-              go build -ldflags="-s -w" -trimpath -o service-darwin-arm64 .
+              go build -ldflags="-s -w" -trimpath -o LianT-Service-Darwin-arm64 .
           else
             CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
-              go build -o service-darwin-arm64 .
+              go build -o LianT-Service-Darwin-arm64 .
           fi
       - uses: actions/upload-artifact@v7
         with:
-          name: service-darwin-arm64
-          path: service/service-darwin-arm64
+          name: LianT-Service-Darwin-arm64
+          path: service/LianT-Service-Darwin-arm64

@@ -6,7 +6,7 @@ on:
       version:
         description: 'version'
         required: true
-        default: '1.0.0'
+        default: '1.00'
 
       windows:
         type: boolean
@@ -23,11 +23,6 @@ on:
       darwin_arm64:
         type: boolean
         default: false
-
-      darwin_amd64:
-        type: boolean
-        default: false
-
 
 jobs:
 
@@ -76,12 +71,12 @@ jobs:
         run: |
           $exe = Get-ChildItem "manager/release" -Filter *.exe | Select-Object -First 1
           if ($null -eq $exe) { throw "Setup exe not found in manager/release" }
-          Move-Item -Force $exe.FullName "LianT_${{ inputs.version }}_amd64.exe"
+          Move-Item -Force $exe.FullName "LianT-Manager-v${{ inputs.version }}-Windows-amd64.exe"
 
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-Windows-amd64
-          path: LianT_${{ inputs.version }}_amd64.exe
+          path: LianT-Manager-v${{ inputs.version }}-Windows-amd64.exe
 
   darwin-arm64:
     if: ${{ inputs.darwin_arm64 }}
@@ -140,76 +135,12 @@ jobs:
             -srcfolder LianT.app \
             -ov \
             -format UDZO \
-            LianT_${{ inputs.version }}_arm64.dmg
+            LianT-Manager-v${{ inputs.version }}-Darwin-arm64.dmg
 
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-Darwin-arm64
-          path: LianT_${{ inputs.version }}_arm64.dmg
-
-  darwin-amd64:
-    if: ${{ inputs.darwin_amd64 }}
-    runs-on: macos-13
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          cache: true
-
-      - name: Build bare app
-        working-directory: manager/desktop
-        run: cargo build --release
-
-      - name: Make app bundle
-        run: |
-          mkdir -p LianT.app/Contents/MacOS
-          mkdir -p LianT.app/Contents/Resources
-
-          cp manager/desktop/target/release/LianT LianT.app/Contents/MacOS/LianT
-
-          cp manager/resources/darwin/LianT.icns \
-            LianT.app/Contents/Resources/
-
-          cat << EOF > LianT.app/Contents/Info.plist
-          <?xml version="1.0"?>
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleName</key>
-            <string>LianT</string>
-
-            <key>CFBundleExecutable</key>
-            <string>LianT</string>
-
-            <key>CFBundleIdentifier</key>
-            <string>com.bailensn.liant</string>
-
-            <key>CFBundleVersion</key>
-            <string>${{ inputs.version }}</string>
-
-            <key>CFBundleIconFile</key>
-            <string>LianT.icns</string>
-
-            <key>CFBundlePackageType</key>
-            <string>APPL</string>
-          </dict>
-          </plist>
-          EOF
-
-      - name: Create dmg
-        run: |
-          hdiutil create \
-            -volname LianT \
-            -srcfolder LianT.app \
-            -ov \
-            -format UDZO \
-            LianT_${{ inputs.version }}_amd64.dmg
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: LianT-Darwin-amd64
-          path: LianT_${{ inputs.version }}_amd64.dmg
+          path: LianT-Manager-v${{ inputs.version }}-Darwin-arm64.dmg
 
   linux-amd64:
     if: ${{ inputs.linux_amd64 }}
@@ -290,7 +221,7 @@ jobs:
           fakeroot dpkg-deb \
             --build \
             "$PKG" \
-            LianT_${{ inputs.version }}_amd64.deb
+            LianT-Manager-v${{ inputs.version }}-Linux-amd64.deb
 
       - name: Package rpm
         run: |
@@ -329,14 +260,14 @@ jobs:
             -bb rpmbuild/SPECS/LianT.spec
 
           cp rpmbuild/RPMS/x86_64/*.rpm \
-            LianT_${{ inputs.version }}_amd64.rpm
+            LianT-Manager-v${{ inputs.version }}-Linux-amd64.rpm
 
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-Linux-amd64
           path: |
-            LianT_${{ inputs.version }}_amd64.deb
-            LianT_${{ inputs.version }}_amd64.rpm
+            LianT-Manager-v${{ inputs.version }}-Linux-amd64.deb
+            LianT-Manager-v${{ inputs.version }}-Linux-amd64.rpm
 
 
   linux-arm64:
@@ -418,7 +349,7 @@ jobs:
           fakeroot dpkg-deb \
             --build \
             "$PKG" \
-            LianT_${{ inputs.version }}_arm64.deb
+            LianT-Manager-v${{ inputs.version }}-Linux-arm64.deb
 
       - name: Package rpm
         run: |
@@ -457,11 +388,11 @@ jobs:
             -bb rpmbuild/SPECS/LianT.spec
 
           cp rpmbuild/RPMS/aarch64/*.rpm \
-            LianT_${{ inputs.version }}_arm64.rpm
+            LianT-Manager-v${{ inputs.version }}-Linux-arm64.rpm
 
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-Linux-arm64
           path: |
-            LianT_${{ inputs.version }}_arm64.deb
-            LianT_${{ inputs.version }}_arm64.rpm
+            LianT-Manager-v${{ inputs.version }}-Linux-arm64.deb
+            LianT-Manager-v${{ inputs.version }}-Linux-arm64.rpm
