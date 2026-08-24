@@ -19,7 +19,6 @@ OutputDir=..\..\release
 OutputBaseFilename=LianT_Setup
 
 SetupIconFile=LianT.ico
-UninstallDisplayIcon={app}\{#AppExeName}
 
 Compression=lzma2/ultra
 SolidCompression=yes
