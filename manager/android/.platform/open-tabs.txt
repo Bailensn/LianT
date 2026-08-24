@@ -1,4 +1,3 @@
 #v2
 0
-/storage/emulated/0/Android/data/com.tyron.code/files/codeassist/projects/t/app/src/main/kotlin/com/bailensn/LianT/SplashActivity.kt	3925	80	text
-/storage/emulated/0/Android/data/com.tyron.code/files/codeassist/projects/t/app/src/main/kotlin/com/bailensn/LianT/widget.kt	3093	57	text
+/storage/emulated/0/Android/data/com.tyron.code/files/codeassist/projects/liant/app/src/main/kotlin/com/lensnteam/liant/SplashActivity.kt	0	0	text

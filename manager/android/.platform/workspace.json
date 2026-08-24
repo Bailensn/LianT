@@ -2,8 +2,8 @@
   "version": 1,
   "projects": [
     {
-      "id": "联T",
-      "name": "联T",
+      "id": "LianT",
+      "name": "LianT",
       "root": "",
       "buildSystem": "native",
       "settings": {},

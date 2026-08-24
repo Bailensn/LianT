@@ -1,4 +1,4 @@
-package com.bailensn.LianT
+package com.lensnteam.liant
 
 import android.os.Build
 import android.os.Bundle
@@ -140,6 +140,7 @@ fun TheLayout() {
                     .fillMaxWidth()
                     .padding(bottom = 32.dp) // 距离底部的边距
                 ) {
+                    // 这里是玻璃板内部的真正内容（如 Bot 列表、按钮等）
                     Column(
                         modifier = Modifier
                         .fillMaxWidth()

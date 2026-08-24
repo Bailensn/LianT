@@ -1,6 +1,6 @@
-# Project: t (app module)
+# Project: LianT (app module)
 
-- Package `com.bailensn.LianT`, launcher = `SplashActivity` (ComponentActivity). namespace `com.bailensn.LianT`, minSdk 28, compileSdk 37, targetSdk 36, manifest theme `Theme.App`, icon `@drawable/ic_launcher` (ic_launcher.xml).
+- Package `com.lensnteam.liant`, launcher = `SplashActivity` (ComponentActivity). namespace `com.lensnteam.liant`, minSdk 28, compileSdk 37, targetSdk 36, manifest theme `Theme.App`, icon `@drawable/ic_launcher` (ic_launcher.xml).
 - Deps: material3 **1.5.0-alpha26** (M3 Expressive: `MaterialExpressiveTheme`, `expressiveLightColorScheme`, `@OptIn(ExperimentalMaterial3ExpressiveApi::class)`), **io.github.kyant0:backdrop:2.0.0**, material-icons-extended 1.7.8, ui 1.12.0-rc01 / foundation 1.13.0-alpha01, navigation-compose.
 - IMPORTANT compiler quirk: `material-icons` extension properties (`Icons.Filled.ChevronRight`, `Icons.AutoMirrored.Filled.KeyboardArrowRight`) do NOT resolve on this CodeAssist compiler (verified with a probe). Use custom Canvas/path-drawn icons instead.
 - Build via `bundle:app:debug` task; verified passing after SplashActivity rewrite.
