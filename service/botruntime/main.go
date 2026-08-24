@@ -115,6 +115,18 @@ func Run(
 		wsssend(ws, wrapOutgoing(id, c))
 		return nil
 	})
+	// 非文本消息：识别媒体类型，有文件则用 file_id 换下载链接转发 client，
+	// 无文件的类型（位置/联系人等）回传类型描述文本。
+	for _, ep := range []string{
+		tele.OnPhoto, tele.OnVideo, tele.OnAudio, tele.OnVoice,
+		tele.OnDocument, tele.OnVideoNote, tele.OnSticker, tele.OnAnimation,
+		tele.OnLocation, tele.OnContact,
+	} {
+		b.Handle(ep, func(c tele.Context) error {
+			forwardMedia(b, id, cache, ws, c)
+			return nil
+		})
+	}
 	go func() {
 		for msg := range ws.Receive {
 			handleWSMessage(b, id, cache, msg)
@@ -201,6 +213,92 @@ func wrapOutgoingText(botID int64, c tele.Context, text string) string {
 		wrapElement("type", "text"),
 		wrapElement("content", base64.StdEncoding.EncodeToString([]byte(text))),
 	})
+}
+
+// wrapOutgoingMedia 生成下行消息：媒体的下载链接推给 client。
+// type=媒体类型(photo/video/...)，content=base64(下载链接)。
+func wrapOutgoingMedia(botID int64, c tele.Context, msgType string, dlURL string) string {
+	uid := int64(0)
+	if s := c.Sender(); s != nil {
+		uid = s.ID
+	}
+	return encodePayload([]wsElement{
+		wrapElement("bot_id", strconv.FormatInt(botID, 10)),
+		wrapElement("user_id", strconv.FormatInt(uid, 10)),
+		wrapElement("type", msgType),
+		wrapElement("content", base64.StdEncoding.EncodeToString([]byte(dlURL))),
+	})
+}
+
+// mediaFileOf 识别消息里的媒体类型并返回对应的 tele.File。
+// 无文件的类型（位置/联系人/投票/骰子等）返回 (类型, nil)。
+func mediaFileOf(c tele.Context) (string, *tele.File) {
+	m := c.Message()
+	if m == nil {
+		return "unknown", nil
+	}
+	switch {
+	case m.Photo != nil:
+		return "photo", &m.Photo.File
+	case m.Video != nil:
+		return "video", &m.Video.File
+	case m.Audio != nil:
+		return "audio", &m.Audio.File
+	case m.Voice != nil:
+		return "voice", &m.Voice.File
+	case m.Document != nil:
+		return "document", &m.Document.File
+	case m.VideoNote != nil:
+		return "video_note", &m.VideoNote.File
+	case m.Sticker != nil:
+		return "sticker", &m.Sticker.File
+	case m.Animation != nil:
+		return "animation", &m.Animation.File
+	case m.Location != nil:
+		return "location", nil
+	case m.Contact != nil:
+		return "contact", nil
+	}
+	return "other", nil
+}
+
+func fileDownloadURL(b *tele.Bot, file *tele.File) (string, error) {
+	f, err := b.FileByID(file.FileID)
+	if err != nil {
+		return "", err
+	}
+	if f.FilePath == "" {
+		return "", errors.New("未获取到文件路径")
+	}
+	return fmt.Sprintf(
+		"https://api.telegram.org/file/bot%s/%s",
+		b.Token,
+		f.FilePath,
+	), nil
+}
+
+func unrecognizedReply(c tele.Context) {
+	const hint = "\u200b"
+	_ = c.Send(
+		`<a href="https://t.me">`+hint+`[自动回复]</a>该消息类型无法被识别`,
+		tele.ModeHTML,
+	)
+}
+
+func forwardMedia(b *tele.Bot, botID int64, cc *chatCache, ws *wss.Server, c tele.Context) {
+	cc.remember(c.Chat())
+	msgType, file := mediaFileOf(c)
+	if file == nil {
+		unrecognizedReply(c)
+		wsssend(ws, wrapOutgoingText(botID, c, "该消息类型无法被识别"))
+		return
+	}
+	dlURL, err := fileDownloadURL(b, file)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "获取文件下载链接失败:", err)
+		return
+	}
+	wsssend(ws, wrapOutgoingMedia(botID, c, msgType, dlURL))
 }
 
 func decodeIncoming(raw string) ([]map[string]json.RawMessage, error) {
