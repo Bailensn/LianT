@@ -55,10 +55,10 @@ jobs:
 
       - name: Build Go Launcher (embedded runtime URL)
         shell: bash
-        working-directory: desktop/launcher
         env:
           RUNTIME_URL: ${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-x86_64-pc-windows-msvc-install_only.tar.gz
         run: |
+          cd desktop/launcher
           mkdir -p "$GITHUB_WORKSPACE/dist/launcher"
           go build -trimpath -ldflags "-s -w -H windowsgui \
             -X main.version=${{ env.VERSION }} \
@@ -74,9 +74,9 @@ jobs:
           cp desktop/client/requirements.txt client/requirements.txt
 
       - name: Inject version into Inno script
-        working-directory: desktop/installer/windows
         shell: pwsh
         run: |
+          cd desktop/installer/windows
           (Get-Content LianT.iss) -replace '^#define MyAppVersion ".*"', '#define MyAppVersion "${{ env.VERSION }}"' | Set-Content -Encoding ASCII LianT.iss
 
       - name: Install Inno Setup
@@ -84,9 +84,9 @@ jobs:
         run: choco install innosetup -y --no-progress
 
       - name: Build installer with ISCC
-        working-directory: desktop/installer/windows
         shell: pwsh
         run: |
+          cd desktop/installer/windows
           $iscc = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
           if (-not $iscc) { throw "ISCC.exe not found" }
           & $iscc.Source LianT.iss
@@ -119,10 +119,10 @@ jobs:
           cache-dependency-path: desktop/launcher/go.sum
 
       - name: Build Go Launcher (embedded runtime URL)
-        working-directory: desktop/launcher
         env:
           RUNTIME_URL: ${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-aarch64-apple-darwin-install_only.tar.gz
         run: |
+          cd desktop/launcher
           mkdir -p "$GITHUB_WORKSPACE/dist/launcher"
           go build -trimpath -ldflags "-s -w \
             -X main.version=${{ env.VERSION }} \
@@ -197,10 +197,10 @@ jobs:
             fakeroot rpm file desktop-file-utils
 
       - name: Build Go Launcher (embedded runtime URL)
-        working-directory: desktop/launcher
         env:
           RUNTIME_URL: ${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-x86_64-unknown-linux-gnu-install_only.tar.gz
         run: |
+          cd desktop/launcher
           mkdir -p "$GITHUB_WORKSPACE/dist/launcher"
           go build -trimpath -ldflags "-s -w \
             -X main.version=${{ env.VERSION }} \
@@ -306,10 +306,10 @@ jobs:
             fakeroot rpm file desktop-file-utils
 
       - name: Build Go Launcher (embedded runtime URL)
-        working-directory: desktop/launcher
         env:
           RUNTIME_URL: ${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-aarch64-unknown-linux-gnu-install_only.tar.gz
         run: |
+          cd desktop/launcher
           mkdir -p "$GITHUB_WORKSPACE/dist/launcher"
           go build -trimpath -ldflags "-s -w \
             -X main.version=${{ env.VERSION }} \
