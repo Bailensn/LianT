@@ -20,9 +20,9 @@ import (
 
 	"gioui.org/app"
 
-	"LianTLauncher/runtime"
-	"LianTLauncher/ui"
-	"LianTLauncher/updater"
+	"github.com/LensnTeam/LianT/manager/runtime"
+	"github.com/LensnTeam/LianT/manager/ui"
+	"github.com/LensnTeam/LianT/manager/updater"
 )
 
 // Default standalone-Python build pinned by the launcher when the runtime URL
