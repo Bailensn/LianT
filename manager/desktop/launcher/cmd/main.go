@@ -177,6 +177,10 @@ func launchClient(mgr *runtime.Manager) error {
 	go func(c *exec.Cmd) {
 		if err := c.Wait(); err != nil {
 			fmt.Fprintln(os.Stderr, "client exited:", err)
+			if ee, ok := err.(*exec.ExitError); ok {
+				os.Exit(ee.ExitCode())
+			}
+			os.Exit(1)
 		}
 		os.Exit(0)
 	}(cmd)

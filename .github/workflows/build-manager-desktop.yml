@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号'
+        description: 'version'
         required: true
-        default: '1.00'
+        default: ''
       windows:
         type: boolean
         default: false
@@ -21,7 +21,6 @@ on:
         default: false
 
 env:
-  VERSION: ${{ inputs.version }}
   GO_VERSION: '1.26.5'
   PY_VERSION: '3.12.14'
   PBS_TAG: '20260814'
@@ -29,11 +28,38 @@ env:
 
 jobs:
   # ===================================================================
+  #  Root: 校验版本号，向所有下游透传 version (outputs)
+  # ===================================================================
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.setver.outputs.version }}
+    steps:
+      - id: setver
+        name: Validate & export version
+        run: |
+          set -e
+          V="${{ inputs.version }}"
+          if [ -z "$V" ]; then
+            echo "::error::version 不能为空"
+            exit 1
+          fi
+          # 形如 v1.0.0 / 1.0.0 均可
+          if ! echo "$V" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+(-.+)?$'; then
+            echo "::warning::version '$V' 不符合 SemVer 风格，继续执行"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$V"  >> "$GITHUB_ENV"
+
+  # ===================================================================
   # Windows amd64 -> Go Launcher + Client 源码 -> Inno Setup
   # ===================================================================
   windows-amd64:
+    needs: prepare
     if: ${{ inputs.windows }}
     runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -96,24 +122,30 @@ jobs:
           & $iscc.Source LianT.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC exit code $LASTEXITCODE" }
 
-      - name: Rename setup artifact
+      - name: Stage artifact (platform subdir)
         shell: pwsh
         run: |
           $setup = Get-ChildItem "manager/desktop/installer/windows/Output" -Filter "LianTSetup*.exe" | Select-Object -First 1
           if ($null -eq $setup) { throw "setup exe not found" }
-          Move-Item -Force $setup.FullName "LianT-v${{ env.VERSION }}-Windows-amd64.exe"
+          $dir = "Windows-amd64"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item -Force $setup.FullName "$dir\LianT-v${{ env.VERSION }}-Windows-amd64.exe"
 
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-Windows-amd64
-          path: LianT-v${{ env.VERSION }}-Windows-amd64.exe
+          path: Windows-amd64
+          retention-days: 1   # 中转产物，1 天过期
 
   # ===================================================================
   # macOS arm64 -> LianT.app + dmg
   # ===================================================================
   darwin-arm64:
+    needs: prepare
     if: ${{ inputs.darwin_arm64 }}
     runs-on: macos-15
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -168,20 +200,25 @@ jobs:
       - name: Create dmg
         run: |
           hdiutil create -volname LianT -srcfolder "$GITHUB_WORKSPACE/LianT.app" -ov \
-            -format UDZO "LianT-v${{ env.VERSION }}-Darwin-arm64.dmg"
+            -format UDZO "Darwin-arm64/LianT-v${{ env.VERSION }}-Darwin-arm64.dmg"
+          mkdir -p Darwin-arm64
+          mv "LianT-v${{ env.VERSION }}-Darwin-arm64.dmg" Darwin-arm64/
 
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-Darwin-arm64
-          path: LianT-v${{ env.VERSION }}-Darwin-arm64.dmg
+          path: Darwin-arm64
+          retention-days: 1
 
   # ===================================================================
   # Linux amd64 -> deb + rpm (无运行时，首启动动态下载)
   # ===================================================================
   linux-amd64:
+    needs: prepare
     if: ${{ inputs.linux_amd64 }}
     runs-on: ubuntu-latest
     env:
+      VERSION: ${{ needs.prepare.outputs.version }}
       ROOTFS: manager/desktop/installer/linux/rootfs
       DEB_ARCH: amd64
       RPM_ARCH: x86_64
@@ -293,20 +330,27 @@ jobs:
           cp "$TOPDIR"/RPMS/${{ env.RPM_ARCH }}/*.rpm \
             "LianT-v${{ env.VERSION }}-Linux-amd64.rpm"
 
+      - name: Stage artifact (platform subdir)
+        run: |
+          mkdir -p Linux-amd64
+          mv "LianT-v${{ env.VERSION }}-Linux-amd64.deb" Linux-amd64/ || true
+          mv "LianT-v${{ env.VERSION }}-Linux-amd64.rpm" Linux-amd64/ || true
+
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-Linux-amd64
-          path: |
-            LianT-v${{ env.VERSION }}-Linux-amd64.deb
-            LianT-v${{ env.VERSION }}-Linux-amd64.rpm
+          path: Linux-amd64
+          retention-days: 1
 
   # ===================================================================
   # Linux arm64 -> deb + rpm
   # ===================================================================
   linux-arm64:
+    needs: prepare
     if: ${{ inputs.linux_arm64 }}
     runs-on: ubuntu-24.04-arm
     env:
+      VERSION: ${{ needs.prepare.outputs.version }}
       ROOTFS: manager/desktop/installer/linux/rootfs
       DEB_ARCH: arm64
       RPM_ARCH: aarch64
@@ -418,9 +462,58 @@ jobs:
           cp "$TOPDIR"/RPMS/${{ env.RPM_ARCH }}/*.rpm \
             "LianT-v${{ env.VERSION }}-Linux-arm64.rpm"
 
+      - name: Stage artifact (platform subdir)
+        run: |
+          mkdir -p Linux-arm64
+          mv "LianT-v${{ env.VERSION }}-Linux-arm64.deb" Linux-arm64/ || true
+          mv "LianT-v${{ env.VERSION }}-Linux-arm64.rpm" Linux-arm64/ || true
+
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-Linux-arm64
-          path: |
-            LianT-v${{ env.VERSION }}-Linux-arm64.deb
-            LianT-v${{ env.VERSION }}-Linux-arm64.rpm
+          path: Linux-arm64
+          retention-days: 1
+
+  # ===================================================================
+  #  Leaf: 汇聚选中平台的产物 -> 打成一个 zip -> 上传唯一 Artifact
+  # ===================================================================
+  package:
+    needs: [prepare, windows-amd64, darwin-arm64, linux-amd64, linux-arm64]
+    # 任意平台被选中才执行；always() 保证被跳过的分支不阻塞
+    if: |
+      always() &&
+      (inputs.windows || inputs.darwin_arm64 || inputs.linux_amd64 || inputs.linux_arm64)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: 'LianT-*'
+          path: parts
+          merge-multiple: true
+
+      - name: Assemble single zip
+        run: |
+          set -e
+          V="${{ env.VERSION }}"
+          echo "=== collected artifacts ==="
+          ls -la parts || true
+          ls -R parts 2>/dev/null || true
+
+          mv parts "LianT-v${V}"
+          zip -rq "LianT-v${V}.zip" "LianT-v${V}"
+
+          echo "=== final zip ==="
+          ls -lh "LianT-v${V}.zip"
+          unzip -l "LianT-v${V}.zip"
+
+      - name: Upload single final artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: LianT-v${{ env.VERSION }}
+          path: LianT-v${{ env.VERSION }}.zip
+          retention-days: 90
