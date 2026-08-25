@@ -1,4 +1,4 @@
-name: Build LianT Desktop (source-execution + dynamic runtime)
+name: Build Manager Desktop
 
 # 动态运行时模式
 #   - Client:   Python + PySide6 + QML，以源码(src/ + qml/)随包分发，不用 PyInstaller。
