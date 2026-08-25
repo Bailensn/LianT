@@ -1,4 +1,4 @@
-module LianTLauncher
+module github.com/LensnTeam/LianT/manager
 
 go 1.26.5
 

@@ -4,13 +4,8 @@ version = "1.0.0"
 description = "LianT cross-platform instant messaging desktop client (source-execution mode)"
 requires-python = ">=3.10"
 dependencies = [
-    "PySide6>=6.6",
-    "aiohttp>=3.9",
-    "cryptography>=42.0",
+    "PySide6>=6.6,<6.9",
 ]
-
-# 源码执行模式：CLI 入口直接用 python 运行 src/main.py，此处仅保留元信息，
-# 便于在 runtime 环境中以 pip install . 安装依赖时正确解析。
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -18,5 +13,4 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 py-modules = []
-# 源码执行模式不在 site-packages 里抽包；源码以目录形式随 runtime/ 分发。
 packages = []

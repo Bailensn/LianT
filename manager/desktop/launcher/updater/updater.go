@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -222,14 +223,23 @@ func stripTopLevel(dir, top string) error {
 }
 
 // ProvisionRuntime downloads a standalone interpreter and pip-installs the
-// client's requirements into it, all into root/runtime. It is invoked at
-// install time (or on first launch) when the interpreter is found to be absent.
-func ProvisionRuntime(root, url, checksum, requirements string) (string, error) {
+// client's dependencies into it, all into root/runtime. deps carries the raw
+// requirement specs (e.g. "PySide6>=6.6,<6.9") read from the client's
+// pyproject.toml. It is invoked at install time (or on first launch) when the
+// interpreter is found to be absent.
+func ProvisionRuntime(root, url, checksum string, deps []string) (string, error) {
+	return ProvisionRuntimeFrom(root, url, checksum, deps, "")
+}
+
+// ProvisionRuntimeFrom is ProvisionRuntime with an optional offlineDepsDir: a
+// directory of pre-bundled wheels/sdists. When non-empty and usable, the
+// client's dependencies are installed from it (offline) instead of PyPI.
+func ProvisionRuntimeFrom(root, url, checksum string, deps []string, offlineDepsDir string) (string, error) {
 	runtimeDir := filepath.Join(root, "runtime")
 	if py := pythonInterpreter(runtimeDir); py != "" {
 		// Already provisioned; ensure deps are present.
-		if requirements != "" && fileExists(requirements) {
-			if err := InstallRequirements(root, requirements); err != nil {
+		if len(deps) > 0 {
+			if err := installDeps(runtimeDir, deps, offlineDepsDir); err != nil {
 				return py, err
 			}
 		}
@@ -290,24 +300,222 @@ func ProvisionRuntime(root, url, checksum, requirements string) (string, error) 
 	_ = os.RemoveAll(runtimeDir + ".old")
 
 	py := pythonInterpreter(runtimeDir)
-	if requirements != "" && fileExists(requirements) {
-		if err := InstallRequirements(root, requirements); err != nil {
+	if len(deps) > 0 {
+		if err := installDeps(runtimeDir, deps, offlineDepsDir); err != nil {
 			return py, err
 		}
 	}
 	return py, nil
 }
 
-// InstallRequirements runs the runtime interpreter's pip to install the client's
-// dependencies from a requirements file.
-func InstallRequirements(root, requirements string) error {
+// installDeps installs deps into the interpreter at runtimeDir, preferring the
+// offline directory when it holds any wheels, else falling back to PyPI.
+func installDeps(runtimeDir string, deps []string, offlineDepsDir string) error {
+	if len(deps) == 0 {
+		return nil
+	}
+	py := pythonInterpreter(runtimeDir)
+	if py == "" {
+		return fmt.Errorf("runtime interpreter missing; reinstall runtime")
+	}
+	if IsOfflineDepsDir(offlineDepsDir) {
+		if err := InstallSpecsOffline(runtimeDir, offlineDepsDir, deps); err == nil {
+			return nil
+		}
+		// Offline artifacts couldn't satisfy all specs; retry on PyPI.
+	}
+	return InstallSpecsFrom(py, deps)
+}
+
+// pipIndex returns the PyPI index the launcher uses for online installs.
+// The default is TUNA (Tsinghua mirror) because reaching pypi.org is often
+// very slow; override with LIANT_PIP_INDEX (e.g. https://pypi.org/simple).
+func pipIndex() string {
+	if v := os.Getenv("LIANT_PIP_INDEX"); v != "" {
+		return v
+	}
+	return "https://pypi.tuna.tsinghua.edu.cn/simple"
+}
+
+// InstallSpecs runs the runtime interpreter's pip to install the client's
+// dependencies from their pyproject.toml requirement specs.
+func InstallSpecs(root string, deps []string) error {
 	runtimeDir := filepath.Join(root, "runtime")
 	py := pythonInterpreter(runtimeDir)
 	if py == "" {
 		return fmt.Errorf("runtime interpreter missing; reinstall runtime")
 	}
+	return InstallSpecsFrom(py, deps)
+}
+
+// InstallSpecsFrom pip-installs all deps into py online via the mirror index.
+func InstallSpecsFrom(py string, deps []string) error {
+	if len(deps) == 0 {
+		return nil
+	}
+	args := append([]string{"-m", "pip", "install", "--disable-pip-version-check",
+		"-q", "-i", pipIndex()}, deps...)
+	cmd := exec.Command(py, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// quotedValue extracts the value of a single "..." or '...' string, tolerating
+// a trailing comma as found inside TOML arrays.
+var quotedValue = regexp.MustCompile(`^\s*(["'])(.*?)\1\s*,?\s*(?:#.*)?$`)
+
+// ReadDependencies parses the [project].dependencies array from a PEP 621
+// pyproject.toml and returns the raw requirement specs it declares (e.g.
+// "PySide6>=6.6,<6.9"), skipping comments, empty items and table markers.
+func ReadDependencies(pyproject string) ([]string, error) {
+	data, err := os.ReadFile(pyproject)
+	if err != nil {
+		return nil, err
+	}
+	var deps []string
+	inProject := false
+	inArray := false
+	for _, raw := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(raw)
+		switch {
+		case line == "" || strings.HasPrefix(line, "#"):
+			continue
+		case strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]"):
+			// New table: track only [project], and leave any dependency
+			// sub-tables (e.g. [project.optional-dependencies]).
+			inProject = line == "[project]"
+			inArray = false
+			continue
+		}
+		if !inProject {
+			continue
+		}
+		// Enter the dependencies = [ ... ] array (possibly spanning lines).
+		if !inArray && strings.HasPrefix(line, "dependencies") && strings.Contains(line, "[") {
+			inArray = true
+		}
+		if !inArray {
+			continue
+		}
+		if m := quotedValue.FindStringSubmatch(line); len(m) == 3 {
+			deps = append(deps, m[2])
+		}
+		if strings.Contains(line, "]") && !strings.Contains(line, "["+"\"") && strings.HasSuffix(line, "]") {
+			inArray = false
+		}
+	}
+	return deps, nil
+}
+
+// TopLevelName reduces a requirement spec to its top-level import/module name.
+func TopLevelName(spec string) string {
+	name := spec
+	if i := strings.Index(name, ";"); i >= 0 { // env marker
+		name = name[:i]
+	}
+	name = strings.TrimSpace(name)
+	if i := strings.Index(name, "["); i >= 0 { // extras
+		name = name[:i]
+	}
+	if i := strings.IndexAny(name, "=<>!~"); i >= 0 { // version constraints
+		name = name[:i]
+	}
+	return strings.TrimSpace(name)
+}
+
+// MissingDeps returns the subset of mods that cannot be imported by py, i.e.
+// the dependencies the runtime still lacks.
+func MissingDeps(py string, mods []string) ([]string, error) {
+	if len(mods) == 0 {
+		return nil, nil
+	}
+	// Single python invocation; with `python -c <script> a b c` the args start
+	// at sys.argv[1].
+	script := "import importlib,sys\n" +
+		"missing=[]\n" +
+		"for m in sys.argv[1:]:\n" +
+		"  try:\n" +
+		"    importlib.import_module(m)\n" +
+		"  except Exception:\n" +
+		"    missing.append(m)\n" +
+		"if missing:\n" +
+		"  print('\\n'.join(missing))\n"
+	args := append([]string{"-c", script}, mods...)
+	out, err := exec.Command(py, args...).Output()
+	if err != nil {
+		return nil, fmt.Errorf("probe imports: %w", err)
+	}
+	var missing []string
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if l != "" {
+			missing = append(missing, l)
+		}
+	}
+	return missing, nil
+}
+
+// InstallModule pip-installs a single dependency via the mirror index,
+// preserving any version constraints carried in the raw spec.
+func InstallModule(py, spec string) error {
 	cmd := exec.Command(py, "-m", "pip", "install", "--disable-pip-version-check",
-		"-q", "-r", requirements)
+		"-i", pipIndex(), spec)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// IsOfflineDepsDir reports whether dir contains at least one discoverable
+// package file (wheel or source distribution) pip can install offline from.
+func IsOfflineDepsDir(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		n := strings.ToLower(e.Name())
+		if strings.HasSuffix(n, ".whl") || strings.HasSuffix(n, ".tar.gz") || strings.HasSuffix(n, ".zip") {
+			return true
+		}
+	}
+	return false
+}
+
+// InstallModuleOffline installs a single dependency from an offline directory,
+// disabling PyPI so only local artifacts are used. It returns an error only if
+// the installation genuinely fails (including "no matching distribution"),
+// which lets the caller fall back to the network for a full-spec match.
+func InstallModuleOffline(py, dir, spec string) error {
+	cmd := exec.Command(py, "-m", "pip", "install",
+		"--disable-pip-version-check",
+		"--no-index",
+		"--find-links", dir,
+		spec)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// InstallSpecsOffline installs all deps in one pip invocation from an offline
+// directory (used during full runtime provisioning when pyproject was just read).
+func InstallSpecsOffline(root, dir string, deps []string) error {
+	if len(deps) == 0 {
+		return nil
+	}
+	runtimeDir := filepath.Join(root, "runtime")
+	py := pythonInterpreter(runtimeDir)
+	if py == "" {
+		return fmt.Errorf("runtime interpreter missing; reinstall runtime")
+	}
+	args := append([]string{"-m", "pip", "install", "--disable-pip-version-check",
+		"--no-index", "--find-links", dir}, deps...)
+	cmd := exec.Command(py, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

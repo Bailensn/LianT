@@ -205,18 +205,33 @@ func (m *Manager) Command(python string) (*exec.Cmd, error) {
 	return cmd, nil
 }
 
-// RequirementsFile returns the client's Python requirements file path, or ""
-// when not shipped.
-func (m *Manager) RequirementsFile() string {
+// DependencyFile returns the client's PEP 621 pyproject.toml (the single
+// source of truth for Python dependencies), or "" when not shipped.
+func (m *Manager) DependencyFile() string {
 	for _, p := range []string{
-		filepath.Join(m.LibDir, "requirements.txt"),
-		filepath.Join(m.ClientSrc(), "..", "requirements.txt"),
+		filepath.Join(m.LibDir, "pyproject.toml"),
+		filepath.Join(m.LibDir, "client", "pyproject.toml"),
 	} {
 		if fileExists(p) {
 			return p
 		}
 	}
 	return ""
+}
+
+// LocalDepsDir returns the directory where the user can drop pre-bundled
+// offline wheels (*.whl / sdist) so the launcher can install them without a
+// network download. Following the same layout rules as DependencyFile.
+func (m *Manager) LocalDepsDir() string {
+	for _, p := range []string{
+		filepath.Join(m.LibDir, "deps"),
+		filepath.Join(m.LibDir, "client", "deps"),
+	} {
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			return p
+		}
+	}
+	return filepath.Join(m.LibDir, "deps")
 }
 
 // EnsureRuntime checks interpreter + client source presence and returns a
