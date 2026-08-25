@@ -1,10 +1,11 @@
-// Command liant is the LianT desktop launcher.
+// Command LianT is the LianT desktop launcher.
 //
 // It does NOT embed client code. On every run it:
-//  1. looks for a Python interpreter in ./runtime (next to the client);
-//  2. if absent and a runtime URL is configured, downloads a pinned standalone
+//  1. shows a Gio splash window while checking/loading the runtime;
+//  2. looks for a Python interpreter in ./runtime (next to the client);
+//  3. if absent and a runtime URL is configured, downloads a pinned standalone
 //     Python build and pip-installs client deps into ./runtime;
-//  3. spawns a NEW process to run src/main.py and waits for it.
+//  4. spawns a NEW process to run src/main.py, then closes the splash.
 package main
 
 import (
@@ -13,9 +14,13 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
-	"liantlauncher/runtime"
-	"liantlauncher/updater"
+	"gioui.org/app"
+
+	"LianTLauncher/runtime"
+	"LianTLauncher/ui"
+	"LianTLauncher/updater"
 )
 
 var (
@@ -26,6 +31,8 @@ var (
 	defaultRuntimeURL = os.Getenv("LIANT_RUNTIME_URL")
 	// runtimeChecksum optionally pins the SHA-256 of the runtime bundle.
 	runtimeChecksum = os.Getenv("LIANT_RUNTIME_SHA256")
+	// skipSplash disables the Gio startup window (headless / debugging).
+	skipSplash = os.Getenv("LIANT_NO_SPLASH") != ""
 )
 
 func main() {
@@ -33,6 +40,7 @@ func main() {
 	flag.StringVar(&pythonOverride, "python", "", "use a specific Python interpreter instead of ./runtime")
 	flag.StringVar(&defaultRuntimeURL, "runtime-url", defaultRuntimeURL, "runtime bundle URL (standalone Python) or explicit interpreter path")
 	flag.StringVar(&runtimeChecksum, "runtime-sha256", runtimeChecksum, "expected SHA-256 of the runtime bundle (optional)")
+	flag.BoolVar(&skipSplash, "no-splash", skipSplash, "run without the startup window")
 	flag.Parse()
 
 	mgr, err := runtime.NewManager()
@@ -43,18 +51,79 @@ func main() {
 		mgr.PythonEnvOverride = pythonOverride
 	}
 
+	if skipSplash {
+		// Headless path: identical logic, just no splash window.
+		if err := doWork(mgr, nil); err != nil {
+			fatal(err)
+		}
+		supervise()
+		return
+	}
+
+	// Splash path: show the startup window and run the provisioning + client
+	// boot in a background goroutine, feeding status back into the splash.
+	splash := ui.NewSplash(version)
+	startAt := time.Now()
+
+	var startErr error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		startErr = doWork(mgr, splash)
+		if startErr != nil {
+			splash.SetStatus("Startup failed: " + startErr.Error())
+			// Keep the error visible for a moment before closing.
+			time.Sleep(3000 * time.Millisecond)
+		} else if elapsed := time.Since(startAt); elapsed < 800*time.Millisecond {
+			// Brief pause so the user can register the splash, then close it.
+			time.Sleep(800*time.Millisecond - elapsed)
+		}
+		splash.Close()
+	}()
+
+	// Gio requires app.Main() to run on the main goroutine: it pumps the
+	// platform event loop that delivers FrameEvent/DestroyEvent to windows.
+	// The splash window processes those events in its own goroutine; app.Main()
+	// returns only after the window is destroyed.
+	go splash.Run()
+	app.Main()
+	<-done // wait for the worker goroutine to finish before deciding the outcome
+
+	if startErr != nil {
+		fatal(startErr)
+	}
+	supervise()
+}
+
+// supervise keeps the launcher process alive after the client has been
+// started, acting as its supervisor.
+func supervise() {
+	select {}
+}
+
+// doWork provisions the runtime and launches the client. splash may be nil
+// to run without a window (headless mode).
+func doWork(mgr *runtime.Manager, splash *ui.Splash) error {
+	setStatus := func(msg string) {
+		if splash != nil {
+			splash.SetStatus(msg)
+		} else {
+			fmt.Fprintln(os.Stderr, "LianT:", msg)
+		}
+	}
+
 	// Step 1+2: ensure a Python runtime exists in ./runtime (download if needed).
+	setStatus("Preparing runtime")
 	if err := ensureRuntime(mgr); err != nil {
-		fatal(err)
+		return err
 	}
 
 	// Step 3: spawn a new process to run the client.
+	setStatus("Starting LianT")
 	if err := launchClient(mgr); err != nil {
-		fatal(err)
+		return err
 	}
-
-	// Wait until the client exits, keeping this launcher as its supervisor.
-	select {}
+	return nil
 }
 
 // ensureRuntime checks ./runtime for a Python interpreter; if missing and a

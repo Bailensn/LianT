@@ -9,14 +9,14 @@
 //	<root>/client/resources              -> static resources
 //
 //	# Installed (Linux deb/rpm, see packaging)
-//	/opt/LianT/bin/liant                -> this launcher binary
+//	/opt/LianT/bin/LianT               -> this launcher binary
 //	/opt/LianT/src/main.py              -> client source
 //	/opt/LianT/qml                      -> QML sources
 //	/opt/LianT/runtime/bin/python       -> interpreter (downloaded on first run)
 //	/opt/LianT/resources                -> static resources
 //
 //	# Installed (Windows Inno)
-//	<app>/liant.exe                     -> this launcher binary
+//	<app>/LianT.exe                     -> this launcher binary
 //	<app>/client/src/main.py            -> client source
 //	<app>/client/runtime/python.exe     -> interpreter (downloaded on first run)
 //
@@ -85,15 +85,15 @@ func NewManager() (*Manager, error) {
 
 // detectInstalledLib resolves the client root from the launcher's bin
 // directory. It covers several installed layouts:
-//   - /opt/LianT/bin/liant -> /opt/LianT (Linux: launcher + client + runtime)
-//   - /usr/bin/liant -> /usr/lib/liant (legacy Linux rootfs)
-//   - <app>/liant.exe with client beside it -> <app>/client (Windows Inno)
+//   - /opt/LianT/bin/LianT -> /opt/LianT (Linux: launcher + client + runtime)
+//   - /usr/bin/LianT -> /usr/lib/LianT (legacy Linux rootfs)
+//   - <app>/LianT.exe with client beside it -> <app>/client (Windows Inno)
 func detectInstalledLib(binDir string) string {
 	candidates := []string{
 		filepath.Join(binDir, ".."),                     // /opt/LianT/bin -> /opt/LianT
-		filepath.Join(binDir, "..", "lib", "liant"),     // /usr/bin -> /usr/lib/liant
-		filepath.Join(binDir, "..", "lib64", "liant"),
-		filepath.Join(binDir, "client"),                 // <app>/liant -> <app>/client
+		filepath.Join(binDir, "..", "lib", "LianT"),     // /usr/bin -> /usr/lib/LianT
+		filepath.Join(binDir, "..", "lib64", "LianT"),
+		filepath.Join(binDir, "client"),                 // <app>/LianT -> <app>/client
 	}
 	for _, c := range candidates {
 		c = filepath.Clean(c)
