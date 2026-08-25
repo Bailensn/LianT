@@ -76,9 +76,7 @@ jobs:
           $langDir  = Join-Path $innoDir "Languages"
           New-Item -ItemType Directory -Force $langDir | Out-Null
           $dst = Join-Path $langDir "ChineseSimplified.isl"
-          # 用固定版本标签(tag)而非 main 分支，避开 raw.githubusercontent.com 的
-          # 偶发 404 竞态；加 -UseBasicParsing 兼容 PowerShell 5.1，并做失败重试。
-          $url = "https://raw.githubusercontent.com/jrsoftware/issrc/is-6_7_1/Files/Languages/Unofficial/ChineseSimplified.isl"
+          $url = "https://raw.githubusercontent.com/jrsoftware/issrc/refs/heads/main/Files/Languages/ChineseSimplified.isl"
           $ok = $false
           foreach ($i in 1..5) {
             try {
