@@ -72,10 +72,7 @@ jobs:
       - name: Fetch Simplified Chinese
         shell: pwsh
         run: |
-          $innoDir = Split-Path (Get-Command "ISCC.exe").Source
-          $langDir  = Join-Path $innoDir "Languages"
-          New-Item -ItemType Directory -Force $langDir | Out-Null
-          $dst = Join-Path $langDir "ChineseSimplified.isl"
+          $dst = "manager\desktop\installer\windows\ChineseSimplified.isl"
           $url = "https://raw.githubusercontent.com/jrsoftware/issrc/refs/heads/main/Files/Languages/ChineseSimplified.isl"
           $ok = $false
           foreach ($i in 1..5) {
