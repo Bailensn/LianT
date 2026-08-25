@@ -1,0 +1,16 @@
+[Desktop Entry]
+Name=LianT
+Name[zh_CN]=联T
+GenericName=Instant Messaging
+GenericName[zh_CN]=即时通讯
+Comment=Cross-platform instant messaging desktop client
+Comment[zh_CN]=跨平台即时通讯桌面客户端
+Exec=/opt/LianT/bin/LianT
+Icon=LianT
+Terminal=false
+Type=Application
+Categories=Network;InstantMessaging;
+StartupNotify=true
+StartupWMClass=LianT
+Keywords=chat;messaging;LianT;
+Keywords[zh_CN]=聊天;即时通讯;联T;

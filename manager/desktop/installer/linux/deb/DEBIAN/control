@@ -1,0 +1,8 @@
+Package: LianT
+Version: 0.0.0
+Section: net
+Priority: optional
+Architecture: ${ARCH}
+Maintainer: LensnTeam
+Description: LianT Desktop Client
+ A cross-platform instant messaging client.

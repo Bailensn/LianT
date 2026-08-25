@@ -1,4 +1,4 @@
-name: Build Manager Desktop
+name: Build LianT Desktop (source-execution + dynamic runtime)
 
 on:
   workflow_dispatch:
@@ -24,375 +24,364 @@ on:
         type: boolean
         default: false
 
+env:
+  VERSION: ${{ inputs.version }}
+  GO_VERSION: '1.26.5'
+  PY_VERSION: '3.12.14'
+  PBS_TAG: '20260814'
+  PBS_BASE: 'https://github.com/astral-sh/python-build-standalone/releases/download/20260814'
+
 jobs:
 
+  # ===================================================================
+  # Windows amd64 -> Go Launcher + Client 源码 -> Inno Setup
+  # ===================================================================
   windows-amd64:
     if: ${{ inputs.windows }}
     runs-on: windows-latest
-
+    env:
+      RUNTIME_URL: '${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-x86_64-pc-windows-msvc-install_only.tar.gz'
     steps:
       - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
         with:
-          cache: true
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: desktop/launcher/go.sum
 
-      - name: Build bare app
-        working-directory: manager/desktop
-        run: cargo build --release
+      - name: Build Go Launcher (embedded runtime URL)
+        shell: bash
+        working-directory: desktop/launcher
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist/launcher"
+          go build -trimpath -ldflags "-s -w -H windowsgui \
+            -X main.version=${{ env.VERSION }} \
+            -X main.defaultRuntimeURL=${{ env.RUNTIME_URL }}" \
+            -o "$GITHUB_WORKSPACE/dist/launcher/liant.exe" ./cmd
 
-      - name: Inject version into Inno Setup script
-        working-directory: manager/resources/windows
+      - name: Stage client source
+        shell: bash
+        run: |
+          mkdir -p client
+          cp -r desktop/client/src client/src
+          cp -r desktop/client/qml client/qml
+          cp desktop/client/requirements.txt client/requirements.txt
+
+      - name: Inject version into Inno script
+        working-directory: desktop/installer/windows
         shell: pwsh
         run: |
-          (Get-Content LianT.iss) -replace '^#define AppVersion ".*"', '#define AppVersion "${{ inputs.version }}"' | Set-Content -Encoding ASCII LianT.iss
+          (Get-Content LianT.iss) -replace '^#define MyAppVersion ".*"', '#define MyAppVersion "${{ env.VERSION }}"' | Set-Content -Encoding ASCII LianT.iss
 
-      - name: Build Inno Setup installer
-        working-directory: manager/resources/windows
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer with ISCC
+        working-directory: desktop/installer/windows
         shell: pwsh
         run: |
           $iscc = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
-          if (-not $iscc) {
-            $candidates = @(
-              "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-              "C:\Program Files\Inno Setup 6\ISCC.exe"
-            )
-            foreach ($p in $candidates) {
-              if (Test-Path $p) { $iscc = Get-Item $p; break }
-            }
-          }
-          if (-not $iscc) { throw "ISCC.exe not found — Inno Setup not installed on runner" }
-
+          if (-not $iscc) { throw "ISCC.exe not found" }
           & $iscc.Source LianT.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC exit code $LASTEXITCODE" }
 
       - name: Rename setup artifact
         shell: pwsh
         run: |
-          $exe = Get-ChildItem "manager/release" -Filter *.exe | Select-Object -First 1
-          if ($null -eq $exe) { throw "Setup exe not found in manager/release" }
-          Move-Item -Force $exe.FullName "LianT-Manager-v${{ inputs.version }}-Windows-amd64.exe"
+          $setup = Get-ChildItem "$PWD" -Filter "LianTSetup*.exe" | Select-Object -First 1
+          if ($null -eq $setup) { throw "setup exe not found" }
+          Move-Item -Force $setup.FullName "LianT-v${{ env.VERSION }}-Windows-amd64.exe"
 
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-Windows-amd64
-          path: LianT-Manager-v${{ inputs.version }}-Windows-amd64.exe
+          path: LianT-v${{ env.VERSION }}-Windows-amd64.exe
 
+  # ===================================================================
+  # macOS arm64 -> LianT.app + dmg
+  # ===================================================================
   darwin-arm64:
     if: ${{ inputs.darwin_arm64 }}
-    runs-on: macos-latest
-
+    runs-on: macos-15
+    env:
+      RUNTIME_URL: '${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-aarch64-apple-darwin-install_only.tar.gz'
     steps:
       - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
         with:
-          cache: true
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: desktop/launcher/go.sum
 
-      - name: Build bare app
-        working-directory: manager/desktop
-        run: cargo build --release
-
-      - name: Make app bundle
+      - name: Build Go Launcher (embedded runtime URL)
+        working-directory: desktop/launcher
         run: |
-          mkdir -p LianT.app/Contents/MacOS
-          mkdir -p LianT.app/Contents/Resources
+          mkdir -p "$GITHUB_WORKSPACE/dist/launcher"
+          go build -trimpath -ldflags "-s -w \
+            -X main.version=${{ env.VERSION }} \
+            -X main.defaultRuntimeURL=${{ env.RUNTIME_URL }}" \
+            -o "$GITHUB_WORKSPACE/dist/launcher/LianT" ./cmd
 
-          cp manager/desktop/target/release/LianT LianT.app/Contents/MacOS/LianT
+      - name: Assemble LianT.app
+        run: |
+          set -e
+          APP="$GITHUB_WORKSPACE/LianT.app"
+          RES="$APP/Contents/Resources/client"
+          mkdir -p "$APP/Contents/MacOS"
+          mkdir -p "$RES"
 
-          cp manager/resources/darwin/LianT.icns \
-            LianT.app/Contents/Resources/
+          cp "$GITHUB_WORKSPACE/dist/launcher/LianT" "$APP/Contents/MacOS/LianT"
+          cp -r desktop/client/src "$RES/src"
+          cp -r desktop/client/qml "$RES/qml"
+          mkdir -p "$RES/resources"
+          cp desktop/client/requirements.txt "$RES/requirements.txt"
 
-          cat << EOF > LianT.app/Contents/Info.plist
+          cp desktop/installer/darwin/LianT.icns "$APP/Contents/Resources/" 2>/dev/null || true
+
+          cat > "$APP/Contents/Info.plist" <<EOF
           <?xml version="1.0"?>
           <plist version="1.0">
           <dict>
-            <key>CFBundleName</key>
-            <string>LianT</string>
-
-            <key>CFBundleExecutable</key>
-            <string>LianT</string>
-
-            <key>CFBundleIdentifier</key>
-            <string>com.bailensn.liant</string>
-
-            <key>CFBundleVersion</key>
-            <string>${{ inputs.version }}</string>
-
-            <key>CFBundleIconFile</key>
-            <string>LianT.icns</string>
-
-            <key>CFBundlePackageType</key>
-            <string>APPL</string>
+            <key>CFBundleName</key><string>LianT</string>
+            <key>CFBundleExecutable</key><string>LianT</string>
+            <key>CFBundleIdentifier</key><string>com.bailensn.liant</string>
+            <key>CFBundleVersion</key><string>${{ env.VERSION }}</string>
+            <key>CFBundleShortVersionString</key><string>${{ env.VERSION }}</string>
+            <key>CFBundleIconFile</key><string>LianT</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+            <key>NSHighResolutionCapable</key><true/>
           </dict>
           </plist>
           EOF
 
+          codesign --force --deep --sign - "$APP" 2>/dev/null || true
+
       - name: Create dmg
         run: |
-          hdiutil create \
-            -volname LianT \
-            -srcfolder LianT.app \
-            -ov \
-            -format UDZO \
-            LianT-Manager-v${{ inputs.version }}-Darwin-arm64.dmg
+          hdiutil create -volname LianT -srcfolder "$GITHUB_WORKSPACE/LianT.app" -ov \
+            -format UDZO "LianT-v${{ env.VERSION }}-Darwin-arm64.dmg"
 
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-Darwin-arm64
-          path: LianT-Manager-v${{ inputs.version }}-Darwin-arm64.dmg
+          path: LianT-v${{ env.VERSION }}-Darwin-arm64.dmg
 
+  # ===================================================================
+  # Linux amd64 -> deb + rpm (无运行时，首启动动态下载)
+  # ===================================================================
   linux-amd64:
     if: ${{ inputs.linux_amd64 }}
     runs-on: ubuntu-latest
-
+    env:
+      ROOTFS: desktop/installer/linux/rootfs
+      DEB_ARCH: amd64
+      RPM_ARCH: x86_64
+      RUNTIME_URL: '${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-x86_64-unknown-linux-gnu-install_only.tar.gz'
     steps:
       - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
         with:
-          cache: true
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: desktop/launcher/go.sum
 
       - name: Install build tools
         run: |
-          sudo sed -i 's|azure.archive.ubuntu.com|archive.archive.ubuntu.com|g; /packages.microsoft.com/d' /etc/apt/sources.list
-
           sudo apt-get update -y
-
           sudo apt-get install -y \
-            pkg-config \
-            libfontconfig1-dev \
-            libxkbcommon-dev \
-            libgl1-mesa-dev \
-            libegl1-mesa-dev \
-            libssl-dev \
-            libxkbcommon-x11-0 \
-            fonts-noto-cjk \
-            fakeroot \
-            rpm
+            fakeroot rpm file desktop-file-utils fonts-noto-cjk
 
-      - name: Build bare app
-        working-directory: manager/desktop
-        run: cargo build --release
+      - name: Build Go Launcher (embedded runtime URL)
+        working-directory: desktop/launcher
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist/launcher"
+          go build -trimpath -ldflags "-s -w \
+            -X main.version=${{ env.VERSION }} \
+            -X main.defaultRuntimeURL=${{ env.RUNTIME_URL }}" \
+            -o "$GITHUB_WORKSPACE/dist/launcher/liant" ./cmd
+
+      - name: Assemble deb rootfs (no bundled runtime)
+        run: |
+          set -e
+          rm -rf "$ROOTFS/opt/LianT/src" "$ROOTFS/opt/LianT/qml" "$ROOTFS/opt/LianT/requirements.txt"
+          mkdir -p "$ROOTFS/opt/LianT/bin"
+          mkdir -p "$ROOTFS/opt/LianT/resources"
+          mkdir -p "$ROOTFS/usr/share/applications"
+          mkdir -p "$ROOTFS/usr/share/icons/hicolor/scalable/apps"
+
+          install -m 755 dist/launcher/liant "$ROOTFS/opt/LianT/bin/liant"
+
+          cp -r desktop/client/src "$ROOTFS/opt/LianT/src"
+          cp -r desktop/client/qml "$ROOTFS/opt/LianT/qml"
+          cp desktop/client/requirements.txt "$ROOTFS/opt/LianT/requirements.txt"
+
+          install -m 644 desktop/packaging/linux/liant.desktop \
+            "$ROOTFS/usr/share/applications/liant.desktop"
+          install -m 644 desktop/packaging/linux/icons/scalable/LianT.svg \
+            "$ROOTFS/usr/share/icons/hicolor/scalable/apps/LianT.svg"
+          install -m 644 desktop/packaging/linux/icons/512x512/LianT.png \
+            "$ROOTFS/usr/share/icons/hicolor/512x512/apps/LianT.png"
 
       - name: Package deb
         run: |
-          PKG="pkg-deb"
-
+          PKG=pkg-deb
           rm -rf "$PKG"
+          cp -r "$ROOTFS/." "$PKG/"
+          cp -r desktop/installer/linux/deb/DEBIAN "$PKG/DEBIAN"
 
-          mkdir -p "$PKG"/DEBIAN
-          mkdir -p "$PKG"/opt/LianT
-          mkdir -p "$PKG"/usr/bin
-          mkdir -p "$PKG"/usr/share/applications
+          sed -i "s/^Version:.*/Version: ${{ env.VERSION }}/" "$PKG/DEBIAN/control"
+          sed -i "s/^Architecture:.*/Architecture: ${{ env.DEB_ARCH }}/" "$PKG/DEBIAN/control"
 
-          for d in manager/resources/linux/*; do
-            sz=$(basename "$d")
+          fakeroot dpkg-deb --build "$PKG" "LianT-v${{ env.VERSION }}-Linux-${{ env.DEB_ARCH }}.deb"
 
-            [[ "$sz" =~ ^[0-9]+$ ]] || continue
-
-            mkdir -p "$PKG"/usr/share/icons/hicolor/${sz}x${sz}/apps
-
-            cp "$d"/LianT.png \
-              "$PKG"/usr/share/icons/hicolor/${sz}x${sz}/apps/
-          done
-
-          cp manager/desktop/target/release/LianT "$PKG"/opt/LianT/
-
-          ln -s /opt/LianT/LianT \
-            "$PKG"/usr/bin/LianT
-
-          sed \
-            "s|^Exec=.*|Exec=/usr/bin/LianT|; s|^Icon=.*|Icon=LianT|" \
-            manager/resources/linux/LianT.desktop \
-            > "$PKG"/usr/share/applications/LianT.desktop
-
-          cat << EOF > "$PKG"/DEBIAN/control
-          Package: LianT
-          Version: ${{ inputs.version }}
-          Section: utils
-          Priority: optional
-          Architecture: amd64
-          Maintainer: LianT Team <bailensnn@gmail.com>
-          Description: LianT Manager Desktop
-           Cross-platform manager tool for LianT service.
-          EOF
-
-          fakeroot dpkg-deb \
-            --build \
-            "$PKG" \
-            LianT-Manager-v${{ inputs.version }}-Linux-amd64.deb
-
-      - name: Package rpm
+      - name: Package rpm (source tree + spec)
         run: |
-          mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS}
+          set -e
+          TOPDIR="$(pwd)/rpmbuild"
+          rm -rf "$TOPDIR"
+          mkdir -p "$TOPDIR"/{BUILD,RPMS,SOURCES,SPECS}
 
-          mkdir -p rpmbuild/SOURCES/LianT
+          SRCTREE="liant-src"
+          rm -rf "$SRCTREE"
+          mkdir -p "$SRCTREE/build/client"
+          install -m 755 dist/launcher/liant "$SRCTREE/build/liant"
+          cp -r desktop/client/src "$SRCTREE/build/client/src"
+          cp -r desktop/client/qml "$SRCTREE/build/client/qml"
+          cp desktop/client/requirements.txt "$SRCTREE/build/client/requirements.txt"
+          mkdir -p "$SRCTREE/build/client/resources"
 
-          cp manager/desktop/target/release/LianT rpmbuild/SOURCES/LianT/
+          cp -r desktop/packaging "$SRCTREE/packaging"
+          cp -r desktop/assets "$SRCTREE/assets"
 
-          cat << EOF > rpmbuild/SPECS/LianT.spec
-          Name: LianT
-          Version: ${{ inputs.version }}
-          Release: 1
-          Summary: LianT Manager Desktop
-          License: Apache-2.0
-          BuildArch: x86_64
+          tar -czf "$TOPDIR/SOURCES/liant-src.tar.gz" "$SRCTREE"
 
-          %description
-          Cross-platform manager tool for LianT service.
-
-          %install
-          mkdir -p %{buildroot}/opt/LianT
-          mkdir -p %{buildroot}/usr/bin
-
-          cp %{_sourcedir}/LianT/LianT %{buildroot}/opt/LianT/
-
-          ln -s /opt/LianT/LianT %{buildroot}/usr/bin/LianT
-
-          %files
-          /opt/LianT
-          /usr/bin/LianT
-          EOF
+          cp desktop/installer/linux/rpm/LianT.spec "$TOPDIR/SPECS/LianT.spec"
+          sed -i "s/^BuildArch:.*/BuildArch: ${{ env.RPM_ARCH }}/" "$TOPDIR/SPECS/LianT.spec"
+          sed -i "1i Source: liant-src.tar.gz" "$TOPDIR/SPECS/LianT.spec"
+          sed -i "s|# No source preparation needed|%setup -q -n liant-src|" "$TOPDIR/SPECS/LianT.spec"
 
           rpmbuild \
-            --define "_topdir $(pwd)/rpmbuild" \
-            -bb rpmbuild/SPECS/LianT.spec
+            --define "_topdir $TOPDIR" \
+            --define "_build_id_links none" \
+            -bb "$TOPDIR/SPECS/LianT.spec"
 
-          cp rpmbuild/RPMS/x86_64/*.rpm \
-            LianT-Manager-v${{ inputs.version }}-Linux-amd64.rpm
+          cp "$TOPDIR"/RPMS/${{ env.RPM_ARCH }}/*.rpm \
+            "LianT-v${{ env.VERSION }}-Linux-amd64.rpm"
 
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-Linux-amd64
           path: |
-            LianT-Manager-v${{ inputs.version }}-Linux-amd64.deb
-            LianT-Manager-v${{ inputs.version }}-Linux-amd64.rpm
+            LianT-v${{ env.VERSION }}-Linux-amd64.deb
+            LianT-v${{ env.VERSION }}-Linux-amd64.rpm
 
-
+  # ===================================================================
+  # Linux arm64 -> deb + rpm
+  # ===================================================================
   linux-arm64:
     if: ${{ inputs.linux_arm64 }}
     runs-on: ubuntu-24.04-arm
-
+    env:
+      ROOTFS: desktop/installer/linux/rootfs
+      DEB_ARCH: arm64
+      RPM_ARCH: aarch64
+      RUNTIME_URL: '${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-aarch64-unknown-linux-gnu-install_only.tar.gz'
     steps:
       - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
         with:
-          cache: true
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: desktop/launcher/go.sum
 
       - name: Install build tools
         run: |
-          sudo sed -i 's|azure.archive.ubuntu.com|archive.archive.ubuntu.com|g; /packages.microsoft.com/d' /etc/apt/sources.list
-
           sudo apt-get update -y
-
           sudo apt-get install -y \
-            pkg-config \
-            libfontconfig1-dev \
-            libxkbcommon-dev \
-            libgl1-mesa-dev \
-            libegl1-mesa-dev \
-            libssl-dev \
-            libxkbcommon-x11-0 \
-            fonts-noto-cjk \
-            fakeroot \
-            rpm
+            fakeroot rpm file desktop-file-utils fonts-noto-cjk
 
-      - name: Build bare app
-        working-directory: manager/desktop
-        run: cargo build --release
+      - name: Build Go Launcher (embedded runtime URL)
+        working-directory: desktop/launcher
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist/launcher"
+          go build -trimpath -ldflags "-s -w \
+            -X main.version=${{ env.VERSION }} \
+            -X main.defaultRuntimeURL=${{ env.RUNTIME_URL }}" \
+            -o "$GITHUB_WORKSPACE/dist/launcher/liant" ./cmd
+
+      - name: Assemble deb rootfs (no bundled runtime)
+        run: |
+          set -e
+          rm -rf "$ROOTFS/opt/LianT/src" "$ROOTFS/opt/LianT/qml" "$ROOTFS/opt/LianT/requirements.txt"
+          mkdir -p "$ROOTFS/opt/LianT/bin"
+          mkdir -p "$ROOTFS/opt/LianT/resources"
+          mkdir -p "$ROOTFS/usr/share/applications"
+          mkdir -p "$ROOTFS/usr/share/icons/hicolor/scalable/apps"
+
+          install -m 755 dist/launcher/liant "$ROOTFS/opt/LianT/bin/liant"
+
+          cp -r desktop/client/src "$ROOTFS/opt/LianT/src"
+          cp -r desktop/client/qml "$ROOTFS/opt/LianT/qml"
+          cp desktop/client/requirements.txt "$ROOTFS/opt/LianT/requirements.txt"
+
+          install -m 644 desktop/packaging/linux/liant.desktop \
+            "$ROOTFS/usr/share/applications/liant.desktop"
+          install -m 644 desktop/packaging/linux/icons/scalable/LianT.svg \
+            "$ROOTFS/usr/share/icons/hicolor/scalable/apps/LianT.svg"
+          install -m 644 desktop/packaging/linux/icons/512x512/LianT.png \
+            "$ROOTFS/usr/share/icons/hicolor/512x512/apps/LianT.png"
 
       - name: Package deb
         run: |
-          PKG="pkg-deb"
-
+          PKG=pkg-deb
           rm -rf "$PKG"
+          cp -r "$ROOTFS/." "$PKG/"
+          cp -r desktop/installer/linux/deb/DEBIAN "$PKG/DEBIAN"
 
-          mkdir -p "$PKG"/DEBIAN
-          mkdir -p "$PKG"/opt/LianT
-          mkdir -p "$PKG"/usr/bin
-          mkdir -p "$PKG"/usr/share/applications
+          sed -i "s/^Version:.*/Version: ${{ env.VERSION }}/" "$PKG/DEBIAN/control"
+          sed -i "s/^Architecture:.*/Architecture: ${{ env.DEB_ARCH }}/" "$PKG/DEBIAN/control"
 
-          for d in manager/resources/linux/*; do
-            sz=$(basename "$d")
+          fakeroot dpkg-deb --build "$PKG" "LianT-v${{ env.VERSION }}-Linux-${{ env.DEB_ARCH }}.deb"
 
-            [[ "$sz" =~ ^[0-9]+$ ]] || continue
-
-            mkdir -p "$PKG"/usr/share/icons/hicolor/${sz}x${sz}/apps
-
-            cp "$d"/LianT.png \
-              "$PKG"/usr/share/icons/hicolor/${sz}x${sz}/apps/
-          done
-
-          cp manager/desktop/target/release/LianT "$PKG"/opt/LianT/
-
-          ln -s /opt/LianT/LianT \
-            "$PKG"/usr/bin/LianT
-
-          sed \
-            "s|^Exec=.*|Exec=/usr/bin/LianT|; s|^Icon=.*|Icon=LianT|" \
-            manager/resources/linux/LianT.desktop \
-            > "$PKG"/usr/share/applications/LianT.desktop
-
-          cat << EOF > "$PKG"/DEBIAN/control
-          Package: LianT
-          Version: ${{ inputs.version }}
-          Section: utils
-          Priority: optional
-          Architecture: arm64
-          Maintainer: LianT Team <bailensnn@gmail.com>
-          Description: LianT Manager Desktop
-           Cross-platform manager tool for LianT service.
-          EOF
-
-          fakeroot dpkg-deb \
-            --build \
-            "$PKG" \
-            LianT-Manager-v${{ inputs.version }}-Linux-arm64.deb
-
-      - name: Package rpm
+      - name: Package rpm (source tree + spec)
         run: |
-          mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS}
+          set -e
+          TOPDIR="$(pwd)/rpmbuild"
+          rm -rf "$TOPDIR"
+          mkdir -p "$TOPDIR"/{BUILD,RPMS,SOURCES,SPECS}
 
-          mkdir -p rpmbuild/SOURCES/LianT
+          SRCTREE="liant-src"
+          rm -rf "$SRCTREE"
+          mkdir -p "$SRCTREE/build/client"
+          install -m 755 dist/launcher/liant "$SRCTREE/build/liant"
+          cp -r desktop/client/src "$SRCTREE/build/client/src"
+          cp -r desktop/client/qml "$SRCTREE/build/client/qml"
+          cp desktop/client/requirements.txt "$SRCTREE/build/client/requirements.txt"
+          mkdir -p "$SRCTREE/build/client/resources"
 
-          cp manager/desktop/target/release/LianT rpmbuild/SOURCES/LianT/
+          cp -r desktop/packaging "$SRCTREE/packaging"
+          cp -r desktop/assets "$SRCTREE/assets"
 
-          cat << EOF > rpmbuild/SPECS/LianT.spec
-          Name: LianT
-          Version: ${{ inputs.version }}
-          Release: 1
-          Summary: LianT Manager Desktop
-          License: Apache-2.0
-          BuildArch: aarch64
+          tar -czf "$TOPDIR/SOURCES/liant-src.tar.gz" "$SRCTREE"
 
-          %description
-          Cross-platform manager tool for LianT service.
-
-          %install
-          mkdir -p %{buildroot}/opt/LianT
-          mkdir -p %{buildroot}/usr/bin
-
-          cp %{_sourcedir}/LianT/LianT %{buildroot}/opt/LianT/
-
-          ln -s /opt/LianT/LianT %{buildroot}/usr/bin/LianT
-
-          %files
-          /opt/LianT
-          /usr/bin/LianT
-          EOF
+          cp desktop/installer/linux/rpm/LianT.spec "$TOPDIR/SPECS/LianT.spec"
+          sed -i "s/^BuildArch:.*/BuildArch: ${{ env.RPM_ARCH }}/" "$TOPDIR/SPECS/LianT.spec"
+          sed -i "1i Source: liant-src.tar.gz" "$TOPDIR/SPECS/LianT.spec"
+          sed -i "s|# No source preparation needed|%setup -q -n liant-src|" "$TOPDIR/SPECS/LianT.spec"
 
           rpmbuild \
-            --define "_topdir $(pwd)/rpmbuild" \
-            -bb rpmbuild/SPECS/LianT.spec
+            --define "_topdir $TOPDIR" \
+            --define "_build_id_links none" \
+            -bb "$TOPDIR/SPECS/LianT.spec"
 
-          cp rpmbuild/RPMS/aarch64/*.rpm \
-            LianT-Manager-v${{ inputs.version }}-Linux-arm64.rpm
+          cp "$TOPDIR"/RPMS/${{ env.RPM_ARCH }}/*.rpm \
+            "LianT-v${{ env.VERSION }}-Linux-arm64.rpm"
 
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-Linux-arm64
           path: |
-            LianT-Manager-v${{ inputs.version }}-Linux-arm64.deb
-            LianT-Manager-v${{ inputs.version }}-Linux-arm64.rpm
+            LianT-v${{ env.VERSION }}-Linux-arm64.deb
+            LianT-v${{ env.VERSION }}-Linux-arm64.rpm

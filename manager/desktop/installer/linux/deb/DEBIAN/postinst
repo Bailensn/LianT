@@ -1,0 +1,22 @@
+#!/bin/sh
+set -e
+
+# --- LianT deb postinst -----------------------------------------------------
+# The Python runtime is downloaded dynamically by the launcher into
+# /opt/LianT/runtime on first run. Ensure that directory exists and is writable
+# by all users (the app itself lives under /opt/LianT).
+
+if [ ! -d /opt/LianT/runtime ]; then
+    mkdir -p /opt/LianT/runtime
+fi
+chmod 0777 /opt/LianT/runtime 2>/dev/null || :
+
+# desktop database + icon cache refresh
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications || :
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache /usr/share/icons/hicolor || :
+fi
+
+exit 0

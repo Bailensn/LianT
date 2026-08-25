@@ -1,0 +1,47 @@
+; LianT Windows installer configuration (Inno Setup).
+; Source-execution + dynamic-runtime mode: ships the launcher exe + client source.
+; The Python interpreter is downloaded by the launcher into .\runtime on first run.
+
+#define MyAppName "LianT"
+#define MyAppVersion "0.0.0"
+#define MyAppPublisher "LensnTeam"
+#define MyAppExeName "liant.exe"
+
+[Setup]
+AppId={{8B7EDE17-5F8E-4F2E-9A1C-2D77E5B4B3F0}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+DefaultDirName={autopf}\LianT
+DefaultGroupName=LianT
+DisableProgramGroupPage=yes
+OutputBaseFilename=LianTSetup
+SetupIconFile=..\..\..\installer\windows\LianT.ico
+UninstallDisplayIcon={app}\liant.exe
+Compression=lzma2
+SolidCompression=yes
+WizardStyle=modern
+PrivacyPolicyVersion={#MyAppVersion}
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
+[Files]
+; Launcher executable
+Source: "..\..\..\dist\launcher\liant.exe"; DestDir: "{app}"; Flags: ignoreversion
+; Client source tree (source-execution mode). No runtime is bundled on purpose.
+Source: "..\..\..\client\src\*"; DestDir: "{app}\client\src"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\..\client\qml\*"; DestDir: "{app}\client\qml"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Python dependencies are resolved dynamically on first launch.
+Source: "..\..\..\client\requirements.txt"; DestDir: "{app}\client"; Flags: ignoreversion
+
+[Icons]
+Name: "{group}\LianT"; Filename: "{app}\liant.exe"
+Name: "{autodesktop}\LianT"; Filename: "{app}\liant.exe"; Tasks: desktopicon
+
+[Run]
+Filename: "{app}\liant.exe"; Description: "{cm:LaunchProgram,LianT}"; Flags: nowait postinstall skipifsilent
