@@ -71,7 +71,7 @@ func NewSplash(version string) *Splash {
 		app.Size(unit.Dp(420), unit.Dp(240)),
 		app.MinSize(unit.Dp(360), unit.Dp(200)),
 		app.MaxSize(unit.Dp(560), unit.Dp(360)),
-		app.Decorated(false), // frameless, like a real splash
+		app.Decorated(false),
 	)
 	return s
 }
