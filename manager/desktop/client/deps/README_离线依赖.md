@@ -7,6 +7,7 @@
 ```
 PySide6-6.6.3-cp312-cp312-win_amd64.whl
 aiohttp-3.9.5-py3-none-any.whl
+cryptography-42.0.8-cp312-cp312-win_amd64.whl
 ```
 
 ## 怎么批量拉齐 (在联网机器上)

@@ -15,7 +15,7 @@ LianT is a cross-platform instant messaging desktop client.
 In dynamic-runtime mode the Go launcher at /opt/LianT/bin/LianT checks
 /opt/LianT/runtime for a Python interpreter on first run, downloads a pinned
 standalone build there if absent, pip-installs the client dependencies from
-/opt/LianT/requirements.txt, and starts the client source from /opt/LianT/src.
+/opt/LianT/pyproject.toml, and starts the client source from /opt/LianT/src.
 
 %prep
 # No source preparation needed
@@ -47,8 +47,8 @@ cp -r build/client/src \
     %{buildroot}/opt/LianT/
 cp -r build/client/qml \
     %{buildroot}/opt/LianT/
-cp build/client/requirements.txt \
-    %{buildroot}/opt/LianT/requirements.txt
+cp build/client/pyproject.toml \
+    %{buildroot}/opt/LianT/pyproject.toml
 
 
 # Desktop entry

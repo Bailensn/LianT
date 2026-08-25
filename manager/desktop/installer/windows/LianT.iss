@@ -36,7 +36,7 @@ Source: "..\..\..\..\dist\launcher\LianT.exe"; DestDir: "{app}"; Flags: ignoreve
 Source: "..\..\..\..\client\src\*"; DestDir: "{app}\client\src"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\..\..\client\qml\*"; DestDir: "{app}\client\qml"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Python dependencies are resolved dynamically on first launch.
-Source: "..\..\..\..\client\requirements.txt"; DestDir: "{app}\client"; Flags: ignoreversion
+Source: "..\..\..\..\client\pyproject.toml"; DestDir: "{app}\client"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\LianT"; Filename: "{app}\LianT.exe"
