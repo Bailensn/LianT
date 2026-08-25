@@ -59,7 +59,7 @@ jobs:
           cp -r manager/desktop/client/qml client/qml
           cp manager/desktop/client/requirements.txt client/requirements.txt
 
-      - name: Inject Version
+      - name: Inject version
         shell: pwsh
         run: |
           cd manager/desktop/installer/windows
@@ -81,7 +81,7 @@ jobs:
           if (-not (Test-Path $dst)) { throw "Failed to download ChineseSimplified.isl" }
           Write-Host "Installed $dst"
 
-      - name: Build installer
+      - name: Build installer with ISCC
         shell: pwsh
         run: |
           cd manager/desktop/installer/windows
@@ -194,13 +194,17 @@ jobs:
             libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev \
             libwayland-dev libwayland-bin libx11-dev libxkbcommon-dev \
             libxkbcommon-x11-0 libxrandr-dev libxcursor-dev \
-            libxi-dev libxinerama-dev libxxf86vm-dev
+            libxi-dev libxinerama-dev libxxf86vm-dev \
+            libvulkan-dev
 
+      # Gio 的 cgo 在编译期通过 pkg-config 探测 xkbcommon/wayland-client 等
+      # 系统库。提前显式校验，避免依赖缺失时深入到 go build 才报错。
       - name: Verify
         run: |
           pkg-config --modversion xkbcommon
           pkg-config --modversion wayland-client
           pkg-config --modversion x11
+          test -f /usr/include/vulkan/vulkan.h && echo "vulkan.h OK"
 
       - name: Build Go Launcher
         env:
@@ -312,13 +316,17 @@ jobs:
             libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev \
             libwayland-dev libwayland-bin libx11-dev libxkbcommon-dev \
             libxkbcommon-x11-0 libxrandr-dev libxcursor-dev \
-            libxi-dev libxinerama-dev libxxf86vm-dev
+            libxi-dev libxinerama-dev libxxf86vm-dev \
+            libvulkan-dev
 
+      # Gio 的 cgo 在编译期通过 pkg-config 探测 xkbcommon/wayland-client 等
+      # 系统库。提前显式校验，避免依赖缺失时深入到 go build 才报错。
       - name: Verify
         run: |
           pkg-config --modversion xkbcommon
           pkg-config --modversion wayland-client
           pkg-config --modversion x11
+          test -f /usr/include/vulkan/vulkan.h && echo "vulkan.h OK"
 
       - name: Build Go Launcher
         env:
