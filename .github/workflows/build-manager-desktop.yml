@@ -1,16 +1,5 @@
 name: Build Manager Desktop
 
-# 动态运行时模式
-#   - Client:   Python + PySide6 + QML，以源码(src/ + qml/)随包分发，不用 PyInstaller。
-#   - Launcher: Go，纯标准库。负责运行时定位/下载并创建新进程拉起 Client。
-#   - Runtime:  **不随包捆绑。** launcher 每次执行先看 ./runtime，缺失则动态下载
-#               (python-build-standalone) 并就地 pip 安装 requirements.txt:
-#                 Linux   -> /opt/LianT/runtime
-#                 Windows -> <app>/client/runtime
-#                 macOS   -> <app>/Resources/client/runtime
-#               运行时 URL 通过 `-X main.defaultRuntimeURL` 内嵌。
-#   - 产物：Windows->Inno(.exe)；macOS->LianT.app+.dmg；Linux->deb+rpm。体积小（无解释器）。
-
 on:
   workflow_dispatch:
     inputs:
@@ -52,7 +41,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Build Go Launcher (embedded runtime URL)
+      - name: Build Go Launcher
         shell: pwsh
         env:
           RUNTIME_URL: ${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-x86_64-pc-windows-msvc-install_only.tar.gz
@@ -70,7 +59,7 @@ jobs:
           cp -r manager/desktop/client/qml client/qml
           cp manager/desktop/client/requirements.txt client/requirements.txt
 
-      - name: Inject version into Inno script
+      - name: Inject Version
         shell: pwsh
         run: |
           cd manager/desktop/installer/windows
@@ -80,7 +69,19 @@ jobs:
         shell: pwsh
         run: choco install innosetup -y --no-progress
 
-      - name: Build installer with ISCC
+      - name: Fetch Simplified Chinese
+        shell: pwsh
+        run: |
+          $innoDir = Split-Path (Get-Command "ISCC.exe").Source
+          $langDir  = Join-Path $innoDir "Languages"
+          New-Item -ItemType Directory -Force $langDir | Out-Null
+          $dst = Join-Path $langDir "ChineseSimplified.isl"
+          $url = "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseSimplified.isl"
+          Invoke-WebRequest -Uri $url -OutFile $dst
+          if (-not (Test-Path $dst)) { throw "Failed to download ChineseSimplified.isl" }
+          Write-Host "Installed $dst"
+
+      - name: Build installer
         shell: pwsh
         run: |
           cd manager/desktop/installer/windows
@@ -114,7 +115,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Build Go Launcher (embedded runtime URL)
+      - name: Build Go Launcher
         env:
           RUNTIME_URL: ${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-aarch64-apple-darwin-install_only.tar.gz
         run: |
@@ -189,9 +190,19 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
-            fakeroot rpm file desktop-file-utils
+            fakeroot rpm file desktop-file-utils pkg-config \
+            libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev \
+            libwayland-dev libwayland-bin libx11-dev libxkbcommon-dev \
+            libxkbcommon-x11-0 libxrandr-dev libxcursor-dev \
+            libxi-dev libxinerama-dev libxxf86vm-dev
 
-      - name: Build Go Launcher (embedded runtime URL)
+      - name: Verify
+        run: |
+          pkg-config --modversion xkbcommon
+          pkg-config --modversion wayland-client
+          pkg-config --modversion x11
+
+      - name: Build Go Launcher
         env:
           RUNTIME_URL: ${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-x86_64-unknown-linux-gnu-install_only.tar.gz
         run: |
@@ -297,9 +308,19 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
-            fakeroot rpm file desktop-file-utils
+            fakeroot rpm file desktop-file-utils pkg-config \
+            libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev \
+            libwayland-dev libwayland-bin libx11-dev libxkbcommon-dev \
+            libxkbcommon-x11-0 libxrandr-dev libxcursor-dev \
+            libxi-dev libxinerama-dev libxxf86vm-dev
 
-      - name: Build Go Launcher (embedded runtime URL)
+      - name: Verify
+        run: |
+          pkg-config --modversion xkbcommon
+          pkg-config --modversion wayland-client
+          pkg-config --modversion x11
+
+      - name: Build Go Launcher
         env:
           RUNTIME_URL: ${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-aarch64-unknown-linux-gnu-install_only.tar.gz
         run: |
