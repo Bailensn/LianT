@@ -115,15 +115,13 @@ func Run(
 		wsssend(ws, wrapOutgoing(id, c))
 		return nil
 	})
-	// 非文本消息：识别媒体类型，有文件则用 file_id 换下载链接转发 client，
-	// 无文件的类型（位置/联系人等）回传类型描述文本。
-	for _, ep := range []string{
-		tele.OnPhoto, tele.OnVideo, tele.OnAudio, tele.OnVoice,
-		tele.OnDocument, tele.OnVideoNote, tele.OnSticker, tele.OnAnimation,
-		tele.OnLocation, tele.OnContact,
-	} {
-		b.Handle(ep, func(c tele.Context) error {
-			forwardMedia(b, id, cache, ws, c)
+	// 非文本消息：遍历 mediaSupport 统一注册。有文件换下载链接转发 client，
+	// 无文件/无法识别（位置/联系人/未知）则答复蓝字提示并按普通文本下行。
+	for _, m := range mediaSupport {
+		m := m // 捕获循环变量
+		b.Handle(m.endpoint, func(c tele.Context) error {
+			cache.remember(c.Chat())
+			forwardMedia(b, id, cache, ws, c, m.name)
 			return nil
 		})
 	}
@@ -230,38 +228,92 @@ func wrapOutgoingMedia(botID int64, c tele.Context, msgType string, dlURL string
 	})
 }
 
-// mediaFileOf 识别消息里的媒体类型并返回对应的 tele.File。
-// 无文件的类型（位置/联系人/投票/骰子等）返回 (类型, nil)。
-func mediaFileOf(c tele.Context) (string, *tele.File) {
-	m := c.Message()
-	if m == nil {
-		return "unknown", nil
-	}
-	switch {
-	case m.Photo != nil:
-		return "photo", &m.Photo.File
-	case m.Video != nil:
-		return "video", &m.Video.File
-	case m.Audio != nil:
-		return "audio", &m.Audio.File
-	case m.Voice != nil:
-		return "voice", &m.Voice.File
-	case m.Document != nil:
-		return "document", &m.Document.File
-	case m.VideoNote != nil:
-		return "video_note", &m.VideoNote.File
-	case m.Sticker != nil:
-		return "sticker", &m.Sticker.File
-	case m.Animation != nil:
-		return "animation", &m.Animation.File
-	case m.Location != nil:
-		return "location", nil
-	case m.Contact != nil:
-		return "contact", nil
-	}
-	return "other", nil
+// mediaSpec 描述一种 bot 支持的非文本消息类型。
+//   - name：下行推给 client 的 type 字段值（与 client 端保持一致）
+//   - endpoint：telebot 注册端点
+//   - extract：从消息里取出文件；无文件的类型返回 nil
+//
+// 需要新增/调整支持的类型时，只改这个 list 即可，注册和识别逻辑复用。
+type mediaSpec struct {
+	name     string
+	endpoint string
+	extract  func(m *tele.Message) *tele.File
 }
 
+func photoFile(m *tele.Message) *tele.File {
+	if m.Photo != nil {
+		return &m.Photo.File
+	}
+	return nil
+}
+func videoFile(m *tele.Message) *tele.File {
+	if m.Video != nil {
+		return &m.Video.File
+	}
+	return nil
+}
+func audioFile(m *tele.Message) *tele.File {
+	if m.Audio != nil {
+		return &m.Audio.File
+	}
+	return nil
+}
+func voiceFile(m *tele.Message) *tele.File {
+	if m.Voice != nil {
+		return &m.Voice.File
+	}
+	return nil
+}
+func documentFile(m *tele.Message) *tele.File {
+	if m.Document != nil {
+		return &m.Document.File
+	}
+	return nil
+}
+func videoNoteFile(m *tele.Message) *tele.File {
+	if m.VideoNote != nil {
+		return &m.VideoNote.File
+	}
+	return nil
+}
+func stickerFile(m *tele.Message) *tele.File {
+	if m.Sticker != nil {
+		return &m.Sticker.File
+	}
+	return nil
+}
+func animationFile(m *tele.Message) *tele.File {
+	if m.Animation != nil {
+		return &m.Animation.File
+	}
+	return nil
+}
+
+// mediaSupport 是 bot 支持的所有非文本消息类型清单。
+var mediaSupport = []mediaSpec{
+	{"photo", tele.OnPhoto, photoFile},
+	{"video", tele.OnVideo, videoFile},
+	{"audio", tele.OnAudio, audioFile},
+	{"voice", tele.OnVoice, voiceFile},
+	{"document", tele.OnDocument, documentFile},
+	{"video_note", tele.OnVideoNote, videoNoteFile},
+	{"sticker", tele.OnSticker, stickerFile},
+	{"animation", tele.OnAnimation, animationFile},
+	{"location", tele.OnLocation, func(*tele.Message) *tele.File { return nil }},
+	{"contact", tele.OnContact, func(*tele.Message) *tele.File { return nil }},
+}
+
+// extractMediaFile 按类型名从消息里取文件；无文件/无法识别返回 nil。
+func extractMediaFile(name string, m *tele.Message) *tele.File {
+	for _, s := range mediaSupport {
+		if s.name == name && m != nil {
+			return s.extract(m)
+		}
+	}
+	return nil
+}
+
+// fileDownloadURL 用 file_id 调 Telegram API 换取 file_path，拼出公开可下载的 URL。
 func fileDownloadURL(b *tele.Bot, file *tele.File) (string, error) {
 	f, err := b.FileByID(file.FileID)
 	if err != nil {
@@ -277,18 +329,26 @@ func fileDownloadURL(b *tele.Bot, file *tele.File) (string, error) {
 	), nil
 }
 
+// unrecognizedReply 在 Telegram 端答复一句蓝字自动回复提示。
+// Telegram 的 HTML 解析没有直接的颜色参数，用"空链接"把 [自动回复] 染成蓝字，
+// 这是 Bot API 常用来做彩色文字的技巧。前面加无干扰控制字符避免被当作纯链接折叠。
 func unrecognizedReply(c tele.Context) {
-	const hint = "\u200b"
+	const hint = "\u200b" // 零宽空格
 	_ = c.Send(
 		`<a href="https://t.me">`+hint+`[自动回复]</a>该消息类型无法被识别`,
 		tele.ModeHTML,
 	)
 }
 
-func forwardMedia(b *tele.Bot, botID int64, cc *chatCache, ws *wss.Server, c tele.Context) {
+// forwardMedia 处理一条非文本消息，name 是其在 mediaSupport 里的类型名：
+//   - 有文件（photo/video/audio/...）：file_id 换下载链接，按媒体格式转发 client；
+//   - 无文件/无法识别（location/contact/未知）：Telegram 端答复蓝字提示，
+//     下行用"普通文本"格式转发，content=base64("该消息类型无法被识别")。
+func forwardMedia(b *tele.Bot, botID int64, cc *chatCache, ws *wss.Server, c tele.Context, name string) {
 	cc.remember(c.Chat())
-	msgType, file := mediaFileOf(c)
+	file := extractMediaFile(name, c.Message())
 	if file == nil {
+		// 无法识别：答复蓝字提示 + 下行按普通文本转发，不传媒体 base64。
 		unrecognizedReply(c)
 		wsssend(ws, wrapOutgoingText(botID, c, "该消息类型无法被识别"))
 		return
@@ -298,7 +358,7 @@ func forwardMedia(b *tele.Bot, botID int64, cc *chatCache, ws *wss.Server, c tel
 		fmt.Fprintln(os.Stderr, "获取文件下载链接失败:", err)
 		return
 	}
-	wsssend(ws, wrapOutgoingMedia(botID, c, msgType, dlURL))
+	wsssend(ws, wrapOutgoingMedia(botID, c, name, dlURL))
 }
 
 func decodeIncoming(raw string) ([]map[string]json.RawMessage, error) {
