@@ -45,7 +45,7 @@ jobs:
           cd "$env:GITHUB_WORKSPACE/manager/desktop/launcher"
           go install github.com/akavel/rsrc@latest
           $env:PATH = "$env:GOPATH\bin;$env:PATH"
-          rsrc -arch amd64 -ico "../installer/windows/LianT.ico" -o "rsrc_windows_amd64.syso"
+          rsrc -arch amd64 -ico "../installer/windows/LianT.ico" -o "cmd/rsrc_windows_amd64.syso"
 
       - name: Build Go Launcher
         shell: pwsh
