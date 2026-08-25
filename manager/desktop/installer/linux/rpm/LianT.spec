@@ -34,6 +34,7 @@ mkdir -p %{buildroot}/opt/LianT/resources
 mkdir -p %{buildroot}/opt/LianT/runtime
 mkdir -p %{buildroot}/usr/share/applications
 mkdir -p %{buildroot}/usr/share/icons/hicolor/scalable/apps
+mkdir -p %{buildroot}/usr/share/icons/hicolor/512x512/apps
 
 
 # Launcher
