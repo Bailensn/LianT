@@ -1,10 +1,22 @@
 name: Build LianT Desktop (source-execution + dynamic runtime)
 
+# 动态运行时模式
+#   - Client:   Python + PySide6 + QML，以源码(src/ + qml/)随包分发，不用 PyInstaller。
+#   - Launcher: Go，纯标准库。负责运行时定位/下载并创建新进程拉起 Client。
+#   - Runtime:  **不随包捆绑。** launcher 每次执行先看 ./runtime，缺失则动态下载
+#               (python-build-standalone) 并就地 pip 安装 requirements.txt：
+#                 Linux   -> /opt/LianT/runtime
+#                 Windows -> <app>/client/runtime
+#                 macOS   -> <app>/Resources/client/runtime
+#               运行时 URL 通过 `-X main.defaultRuntimeURL` 内嵌。
+#   - 产物：Windows->Inno(.exe)；macOS->LianT.app+.dmg；Linux->deb+rpm。体积小（无解释器）。
+#   每个平台原生构建，无 CGO 依赖（launcher 为纯 Go）。
+
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'version'
+        description: '版本号 version'
         required: true
         default: '1.00'
 
@@ -27,6 +39,7 @@ on:
 env:
   VERSION: ${{ inputs.version }}
   GO_VERSION: '1.26.5'
+  # python-build-standalone 固定版本，保证可复现；运行时 URL 内嵌到 launcher。
   PY_VERSION: '3.12.14'
   PBS_TAG: '20260814'
   PBS_BASE: 'https://github.com/astral-sh/python-build-standalone/releases/download/20260814'
@@ -57,7 +70,7 @@ jobs:
           go build -trimpath -ldflags "-s -w -H windowsgui \
             -X main.version=${{ env.VERSION }} \
             -X main.defaultRuntimeURL=${{ env.RUNTIME_URL }}" \
-            -o "$GITHUB_WORKSPACE/dist/launcher/liant.exe" ./cmd
+            -o "$GITHUB_WORKSPACE/dist/launcher/LianT.exe" ./cmd
 
       - name: Stage client source
         shell: bash
@@ -145,7 +158,7 @@ jobs:
           <dict>
             <key>CFBundleName</key><string>LianT</string>
             <key>CFBundleExecutable</key><string>LianT</string>
-            <key>CFBundleIdentifier</key><string>com.bailensn.liant</string>
+            <key>CFBundleIdentifier</key><string>com.bailensn.LianT</string>
             <key>CFBundleVersion</key><string>${{ env.VERSION }}</string>
             <key>CFBundleShortVersionString</key><string>${{ env.VERSION }}</string>
             <key>CFBundleIconFile</key><string>LianT</string>
@@ -200,7 +213,7 @@ jobs:
           go build -trimpath -ldflags "-s -w \
             -X main.version=${{ env.VERSION }} \
             -X main.defaultRuntimeURL=${{ env.RUNTIME_URL }}" \
-            -o "$GITHUB_WORKSPACE/dist/launcher/liant" ./cmd
+            -o "$GITHUB_WORKSPACE/dist/launcher/LianT" ./cmd
 
       - name: Assemble deb rootfs (no bundled runtime)
         run: |
@@ -211,14 +224,14 @@ jobs:
           mkdir -p "$ROOTFS/usr/share/applications"
           mkdir -p "$ROOTFS/usr/share/icons/hicolor/scalable/apps"
 
-          install -m 755 dist/launcher/liant "$ROOTFS/opt/LianT/bin/liant"
+          install -m 755 dist/launcher/LianT "$ROOTFS/opt/LianT/bin/LianT"
 
           cp -r desktop/client/src "$ROOTFS/opt/LianT/src"
           cp -r desktop/client/qml "$ROOTFS/opt/LianT/qml"
           cp desktop/client/requirements.txt "$ROOTFS/opt/LianT/requirements.txt"
 
-          install -m 644 desktop/packaging/linux/liant.desktop \
-            "$ROOTFS/usr/share/applications/liant.desktop"
+          install -m 644 desktop/packaging/linux/LianT.desktop \
+            "$ROOTFS/usr/share/applications/LianT.desktop"
           install -m 644 desktop/packaging/linux/icons/scalable/LianT.svg \
             "$ROOTFS/usr/share/icons/hicolor/scalable/apps/LianT.svg"
           install -m 644 desktop/packaging/linux/icons/512x512/LianT.png \
@@ -243,10 +256,10 @@ jobs:
           rm -rf "$TOPDIR"
           mkdir -p "$TOPDIR"/{BUILD,RPMS,SOURCES,SPECS}
 
-          SRCTREE="liant-src"
+          SRCTREE="LianT-src"
           rm -rf "$SRCTREE"
           mkdir -p "$SRCTREE/build/client"
-          install -m 755 dist/launcher/liant "$SRCTREE/build/liant"
+          install -m 755 dist/launcher/LianT "$SRCTREE/build/LianT"
           cp -r desktop/client/src "$SRCTREE/build/client/src"
           cp -r desktop/client/qml "$SRCTREE/build/client/qml"
           cp desktop/client/requirements.txt "$SRCTREE/build/client/requirements.txt"
@@ -255,12 +268,12 @@ jobs:
           cp -r desktop/packaging "$SRCTREE/packaging"
           cp -r desktop/assets "$SRCTREE/assets"
 
-          tar -czf "$TOPDIR/SOURCES/liant-src.tar.gz" "$SRCTREE"
+          tar -czf "$TOPDIR/SOURCES/LianT-src.tar.gz" "$SRCTREE"
 
           cp desktop/installer/linux/rpm/LianT.spec "$TOPDIR/SPECS/LianT.spec"
           sed -i "s/^BuildArch:.*/BuildArch: ${{ env.RPM_ARCH }}/" "$TOPDIR/SPECS/LianT.spec"
-          sed -i "1i Source: liant-src.tar.gz" "$TOPDIR/SPECS/LianT.spec"
-          sed -i "s|# No source preparation needed|%setup -q -n liant-src|" "$TOPDIR/SPECS/LianT.spec"
+          sed -i "1i Source: LianT-src.tar.gz" "$TOPDIR/SPECS/LianT.spec"
+          sed -i "s|# No source preparation needed|%setup -q -n LianT-src|" "$TOPDIR/SPECS/LianT.spec"
 
           rpmbuild \
             --define "_topdir $TOPDIR" \
@@ -309,7 +322,7 @@ jobs:
           go build -trimpath -ldflags "-s -w \
             -X main.version=${{ env.VERSION }} \
             -X main.defaultRuntimeURL=${{ env.RUNTIME_URL }}" \
-            -o "$GITHUB_WORKSPACE/dist/launcher/liant" ./cmd
+            -o "$GITHUB_WORKSPACE/dist/launcher/LianT" ./cmd
 
       - name: Assemble deb rootfs (no bundled runtime)
         run: |
@@ -320,14 +333,14 @@ jobs:
           mkdir -p "$ROOTFS/usr/share/applications"
           mkdir -p "$ROOTFS/usr/share/icons/hicolor/scalable/apps"
 
-          install -m 755 dist/launcher/liant "$ROOTFS/opt/LianT/bin/liant"
+          install -m 755 dist/launcher/LianT "$ROOTFS/opt/LianT/bin/LianT"
 
           cp -r desktop/client/src "$ROOTFS/opt/LianT/src"
           cp -r desktop/client/qml "$ROOTFS/opt/LianT/qml"
           cp desktop/client/requirements.txt "$ROOTFS/opt/LianT/requirements.txt"
 
-          install -m 644 desktop/packaging/linux/liant.desktop \
-            "$ROOTFS/usr/share/applications/liant.desktop"
+          install -m 644 desktop/packaging/linux/LianT.desktop \
+            "$ROOTFS/usr/share/applications/LianT.desktop"
           install -m 644 desktop/packaging/linux/icons/scalable/LianT.svg \
             "$ROOTFS/usr/share/icons/hicolor/scalable/apps/LianT.svg"
           install -m 644 desktop/packaging/linux/icons/512x512/LianT.png \
@@ -352,10 +365,10 @@ jobs:
           rm -rf "$TOPDIR"
           mkdir -p "$TOPDIR"/{BUILD,RPMS,SOURCES,SPECS}
 
-          SRCTREE="liant-src"
+          SRCTREE="LianT-src"
           rm -rf "$SRCTREE"
           mkdir -p "$SRCTREE/build/client"
-          install -m 755 dist/launcher/liant "$SRCTREE/build/liant"
+          install -m 755 dist/launcher/LianT "$SRCTREE/build/LianT"
           cp -r desktop/client/src "$SRCTREE/build/client/src"
           cp -r desktop/client/qml "$SRCTREE/build/client/qml"
           cp desktop/client/requirements.txt "$SRCTREE/build/client/requirements.txt"
@@ -364,12 +377,12 @@ jobs:
           cp -r desktop/packaging "$SRCTREE/packaging"
           cp -r desktop/assets "$SRCTREE/assets"
 
-          tar -czf "$TOPDIR/SOURCES/liant-src.tar.gz" "$SRCTREE"
+          tar -czf "$TOPDIR/SOURCES/LianT-src.tar.gz" "$SRCTREE"
 
           cp desktop/installer/linux/rpm/LianT.spec "$TOPDIR/SPECS/LianT.spec"
           sed -i "s/^BuildArch:.*/BuildArch: ${{ env.RPM_ARCH }}/" "$TOPDIR/SPECS/LianT.spec"
-          sed -i "1i Source: liant-src.tar.gz" "$TOPDIR/SPECS/LianT.spec"
-          sed -i "s|# No source preparation needed|%setup -q -n liant-src|" "$TOPDIR/SPECS/LianT.spec"
+          sed -i "1i Source: LianT-src.tar.gz" "$TOPDIR/SPECS/LianT.spec"
+          sed -i "s|# No source preparation needed|%setup -q -n LianT-src|" "$TOPDIR/SPECS/LianT.spec"
 
           rpmbuild \
             --define "_topdir $TOPDIR" \
