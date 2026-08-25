@@ -60,7 +60,7 @@ jobs:
           $ws = "$env:GITHUB_WORKSPACE"
           Set-Location "$ws\manager\desktop\launcher"
           New-Item -ItemType Directory -Force "$ws\dist\launcher" | Out-Null
-          go build -trimpath -ldflags "-s -w -H windowsgui -X main.version=${{ env.VERSION }} -X main.defaultRuntimeURL=${{ env.RUNTIME_URL }}" -o "$ws\dist\launcher\liant.exe" ./cmd
+          go build -trimpath -ldflags "-s -w -H windowsgui -X main.version=${{ env.VERSION }} -X main.defaultRuntimeURL=${{ env.RUNTIME_URL }}" -o "$ws\dist\launcher\LianT.exe" ./cmd
 
       - name: Stage client source
         shell: bash
@@ -146,7 +146,7 @@ jobs:
           <dict>
             <key>CFBundleName</key><string>LianT</string>
             <key>CFBundleExecutable</key><string>LianT</string>
-            <key>CFBundleIdentifier</key><string>com.bailensn.liant</string>
+            <key>CFBundleIdentifier</key><string>com.bailensn.LianT</string>
             <key>CFBundleVersion</key><string>${{ env.VERSION }}</string>
             <key>CFBundleShortVersionString</key><string>${{ env.VERSION }}</string>
             <key>CFBundleIconFile</key><string>LianT</string>
@@ -200,7 +200,7 @@ jobs:
           go build -trimpath -ldflags "-s -w \
             -X main.version=${{ env.VERSION }} \
             -X main.defaultRuntimeURL=${{ env.RUNTIME_URL }}" \
-            -o "$GITHUB_WORKSPACE/dist/launcher/liant" ./cmd
+            -o "$GITHUB_WORKSPACE/dist/launcher/LianT" ./cmd
 
       - name: Assemble deb rootfs
         run: |
@@ -211,7 +211,7 @@ jobs:
           mkdir -p "$ROOTFS/usr/share/icons/hicolor/scalable/apps"
           mkdir -p "$ROOTFS/usr/share/icons/hicolor/512x512/apps"
 
-          install -m 755 dist/launcher/liant "$ROOTFS/opt/LianT/bin/liant"
+          install -m 755 dist/launcher/LianT "$ROOTFS/opt/LianT/bin/LianT"
 
           cp -r manager/desktop/client/src "$ROOTFS/opt/LianT/src"
           cp -r manager/desktop/client/qml "$ROOTFS/opt/LianT/qml"
@@ -243,10 +243,10 @@ jobs:
           rm -rf "$TOPDIR"
           mkdir -p "$TOPDIR"/{BUILD,RPMS,SOURCES,SPECS}
 
-          SRCTREE="liant-src"
+          SRCTREE="LianT-src"
           rm -rf "$SRCTREE"
           mkdir -p "$SRCTREE/build/client"
-          install -m 755 dist/launcher/liant "$SRCTREE/build/liant"
+          install -m 755 dist/launcher/LianT "$SRCTREE/build/LianT"
           cp -r manager/desktop/client/src "$SRCTREE/build/client/src"
           cp -r manager/desktop/client/qml "$SRCTREE/build/client/qml"
           cp manager/desktop/client/requirements.txt "$SRCTREE/build/client/requirements.txt"
@@ -254,12 +254,12 @@ jobs:
           cp -r manager/desktop/packaging "$SRCTREE/packaging"
           cp -r manager/desktop/assets "$SRCTREE/assets"
 
-          tar -czf "$TOPDIR/SOURCES/liant-src.tar.gz" "$SRCTREE"
+          tar -czf "$TOPDIR/SOURCES/LianT-src.tar.gz" "$SRCTREE"
 
           cp manager/desktop/installer/linux/rpm/LianT.spec "$TOPDIR/SPECS/LianT.spec"
           sed -i "s/^BuildArch:.*/BuildArch: ${{ env.RPM_ARCH }}/" "$TOPDIR/SPECS/LianT.spec"
-          sed -i "1i Source: liant-src.tar.gz" "$TOPDIR/SPECS/LianT.spec"
-          sed -i "s|# No source preparation needed|%setup -q -n liant-src|" "$TOPDIR/SPECS/LianT.spec"
+          sed -i "1i Source: LianT-src.tar.gz" "$TOPDIR/SPECS/LianT.spec"
+          sed -i "s|# No source preparation needed|%setup -q -n LianT-src|" "$TOPDIR/SPECS/LianT.spec"
 
           rpmbuild \
             --define "_topdir $TOPDIR" \
@@ -308,7 +308,7 @@ jobs:
           go build -trimpath -ldflags "-s -w \
             -X main.version=${{ env.VERSION }} \
             -X main.defaultRuntimeURL=${{ env.RUNTIME_URL }}" \
-            -o "$GITHUB_WORKSPACE/dist/launcher/liant" ./cmd
+            -o "$GITHUB_WORKSPACE/dist/launcher/LianT" ./cmd
 
       - name: Assemble deb rootfs
         run: |
@@ -319,7 +319,7 @@ jobs:
           mkdir -p "$ROOTFS/usr/share/icons/hicolor/scalable/apps"
           mkdir -p "$ROOTFS/usr/share/icons/hicolor/512x512/apps"
 
-          install -m 755 dist/launcher/liant "$ROOTFS/opt/LianT/bin/liant"
+          install -m 755 dist/launcher/LianT "$ROOTFS/opt/LianT/bin/LianT"
 
           cp -r manager/desktop/client/src "$ROOTFS/opt/LianT/src"
           cp -r manager/desktop/client/qml "$ROOTFS/opt/LianT/qml"
@@ -351,10 +351,10 @@ jobs:
           rm -rf "$TOPDIR"
           mkdir -p "$TOPDIR"/{BUILD,RPMS,SOURCES,SPECS}
 
-          SRCTREE="liant-src"
+          SRCTREE="LianT-src"
           rm -rf "$SRCTREE"
           mkdir -p "$SRCTREE/build/client"
-          install -m 755 dist/launcher/liant "$SRCTREE/build/liant"
+          install -m 755 dist/launcher/LianT "$SRCTREE/build/LianT"
           cp -r manager/desktop/client/src "$SRCTREE/build/client/src"
           cp -r manager/desktop/client/qml "$SRCTREE/build/client/qml"
           cp manager/desktop/client/requirements.txt "$SRCTREE/build/client/requirements.txt"
@@ -362,12 +362,12 @@ jobs:
           cp -r manager/desktop/packaging "$SRCTREE/packaging"
           cp -r manager/desktop/assets "$SRCTREE/assets"
 
-          tar -czf "$TOPDIR/SOURCES/liant-src.tar.gz" "$SRCTREE"
+          tar -czf "$TOPDIR/SOURCES/LianT-src.tar.gz" "$SRCTREE"
 
           cp manager/desktop/installer/linux/rpm/LianT.spec "$TOPDIR/SPECS/LianT.spec"
           sed -i "s/^BuildArch:.*/BuildArch: ${{ env.RPM_ARCH }}/" "$TOPDIR/SPECS/LianT.spec"
-          sed -i "1i Source: liant-src.tar.gz" "$TOPDIR/SPECS/LianT.spec"
-          sed -i "s|# No source preparation needed|%setup -q -n liant-src|" "$TOPDIR/SPECS/LianT.spec"
+          sed -i "1i Source: LianT-src.tar.gz" "$TOPDIR/SPECS/LianT.spec"
+          sed -i "s|# No source preparation needed|%setup -q -n LianT-src|" "$TOPDIR/SPECS/LianT.spec"
 
           rpmbuild \
             --define "_topdir $TOPDIR" \

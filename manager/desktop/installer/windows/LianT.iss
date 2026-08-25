@@ -16,12 +16,11 @@ DefaultDirName={autopf}\LianT
 DefaultGroupName=LianT
 DisableProgramGroupPage=yes
 OutputBaseFilename=LianTSetup
-SetupIconFile=..\..\..\installer\windows\LianT.ico
+SetupIconFile=LianT.ico
 UninstallDisplayIcon={app}\liant.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-PrivacyPolicyVersion={#MyAppVersion}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -32,12 +31,12 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; Launcher executable
-Source: "..\..\..\dist\launcher\liant.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\..\..\dist\launcher\liant.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; Client source tree (source-execution mode). No runtime is bundled on purpose.
-Source: "..\..\..\client\src\*"; DestDir: "{app}\client\src"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\..\..\client\qml\*"; DestDir: "{app}\client\qml"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\..\..\client\src\*"; DestDir: "{app}\client\src"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\..\..\client\qml\*"; DestDir: "{app}\client\qml"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Python dependencies are resolved dynamically on first launch.
-Source: "..\..\..\client\requirements.txt"; DestDir: "{app}\client"; Flags: ignoreversion
+Source: "..\..\..\..\client\requirements.txt"; DestDir: "{app}\client"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\LianT"; Filename: "{app}\liant.exe"
