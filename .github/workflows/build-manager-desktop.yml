@@ -58,7 +58,7 @@ jobs:
           RUNTIME_URL: ${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-x86_64-pc-windows-msvc-install_only.tar.gz
         run: |
           $ws = "$env:GITHUB_WORKSPACE"
-          Set-Location "$ws\desktop\launcher"
+          Set-Location "$ws\manager\desktop\launcher"
           New-Item -ItemType Directory -Force "$ws\dist\launcher" | Out-Null
           go build -trimpath -ldflags "-s -w -H windowsgui -X main.version=${{ env.VERSION }} -X main.defaultRuntimeURL=${{ env.RUNTIME_URL }}" -o "$ws\dist\launcher\liant.exe" ./cmd
 
@@ -66,14 +66,14 @@ jobs:
         shell: bash
         run: |
           mkdir -p client
-          cp -r desktop/client/src client/src
-          cp -r desktop/client/qml client/qml
-          cp desktop/client/requirements.txt client/requirements.txt
+          cp -r manager/desktop/client/src client/src
+          cp -r manager/desktop/client/qml client/qml
+          cp manager/desktop/client/requirements.txt client/requirements.txt
 
       - name: Inject version into Inno script
         shell: pwsh
         run: |
-          cd desktop/installer/windows
+          cd manager/desktop/installer/windows
           (Get-Content LianT.iss) -replace '^#define MyAppVersion ".*"', '#define MyAppVersion "${{ env.VERSION }}"' | Set-Content -Encoding ASCII LianT.iss
 
       - name: Install Inno Setup
@@ -83,7 +83,7 @@ jobs:
       - name: Build installer with ISCC
         shell: pwsh
         run: |
-          cd desktop/installer/windows
+          cd manager/desktop/installer/windows
           $iscc = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
           if (-not $iscc) { throw "ISCC.exe not found" }
           & $iscc.Source LianT.iss
@@ -118,7 +118,7 @@ jobs:
         env:
           RUNTIME_URL: ${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-aarch64-apple-darwin-install_only.tar.gz
         run: |
-          cd "$GITHUB_WORKSPACE/desktop/launcher"
+          cd "$GITHUB_WORKSPACE/manager/desktop/launcher"
           mkdir -p "$GITHUB_WORKSPACE/dist/launcher"
           go build -trimpath -ldflags "-s -w \
             -X main.version=${{ env.VERSION }} \
@@ -134,11 +134,11 @@ jobs:
           mkdir -p "$RES"
 
           cp "$GITHUB_WORKSPACE/dist/launcher/LianT" "$APP/Contents/MacOS/LianT"
-          cp -r desktop/client/src "$RES/src"
-          cp -r desktop/client/qml "$RES/qml"
-          cp desktop/client/requirements.txt "$RES/requirements.txt"
+          cp -r manager/desktop/client/src "$RES/src"
+          cp -r manager/desktop/client/qml "$RES/qml"
+          cp manager/desktop/client/requirements.txt "$RES/requirements.txt"
 
-          cp desktop/installer/darwin/LianT.icns "$APP/Contents/Resources/" 2>/dev/null || true
+          cp manager/desktop/installer/darwin/LianT.icns "$APP/Contents/Resources/" 2>/dev/null || true
 
           cat > "$APP/Contents/Info.plist" <<EOF
           <?xml version="1.0"?>
@@ -175,7 +175,7 @@ jobs:
     if: ${{ inputs.linux_amd64 }}
     runs-on: ubuntu-latest
     env:
-      ROOTFS: desktop/installer/linux/rootfs
+      ROOTFS: manager/desktop/installer/linux/rootfs
       DEB_ARCH: amd64
       RPM_ARCH: x86_64
     steps:
@@ -195,7 +195,7 @@ jobs:
         env:
           RUNTIME_URL: ${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-x86_64-unknown-linux-gnu-install_only.tar.gz
         run: |
-          cd "$GITHUB_WORKSPACE/desktop/launcher"
+          cd "$GITHUB_WORKSPACE/manager/desktop/launcher"
           mkdir -p "$GITHUB_WORKSPACE/dist/launcher"
           go build -trimpath -ldflags "-s -w \
             -X main.version=${{ env.VERSION }} \
@@ -213,15 +213,15 @@ jobs:
 
           install -m 755 dist/launcher/liant "$ROOTFS/opt/LianT/bin/liant"
 
-          cp -r desktop/client/src "$ROOTFS/opt/LianT/src"
-          cp -r desktop/client/qml "$ROOTFS/opt/LianT/qml"
-          cp desktop/client/requirements.txt "$ROOTFS/opt/LianT/requirements.txt"
+          cp -r manager/desktop/client/src "$ROOTFS/opt/LianT/src"
+          cp -r manager/desktop/client/qml "$ROOTFS/opt/LianT/qml"
+          cp manager/desktop/client/requirements.txt "$ROOTFS/opt/LianT/requirements.txt"
 
-          install -m 644 desktop/packaging/linux/liant.desktop \
-            "$ROOTFS/usr/share/applications/liant.desktop"
-          install -m 644 desktop/packaging/linux/icons/scalable/LianT.svg \
+          install -m 644 manager/desktop/packaging/linux/LianT.desktop \
+            "$ROOTFS/usr/share/applications/LianT.desktop"
+          install -m 644 manager/desktop/packaging/linux/icons/scalable/LianT.svg \
             "$ROOTFS/usr/share/icons/hicolor/scalable/apps/LianT.svg"
-          install -m 644 desktop/packaging/linux/icons/512x512/LianT.png \
+          install -m 644 manager/desktop/packaging/linux/icons/512x512/LianT.png \
             "$ROOTFS/usr/share/icons/hicolor/512x512/apps/LianT.png"
 
       - name: Package deb
@@ -229,7 +229,7 @@ jobs:
           PKG=pkg-deb
           rm -rf "$PKG"
           cp -r "$ROOTFS/." "$PKG/"
-          cp -r desktop/installer/linux/deb/DEBIAN "$PKG/DEBIAN"
+          cp -r manager/desktop/installer/linux/deb/DEBIAN "$PKG/DEBIAN"
 
           sed -i "s/^Version:.*/Version: ${{ env.VERSION }}/" "$PKG/DEBIAN/control"
           sed -i "s/^Architecture:.*/Architecture: ${{ env.DEB_ARCH }}/" "$PKG/DEBIAN/control"
@@ -247,16 +247,16 @@ jobs:
           rm -rf "$SRCTREE"
           mkdir -p "$SRCTREE/build/client"
           install -m 755 dist/launcher/liant "$SRCTREE/build/liant"
-          cp -r desktop/client/src "$SRCTREE/build/client/src"
-          cp -r desktop/client/qml "$SRCTREE/build/client/qml"
-          cp desktop/client/requirements.txt "$SRCTREE/build/client/requirements.txt"
+          cp -r manager/desktop/client/src "$SRCTREE/build/client/src"
+          cp -r manager/desktop/client/qml "$SRCTREE/build/client/qml"
+          cp manager/desktop/client/requirements.txt "$SRCTREE/build/client/requirements.txt"
 
-          cp -r desktop/packaging "$SRCTREE/packaging"
-          cp -r desktop/assets "$SRCTREE/assets"
+          cp -r manager/desktop/packaging "$SRCTREE/packaging"
+          cp -r manager/desktop/assets "$SRCTREE/assets"
 
           tar -czf "$TOPDIR/SOURCES/liant-src.tar.gz" "$SRCTREE"
 
-          cp desktop/installer/linux/rpm/LianT.spec "$TOPDIR/SPECS/LianT.spec"
+          cp manager/desktop/installer/linux/rpm/LianT.spec "$TOPDIR/SPECS/LianT.spec"
           sed -i "s/^BuildArch:.*/BuildArch: ${{ env.RPM_ARCH }}/" "$TOPDIR/SPECS/LianT.spec"
           sed -i "1i Source: liant-src.tar.gz" "$TOPDIR/SPECS/LianT.spec"
           sed -i "s|# No source preparation needed|%setup -q -n liant-src|" "$TOPDIR/SPECS/LianT.spec"
@@ -283,7 +283,7 @@ jobs:
     if: ${{ inputs.linux_arm64 }}
     runs-on: ubuntu-24.04-arm
     env:
-      ROOTFS: desktop/installer/linux/rootfs
+      ROOTFS: manager/desktop/installer/linux/rootfs
       DEB_ARCH: arm64
       RPM_ARCH: aarch64
     steps:
@@ -303,7 +303,7 @@ jobs:
         env:
           RUNTIME_URL: ${{ env.PBS_BASE }}/cpython-${{ env.PY_VERSION }}+${{ env.PBS_TAG }}-aarch64-unknown-linux-gnu-install_only.tar.gz
         run: |
-          cd "$GITHUB_WORKSPACE/desktop/launcher"
+          cd "$GITHUB_WORKSPACE/manager/desktop/launcher"
           mkdir -p "$GITHUB_WORKSPACE/dist/launcher"
           go build -trimpath -ldflags "-s -w \
             -X main.version=${{ env.VERSION }} \
@@ -321,15 +321,15 @@ jobs:
 
           install -m 755 dist/launcher/liant "$ROOTFS/opt/LianT/bin/liant"
 
-          cp -r desktop/client/src "$ROOTFS/opt/LianT/src"
-          cp -r desktop/client/qml "$ROOTFS/opt/LianT/qml"
-          cp desktop/client/requirements.txt "$ROOTFS/opt/LianT/requirements.txt"
+          cp -r manager/desktop/client/src "$ROOTFS/opt/LianT/src"
+          cp -r manager/desktop/client/qml "$ROOTFS/opt/LianT/qml"
+          cp manager/desktop/client/requirements.txt "$ROOTFS/opt/LianT/requirements.txt"
 
-          install -m 644 desktop/packaging/linux/liant.desktop \
-            "$ROOTFS/usr/share/applications/liant.desktop"
-          install -m 644 desktop/packaging/linux/icons/scalable/LianT.svg \
+          install -m 644 manager/desktop/packaging/linux/LianT.desktop \
+            "$ROOTFS/usr/share/applications/LianT.desktop"
+          install -m 644 manager/desktop/packaging/linux/icons/scalable/LianT.svg \
             "$ROOTFS/usr/share/icons/hicolor/scalable/apps/LianT.svg"
-          install -m 644 desktop/packaging/linux/icons/512x512/LianT.png \
+          install -m 644 manager/desktop/packaging/linux/icons/512x512/LianT.png \
             "$ROOTFS/usr/share/icons/hicolor/512x512/apps/LianT.png"
 
       - name: Package deb
@@ -337,7 +337,7 @@ jobs:
           PKG=pkg-deb
           rm -rf "$PKG"
           cp -r "$ROOTFS/." "$PKG/"
-          cp -r desktop/installer/linux/deb/DEBIAN "$PKG/DEBIAN"
+          cp -r manager/desktop/installer/linux/deb/DEBIAN "$PKG/DEBIAN"
 
           sed -i "s/^Version:.*/Version: ${{ env.VERSION }}/" "$PKG/DEBIAN/control"
           sed -i "s/^Architecture:.*/Architecture: ${{ env.DEB_ARCH }}/" "$PKG/DEBIAN/control"
@@ -355,16 +355,16 @@ jobs:
           rm -rf "$SRCTREE"
           mkdir -p "$SRCTREE/build/client"
           install -m 755 dist/launcher/liant "$SRCTREE/build/liant"
-          cp -r desktop/client/src "$SRCTREE/build/client/src"
-          cp -r desktop/client/qml "$SRCTREE/build/client/qml"
-          cp desktop/client/requirements.txt "$SRCTREE/build/client/requirements.txt"
+          cp -r manager/desktop/client/src "$SRCTREE/build/client/src"
+          cp -r manager/desktop/client/qml "$SRCTREE/build/client/qml"
+          cp manager/desktop/client/requirements.txt "$SRCTREE/build/client/requirements.txt"
 
-          cp -r desktop/packaging "$SRCTREE/packaging"
-          cp -r desktop/assets "$SRCTREE/assets"
+          cp -r manager/desktop/packaging "$SRCTREE/packaging"
+          cp -r manager/desktop/assets "$SRCTREE/assets"
 
           tar -czf "$TOPDIR/SOURCES/liant-src.tar.gz" "$SRCTREE"
 
-          cp desktop/installer/linux/rpm/LianT.spec "$TOPDIR/SPECS/LianT.spec"
+          cp manager/desktop/installer/linux/rpm/LianT.spec "$TOPDIR/SPECS/LianT.spec"
           sed -i "s/^BuildArch:.*/BuildArch: ${{ env.RPM_ARCH }}/" "$TOPDIR/SPECS/LianT.spec"
           sed -i "1i Source: liant-src.tar.gz" "$TOPDIR/SPECS/LianT.spec"
           sed -i "s|# No source preparation needed|%setup -q -n liant-src|" "$TOPDIR/SPECS/LianT.spec"
