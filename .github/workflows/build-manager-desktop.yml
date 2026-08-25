@@ -92,7 +92,7 @@ jobs:
       - name: Rename setup artifact
         shell: pwsh
         run: |
-          +$setup = Get-ChildItem "manager/desktop/installer/windows/Output" -Filter "LianTSetup*.exe" | Select-Object -First 1
+          $setup = Get-ChildItem "manager/desktop/installer/windows/Output" -Filter "LianTSetup*.exe" | Select-Object -First 1
           if ($null -eq $setup) { throw "setup exe not found" }
           Move-Item -Force $setup.FullName "LianT-v${{ env.VERSION }}-Windows-amd64.exe"
 
