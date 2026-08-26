@@ -4,20 +4,13 @@ version = "1.0.0"
 description = "LianT cross-platform instant messaging desktop client (source-execution mode)"
 requires-python = ">=3.10"
 dependencies = [
-    "PySide6>=6.6,<6.9",
+    "PySide6>=6.6",
 ]
 
-# 单一数据源：以下 [project].dependencies 是客户端 Python 依赖的唯一声明地。
-# launcher 启动时读取本文件的依赖做缺失检测，并按 spec（优先从 client/deps/
-# 离线 wheel，缺省再连网）逐个安装。源码执行模式：CLI 入口直接用
-# python 运行 src/main.py，故不在 site-packages 里抽包。
-
 [project.optional-dependencies]
-# 网络 / 加密能力：当前基础 QML 布局用不到，默认不装；以后对接后端 API
-# 或做消息加密时再启用（pip install .[network]），或并回主依赖。
 network = [
-    "aiohttp>=3.9,<3.11",
-    "cryptography>=42.0,<44",
+    "aiohttp>=3.9",
+    "cryptography>=42.0",
 ]
 
 [build-system]
@@ -26,5 +19,4 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 py-modules = []
-# 源码执行模式不在 site-packages 里抽包；源码以目录形式随 runtime/ 分发。
 packages = []
