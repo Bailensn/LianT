@@ -23,7 +23,7 @@ func initCommand() {
 		cfg.Storage.Database =
 			"data/bots.db"
 		cfg.Storage.Key =
-			"data/master.key"
+			"data/key/master.key"
 		cfg.Connect.Url =
 			"https://api.telegram.org"
 		config.SaveConfig(

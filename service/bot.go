@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
@@ -33,6 +34,13 @@ type TelegramResponse struct {
 // ==========================
 func openBotDB() *sql.DB {
 	cfg := config.LoadConfig()
+	// 确保数据库所在目录存在（如 data/），避免首次 init 在无该目录时打开失败
+	if err := os.MkdirAll(
+		filepath.Dir(cfg.Storage.Database),
+		0700,
+	); err != nil {
+		panic(err)
+	}
 	db, err := sql.Open(
 		"sqlite",
 		cfg.Storage.Database,

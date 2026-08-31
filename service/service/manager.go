@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,22 +19,35 @@ type BotProcess struct {
 	ID           int64
 	Pid          int
 	Addr         string
+	WSSAddr      string
 	Process      *exec.Cmd
 	Stopping     bool
 	RestartCount int
+	// done 在进程结束后由 waitBot 关闭，用于 stopBot 等待进程退出。
+	done chan struct{}
 }
 
-var bots = make(
-	map[int64]*BotProcess,
+var (
+	botsMu sync.RWMutex
+	bots   = make(
+		map[int64]*BotProcess,
+	)
+	// publicBase 是 daemon 单一安全入口的公开基地址（https://host:port），
+	// 由 StartDaemon 在启动时设置，用于给每个 bot 注入 /<id>/ 前缀。
+	publicBase string
 )
 
 func waitBot(bot *BotProcess) {
 	err := bot.Process.Wait()
+	botsMu.Lock()
 	delete(
 		bots,
 		bot.ID,
 	)
-	if bot.Stopping {
+	stopping := bot.Stopping
+	botsMu.Unlock()
+	close(bot.done)
+	if stopping {
 		fmt.Println(
 			"Bot正常停止:",
 			bot.ID,
@@ -58,6 +72,7 @@ func sendBotList(conn net.Conn) {
 		[]BotInfo,
 		0,
 	)
+	botsMu.RLock()
 	for _, bot := range bots {
 		list = append(
 			list,
@@ -68,6 +83,7 @@ func sendBotList(conn net.Conn) {
 			},
 		)
 	}
+	botsMu.RUnlock()
 	json.NewEncoder(conn).Encode(
 		list,
 	)
@@ -85,12 +101,90 @@ func botLog(id int64) (*os.File, error) {
 	)
 }
 
+// stopExisting 若同一 id 已有运行中的 bot，先尝试停止它，避免重复进程。
+func stopExisting(id int64) {
+	botsMu.RLock()
+	_, ok := bots[id]
+	botsMu.RUnlock()
+	if ok {
+		fmt.Println(
+			"该 Bot 已在运行，先停止旧进程:",
+			id,
+		)
+		stopBot(id)
+	}
+}
+
+// registerBot 在 bots 表中登记一个 bot 并启动 waitBot。
+func registerBot(
+	id int64,
+	pid int,
+	addr string,
+	wssAddr string,
+	cmd *exec.Cmd,
+) {
+	bot := &BotProcess{
+		ID:       id,
+		Pid:      pid,
+		Addr:     addr,
+		WSSAddr:  wssAddr,
+		Process:  cmd,
+		Stopping: false,
+		done:     make(chan struct{}),
+	}
+	botsMu.Lock()
+	bots[id] = bot
+	botsMu.Unlock()
+	fmt.Println(
+		"Bot启动:",
+		id,
+		"PID:",
+		pid,
+		"IPC:",
+		addr,
+		"WSS:",
+		wssAddr,
+	)
+	go waitBot(bot)
+}
+
+// readBotAddrs 从子进程 stdout 读取前两行：
+// 第 1 行为 IPC 地址，第 2 行为本机回环 WSS 地址。
+func readBotAddrs(stdout io.Reader) (string, string, error) {
+	reader := bufio.NewReader(
+		stdout,
+	)
+	ipc, err := reader.ReadString('\n')
+	if err != nil {
+		return "", "", err
+	}
+	wssLine, err := reader.ReadString('\n')
+	if err != nil {
+		return "", "", err
+	}
+	return strings.TrimSpace(ipc), strings.TrimSpace(wssLine), nil
+}
+
+// publicBaseFor 组装某个 bot 的公开基地址：https://host:port/<id>。
+func publicBaseFor(id int64) string {
+	if publicBase == "" {
+		return ""
+	}
+	return publicBase + "/" + strconv.FormatInt(id, 10)
+}
+
 func startBot(id int64) {
 	cmd := exec.Command(
 		os.Args[0],
 		"botstart",
 		strconv.FormatInt(id, 10),
 	)
+	cmd.Env = append(
+		os.Environ(),
+		"LIANT_PUBLIC_BASE="+publicBaseFor(id),
+	)
+	stopExisting(id)
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		fmt.Println(err)
@@ -108,30 +202,13 @@ func startBot(id int64) {
 		fmt.Println(err)
 		return
 	}
-	reader := bufio.NewReader(stdout)
-	addr, err := reader.ReadString('\n')
+	ipcAddr, wssAddr, err := readBotAddrs(stdout)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("读取 Bot 地址失败，结束进程:", err)
+		_ = cmd.Process.Kill()
 		return
 	}
-	addr = strings.TrimSpace(addr)
-	bot := &BotProcess{
-		ID:       id,
-		Pid:      cmd.Process.Pid,
-		Addr:     addr,
-		Process:  cmd,
-		Stopping: false,
-	}
-	bots[id] = bot
-	fmt.Println(
-		"Bot启动:",
-		id,
-		"PID:",
-		bot.Pid,
-		"IPC:",
-		bot.Addr,
-	)
-	go waitBot(bot)
+	registerBot(id, cmd.Process.Pid, ipcAddr, wssAddr, cmd)
 }
 
 // startBotEcho 启动一个 bot 进程，并把它的 stderr（含 WSS 地址与 TOKEN）
@@ -144,6 +221,12 @@ func startBotEcho(id int64, conn net.Conn) {
 		"botstart",
 		strconv.FormatInt(id, 10),
 	)
+	cmd.Env = append(
+		os.Environ(),
+		"LIANT_PUBLIC_BASE="+publicBaseFor(id),
+	)
+	stopExisting(id)
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		fmt.Println(err)
@@ -159,30 +242,13 @@ func startBotEcho(id int64, conn net.Conn) {
 		fmt.Println(err)
 		return
 	}
-	reader := bufio.NewReader(stdout)
-	addr, err := reader.ReadString('\n')
+	ipcAddr, wssAddr, err := readBotAddrs(stdout)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("读取 Bot 地址失败，结束进程:", err)
+		_ = cmd.Process.Kill()
 		return
 	}
-	addr = strings.TrimSpace(addr)
-	bot := &BotProcess{
-		ID:       id,
-		Pid:      cmd.Process.Pid,
-		Addr:     addr,
-		Process:  cmd,
-		Stopping: false,
-	}
-	bots[id] = bot
-	fmt.Println(
-		"Bot启动:",
-		id,
-		"PID:",
-		bot.Pid,
-		"IPC:",
-		bot.Addr,
-	)
-	go waitBot(bot)
+	registerBot(id, cmd.Process.Pid, ipcAddr, wssAddr, cmd)
 	go echoStderr(id, stderr, conn)
 }
 
@@ -227,21 +293,28 @@ func echoStderr(id int64, stderr io.Reader, conn net.Conn) {
 	}
 }
 
+// stopBot 向 bot 的 IPC 端口发送停止请求并等待其退出；
+// 若 IPC 不可达或超时未退出，则强制结束进程。
 func stopBot(id int64) {
+	botsMu.RLock()
 	bot, ok := bots[id]
+	botsMu.RUnlock()
 	if !ok {
 		fmt.Println(
 			"Bot不存在",
 		)
 		return
 	}
+	botsMu.Lock()
 	bot.Stopping = true
+	botsMu.Unlock()
 	conn, err := net.Dial(
 		"tcp",
 		bot.Addr,
 	)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("IPC 连接失败，强制结束:", err)
+		_ = bot.Process.Process.Kill()
 		return
 	}
 	defer conn.Close()
@@ -256,4 +329,17 @@ func stopBot(id int64) {
 		"停止请求发送:",
 		id,
 	)
+	select {
+	case <-bot.done:
+		fmt.Println(
+			"Bot已正常退出:",
+			id,
+		)
+	case <-time.After(5 * time.Second):
+		fmt.Println(
+			"Bot未在超时内退出，强制结束:",
+			id,
+		)
+		_ = bot.Process.Process.Kill()
+	}
 }

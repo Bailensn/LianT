@@ -8,34 +8,44 @@ import (
 )
 
 func StartDaemon() {
-	listener,err:=net.Listen(
+	// 启动 daemon 的单一安全入口：在 50000-60000 随机选一个可用端口。
+	base, err := startWSSProxy()
+	if err != nil {
+		panic(err)
+	}
+	publicBase = base
+	fmt.Println(
+		"安全入口:",
+		base,
+	)
+	listener, err := net.Listen(
 		"tcp",
 		"127.0.0.1:0",
 	)
-	if err!=nil{
+	if err != nil {
 		panic(err)
 	}
 	defer listener.Close()
-	err=saveServiceAddr(
+	err = saveServiceAddr(
 		listener.Addr().String(),
 	)
-	if err!=nil{
+	if err != nil {
 		panic(err)
 	}
 	fmt.Println(
 		"Service running:",
 		listener.Addr(),
 	)
-	running:=true
-	for running{
-		conn,err:=listener.Accept()
-		if err!=nil{
+	running := true
+	for running {
+		conn, err := listener.Accept()
+		if err != nil {
 			break
 		}
-		go func(){
-			stop:=handle(conn)
-			if stop{
-				running=false
+		go func() {
+			stop := handle(conn)
+			if stop {
+				running = false
 				listener.Close()
 			}
 		}()
@@ -48,14 +58,14 @@ func StartDaemon() {
 
 type Request struct {
 	Action string `json:"action"`
-	ID int64 `json:"id"`
+	ID     int64  `json:"id"`
 }
 
 func handle(conn net.Conn) bool {
 	defer conn.Close()
 	var req Request
-	err:=json.NewDecoder(conn).Decode(&req)
-	if err!=nil{
+	err := json.NewDecoder(conn).Decode(&req)
+	if err != nil {
 		return false
 	}
 	switch req.Action {
@@ -68,7 +78,10 @@ func handle(conn net.Conn) bool {
 	case "list":
 		sendBotList(conn)
 	case "daemon-stop":
-		if len(bots)>0 {
+		botsMu.RLock()
+		hasBots := len(bots) > 0
+		botsMu.RUnlock()
+		if hasBots {
 			sendBotList(conn)
 			return false
 		}

@@ -22,8 +22,8 @@ func serviceAddrPath() string {
 }
 
 func saveServiceAddr(addr string) error {
-	err:=initRuntime()
-	if err!=nil{
+	err := initRuntime()
+	if err != nil {
 		return err
 	}
 	return os.WriteFile(
@@ -33,18 +33,18 @@ func saveServiceAddr(addr string) error {
 	)
 }
 
-func readServiceAddr() (string,error){
-	data,err:=os.ReadFile(
+func readServiceAddr() (string, error) {
+	data, err := os.ReadFile(
 		serviceAddrPath(),
 	)
-	if err!=nil{
+	if err != nil {
 		return "",
-		err
+			err
 	}
-	return string(data),nil
+	return string(data), nil
 }
 
-func removeServiceAddr(){
+func removeServiceAddr() {
 	os.Remove(
 		serviceAddrPath(),
 	)

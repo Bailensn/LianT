@@ -73,9 +73,9 @@ func Run(
 
 	cfg := config.LoadConfig()
 	pref := tele.Settings{
-		Token: token,
+		Token:  token,
 		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
-		URL: cfg.Connect.Url,
+		URL:    cfg.Connect.Url,
 	}
 	if cfg.Proxy.Enabled {
 		proxy, pErr := url.Parse(cfg.Proxy.URL)
@@ -97,7 +97,7 @@ func Run(
 	cache := newChatCache()
 	b.Handle("/start", func(c tele.Context) error {
 		cache.remember(c.Chat())
-		wsssend(ws, wrapOutgoing(id, c))
+		wsssend(ws, wrapMessage(id, c, c.Text()))
 		return c.Send("欢迎使用本 Bot")
 	})
 	b.Handle(tele.OnText, func(c tele.Context) error {
@@ -108,11 +108,11 @@ func Run(
 			if sender != nil && sender.Username != "" {
 				name = sender.Username
 			}
-			wsssend(ws, wrapOutgoingText(id, c, name+"发送了不存在的指令"))
+			wsssend(ws, wrapMessage(id, c, name+"发送了不存在的指令"))
 			return c.Send("指令不存在")
 		}
 		cache.remember(c.Chat())
-		wsssend(ws, wrapOutgoing(id, c))
+		wsssend(ws, wrapMessage(id, c, c.Text()))
 		return nil
 	})
 	// 非文本消息：遍历 mediaSupport 统一注册。有文件换下载链接转发 client，
@@ -138,14 +138,14 @@ func wsssend(s *wss.Server, msg string) {
 }
 
 type wsElement struct {
-	BotID string `json:"bot_id,omitempty"`
-	UserID string `json:"user_id,omitempty"`
-	Type string `json:"type,omitempty"`
+	BotID   string `json:"bot_id,omitempty"`
+	UserID  string `json:"user_id,omitempty"`
+	Type    string `json:"type,omitempty"`
 	Content string `json:"content,omitempty"`
 }
 
 type chatCache struct {
-	mu sync.Mutex
+	mu    sync.Mutex
 	chats map[int64]*tele.Chat
 }
 
@@ -182,25 +182,17 @@ func wrapElement(key, val string) wsElement {
 }
 
 func encodePayload(elems []wsElement) string {
-	inner, _ := json.Marshal(elems)
+	inner, err := json.Marshal(elems)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "编码下行消息失败:", err)
+		return ""
+	}
 	return base64.StdEncoding.EncodeToString(inner)
 }
 
-func wrapOutgoing(botID int64, c tele.Context) string {
-	uid := int64(0)
-	if s := c.Sender(); s != nil {
-		uid = s.ID
-	}
-	text := c.Text()
-	return encodePayload([]wsElement{
-		wrapElement("bot_id", strconv.FormatInt(botID, 10)),
-		wrapElement("user_id", strconv.FormatInt(uid, 10)),
-		wrapElement("type", "text"),
-		wrapElement("content", base64.StdEncoding.EncodeToString([]byte(text))),
-	})
-}
-
-func wrapOutgoingText(botID int64, c tele.Context, text string) string {
+// wrapMessage 生成一条下行的文本消息，text 需为明文。
+// 统一了原先重复的 wrapOutgoing / wrapOutgoingText。
+func wrapMessage(botID int64, c tele.Context, text string) string {
 	uid := int64(0)
 	if s := c.Sender(); s != nil {
 		uid = s.ID
@@ -213,8 +205,8 @@ func wrapOutgoingText(botID int64, c tele.Context, text string) string {
 	})
 }
 
-// wrapOutgoingMedia 生成下行消息：媒体的下载链接推给 client。
-// type=媒体类型(photo/video/...)，content=base64(下载链接)。
+// wrapOutgoingMedia 生成下行消息：媒体的一次性代理下载链接推给 client。
+// type=媒体类型(photo/video/...)，content=base64(代理下载链接)。
 func wrapOutgoingMedia(botID int64, c tele.Context, msgType string, dlURL string) string {
 	uid := int64(0)
 	if s := c.Sender(); s != nil {
@@ -313,7 +305,9 @@ func extractMediaFile(name string, m *tele.Message) *tele.File {
 	return nil
 }
 
-// fileDownloadURL 用 file_id 调 Telegram API 换取 file_path，拼出公开可下载的 URL。
+// fileDownloadURL 用 file_id 调 Telegram API 换取 file_path，拼出真实可下载的地址。
+// 注意：真实地址里含 bot token，仅供服务端使用，永不直接下发给客户端。
+// 对外请通过 wss.RegisterFile 换取代理地址。
 func fileDownloadURL(b *tele.Bot, file *tele.File) (string, error) {
 	f, err := b.FileByID(file.FileID)
 	if err != nil {
@@ -322,11 +316,33 @@ func fileDownloadURL(b *tele.Bot, file *tele.File) (string, error) {
 	if f.FilePath == "" {
 		return "", errors.New("未获取到文件路径")
 	}
+	cfg := config.LoadConfig()
+	base := cfg.Connect.Url
+	if base == "" {
+		base = "https://api.telegram.org"
+	}
 	return fmt.Sprintf(
-		"https://api.telegram.org/file/bot%s/%s",
+		"%s/file/bot%s/%s",
+		strings.TrimRight(base, "/"),
 		b.Token,
 		f.FilePath,
 	), nil
+}
+
+// mediaHTTPClient 构造用于代理下载媒体的 HTTP 客户端，遵循配置里的代理设置。
+func mediaHTTPClient() *http.Client {
+	cfg := config.LoadConfig()
+	cl := &http.Client{}
+	if cfg.Proxy.Enabled {
+		proxy, err := url.Parse(cfg.Proxy.URL)
+		if err != nil {
+			return cl
+		}
+		cl.Transport = &http.Transport{
+			Proxy: http.ProxyURL(proxy),
+		}
+	}
+	return cl
 }
 
 // unrecognizedReply 在 Telegram 端答复一句蓝字自动回复提示。
@@ -350,7 +366,7 @@ func forwardMedia(b *tele.Bot, botID int64, cc *chatCache, ws *wss.Server, c tel
 	if file == nil {
 		// 无法识别：答复蓝字提示 + 下行按普通文本转发，不传媒体 base64。
 		unrecognizedReply(c)
-		wsssend(ws, wrapOutgoingText(botID, c, "该消息类型无法被识别"))
+		wsssend(ws, wrapMessage(botID, c, "该消息类型无法被识别"))
 		return
 	}
 	dlURL, err := fileDownloadURL(b, file)
@@ -358,7 +374,13 @@ func forwardMedia(b *tele.Bot, botID int64, cc *chatCache, ws *wss.Server, c tel
 		fmt.Fprintln(os.Stderr, "获取文件下载链接失败:", err)
 		return
 	}
-	wsssend(ws, wrapOutgoingMedia(botID, c, name, dlURL))
+	// 用一次性代理地址对外下发，避免暴露真实地址里的 bot token。
+	proxied, err := ws.RegisterFile(dlURL, mediaHTTPClient())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "登记媒体代理失败:", err)
+		return
+	}
+	wsssend(ws, wrapOutgoingMedia(botID, c, name, proxied))
 }
 
 func decodeIncoming(raw string) ([]map[string]json.RawMessage, error) {
