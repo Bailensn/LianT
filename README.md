@@ -7,9 +7,9 @@
 
 **许可证：AGPL-3.0**（[LICENSE](LICENSE)）——改过的版本对外提供网络服务时，必须公开源码，详见[许可证](#许可证)一节。
 
-单文件 Go 程序，不需要公网 IP、域名或 HTTPS 回调 —— 用 Telegram Bot API 长轮询收消息；
-Bot token 存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个 Bot 有独立业务库。
-网页后台用同一套 UI 管理所有 Bot，平台适配层已接入 `telegram` 和 `qq`（qbot 的 QQ 网关/卡片/入群/禁言能力）。
+单文件 Go 程序：平台接入走各自的官方 API / 网关，不需要公网 IP、域名或 HTTPS 回调；
+Bot 凭据存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个 Bot 有独立业务库。
+网页后台用同一套 UI 管理所有 Bot —— 平台差异收在 `platform.Adapter` 里，当前已接入 `telegram` 和 `qq`。
 
 设计取向上参考了 [LensnTeam/LianT](https://github.com/LensnTeam/LianT)：Bot 管理、自托管、SQLite、网页后台。
 
@@ -30,15 +30,15 @@ Bot token 存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个
 - **违禁词**：命中后撤回 / 禁言 / 踢出 / 封禁 / 拉黑 / 警告回复，全部写审计。
 - **群内指令**：中文「禁言 @某人 10分钟」「把张三踢了」和 `/mute`、`/ban`、`/del` 都支持。
 - **成员处置**：禁言、解禁、踢出（可重新加入）、封禁、解封、撤回单条/批量。
-- **黑名单**：本地拦截 + Telegram 封禁，解除时自动解封。
-- **入群**：欢迎语（`{name}` / `{username}` / `{chat}`）、入群申请自动通过或留在 Telegram 里人工审批。
+- **黑名单**：本地拦截 + 平台封禁（平台支持时），解除时自动解封。
+- **入群**：欢迎语（`{name}` / `{username}` / `{chat}`）、入群申请自动通过或留在平台侧人工审批。
 - **网页后台**：总览、群组、消息、群发、入群审批、规则、违禁词、管理员、禁言、黑名单、
   群工具、Bot 资料、Bot API/文件上传、审计、设置；支持搜索、筛选、明暗主题。
-- **多 Bot**：一个任务进程跑 N 个 Bot（Telegram 长轮询/webhook + QQ WebSocket 网关）；注册表在 `LianT.db`，每个 Bot 的业务库在 `bots/<id>.db`。
-- **平台兼容层**：`platform.Adapter` 统一身份校验与能力声明；Telegram 和 QQ 共用同一套后台与业务库。
-- **QQ 原生能力**：群消息、Markdown 卡片、入群审批、禁言、群信息、成员列表、黑名单（视 QQ 白名单权限）。
+- **多 Bot**：一个任务进程跑 N 个 Bot，接入方式由平台适配器决定（长轮询 / Webhook / WebSocket）；注册表在 `LianT.db`，每个 Bot 的业务库在 `bots/<id>.db`。
+- **平台兼容层**：`platform.Adapter` 统一身份校验与能力声明；所有平台共用同一套后台与业务库。
+- **平台原生能力**：QQ 适配器提供群消息、Markdown 卡片、入群审批、禁言、群信息、成员列表、黑名单（视 QQ 白名单权限）；能力缺口由 `Capabilities` 在 UI 里隐藏。
 - **单文件 + SQLite**：纯 Go 驱动（`modernc.org/sqlite`），不需要 cgo/gcc，方便手机和 arm 机器。
-- **收消息**：Telegram 默认长轮询（无需公网/证书），也可 webhook + 密钥；QQ 走官方 WebSocket 网关。
+- **收消息**：各适配器自带接入方式——Telegram 默认长轮询（无需公网/证书），也可 webhook + 密钥；QQ 走官方 WebSocket 网关。
 - **媒体与交互**：图片/文件/视频/音频/语音/贴纸/动图/位置/投票/骰子、相册、按钮回调、话题、置顶、编辑消息。
 - **内联查询**：`@机器人 关键词` 返回配置好的结果（`inline_results`）。
 - **Bot API 全覆盖**：管理端「Bot API」页可直接调用任意 Bot API 方法，并支持上传本地文件
@@ -61,7 +61,7 @@ Bot token 存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个
               admin.html（浏览器/手机）
                     │
                     ▼
-        Telegram Bot API（每个 Bot 独立 token / 轮询或 webhook）
+        平台 API / 网关（每个 Bot 独立凭据；长轮询 / webhook / WebSocket 由适配器决定）
 ```
 
 - **主进程**：`LianT`，只发指令（start/stop/status/logs/admin/bot…），随时开关不影响机器人。
@@ -134,7 +134,7 @@ go build -trimpath -ldflags "-s -w" -o LianT .          # 根入口
 ## 群内指令
 
 **触发规则**：整条消息本身就是指令才生效，普通聊天里出现「禁言」不会被误判。
-管理指令仅 **后台管理员** 或 **Telegram 群管理员** 可用（可在网页按群关掉后者）。
+管理指令仅 **后台管理员** 或 **群管理员**（平台提供管理员信息时）可用，可在网页里按群关掉后者。
 
 | 场景 | 用法 |
 | --- | --- |
@@ -203,7 +203,7 @@ QQ Bot 直接发原生 Markdown 卡片。Telegram 没有等价消息类型，Lia
 标题加粗、正文保留换行、`**加粗**`、`- 列表`、行内代码和 http(s) 链接会被转换；
 后台「最近消息」仍按卡片气泡显示（以 `## 标题` 存储），所以发送完刷新不会变成纯文本。
 
-## Webhook（可选，仅 Telegram）
+## Webhook（可选；当前由 Telegram 适配器提供）
 
 QQ 使用 WebSocket 网关，不需要 webhook。
 
@@ -324,7 +324,7 @@ type Adapter interface {
 | `LianT db` | 注册表统计 |
 | `LianT reply [文本]` | 干跑回复规则（不发消息） |
 | `LianT reload` | 同步 Bot 注册表、启动新增 Bot、请求重连 |
-| `LianT reconnect` | 尽快重连 Telegram |
+| `LianT reconnect` | 尽快重连当前 Bot（各平台按适配器处理） |
 | `LianT path` | 打印所有路径 |
 | `LianT run` | 前台运行（调试，日志打屏） |
 
@@ -365,7 +365,11 @@ type Adapter interface {
 备份：拷整个 `LianT-data/`（注册表 + 所有 Bot 业务库），或单个 Bot 用网页「设置 → 导出 JSON 配置」。
 升级旧版时，第一次添加 Bot 会自动把旧 `LianT.db` 里的单 Bot 业务数据复制到 `bots/<id>.db`（原库保留）。
 
-## QQ 侧限制
+## 平台限制
+
+各平台的能力差异由 `platform.Capabilities` 声明，这里只记接入时的硬限制。
+
+### QQ
 
 - 凭据是 **AppID + AppSecret**，在网页后台选平台 `qq` 后自适应显示两个字段；同样加密存储。
 - QQ 消息主动发送有频控；卡片消息用 QQ Markdown，长度上限约 2000 字。
@@ -373,7 +377,7 @@ type Adapter interface {
 - 入群审批、群信息、成员列表、黑名单接口需要 QQ 平台白名单；常见错误码 `11253`。
 - 群成员列表/群信息不可用时，后台仍可从机器人见过的成员名册里选人。
 
-## Telegram 侧限制
+### Telegram
 
 - 机器人必须是群管理员才能撤回他人消息、禁言、封禁；否则 Telegram 返回 `not enough rights`。
 - 撤回只对 **48 小时内**的消息有效。
@@ -434,8 +438,8 @@ LianT/
 
 ## 说明
 
-LianT 是一个 Telegram 群管理机器人，不是 Telegram 客户端，也不使用用户账号；
-所有操作都通过官方 Bot API 完成。请遵守 Telegram 服务条款和所在群组规则。
+LianT 是一个自托管的群管理机器人，不是任何平台的客户端，也不使用用户账号；
+所有操作都通过各平台官方 Bot API / 网关完成。请遵守对应平台的服务条款和所在群组规则。
 
 ## 许可证
 
