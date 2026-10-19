@@ -841,12 +841,15 @@
   }
   function botStateTone(b) {
     if (!b) return "muted";
+    if (b.online || b.state === "在线" || b.state === "已连接") return "ok";
+    if (b.state) return "warn";
     if (b.running) return "ok";
     if (b.enabled) return "warn";
     return "muted";
   }
   function botStateText(b) {
     if (!b) return "未选择";
+    if (b.state) return b.state;
     if (b.running) return "运行中";
     return b.enabled ? "未运行" : "已停用";
   }
@@ -890,7 +893,7 @@
     }
     let pick = String(preferID || state.botID || store.get("liant_bot", ""));
     let bot = state.bots.find(b => String(b.id) === pick);
-    if (!bot) bot = state.bots.find(b => b.running) || state.bots.find(b => b.enabled) || state.bots[0];
+    if (!bot) bot = state.bots.find(b => b.online) || state.bots.find(b => b.running) || state.bots.find(b => b.enabled) || state.bots[0];
     state.botID = bot ? String(bot.id) : "";
     if (state.botID) store.set("liant_bot", state.botID);
     else store.del("liant_bot");
@@ -987,7 +990,7 @@
   async function renderBots() {
     await loadBots();
     const total = state.bots.length;
-    const running = state.bots.filter(b => b.running).length;
+    const online = state.bots.filter(b => b.online || b.state === "在线" || b.state === "已连接").length;
     const platforms = [...new Set(state.bots.map(b => b.platform_name || b.platform || "telegram"))];
     const cards = state.bots.map(b => {
       const caps = b.capabilities || {};
@@ -1002,7 +1005,7 @@
         caps.topics ? "话题" : "", caps.join_approval ? "入群" : "",
         caps.webhook ? "Webhook" : ""
       ].filter(Boolean).slice(0, 4);
-      return `<article class="bot-card ${b.running ? "is-running" : ""}" data-act="enter-bot" data-id="${esc(b.id)}" aria-label="进入 ${esc(name)}">
+      return `<article class="bot-card ${(b.online || b.state === "在线" || b.state === "已连接") ? "is-running" : ""}" data-act="enter-bot" data-id="${esc(b.id)}" aria-label="进入 ${esc(name)}">
         <div class="bot-card-top">
           <span class="platform-tag platform-${esc(platform)}">${esc(b.platform_name || platform)}</span>
           <span class="bot-card-state ${tone}"><i></i>${esc(stateText)}</span>
@@ -1055,7 +1058,7 @@
         <p class="launcher-lede">每个 Bot 有独立数据库、规则和成员。进入工作台后，再处理群、消息、违禁词和审计。</p>
         <div class="launcher-stats">
           <div><strong>${total}</strong><span>Bot</span></div>
-          <div><strong>${running}</strong><span>运行中</span></div>
+          <div><strong>${online}</strong><span>在线</span></div>
           <div><strong>${platforms.length}</strong><span>平台</span></div>
         </div>
       </section>
@@ -1065,7 +1068,7 @@
       <footer class="launcher-foot">
         <span>${state.platforms.map(p => p.name).join(" · ") || "Telegram"}</span>
         <span>凭据存入 SQLite · AES-256-GCM 加密</span>
-        <span>${total ? running + " / " + total + " 运行中" : "等待第一个 Bot"}</span>
+        <span>${total ? online + " / " + total + " 在线" : "等待第一个 Bot"}</span>
       </footer>
     </div>`;
   }

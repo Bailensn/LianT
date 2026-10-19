@@ -328,8 +328,10 @@ func (m *Manager) List() ([]View, error) {
 	out := make([]View, 0, len(recs))
 	for _, rec := range recs {
 		v := View{BotRec: rec, Running: false}
-		if _, ok := m.items[rec.ID]; ok {
+		if rt, ok := m.items[rec.ID]; ok {
 			v.Running = true
+			v.State = runtimeState(rt)
+			v.Online = isOnlineState(v.State)
 		}
 		v.TokenSet = rec.Token != ""
 		if ad := platform.Get(rec.Platform); ad != nil {
@@ -344,10 +346,40 @@ func (m *Manager) List() ([]View, error) {
 // View 是管理端用的 Bot 视图（不返回 token 明文）。
 type View struct {
 	store.BotRec
-	Running      bool                `json:"running"`
+	Running      bool                `json:"running"` // 进程里有这个运行时（不代表已经连上）
+	Online       bool                `json:"online"`  // 平台连接真的建立了（在线/已连接）
+	State        string              `json:"state"`   // 运行时自报的状态文本
 	TokenSet     bool                `json:"token_set"`
 	PlatformName string              `json:"platform_name"`
 	Capabilities platform.Capabilities `json:"capabilities"`
+}
+
+// runtimeState 取运行时自报的状态文本（bot.Status()/q.Status() 的 bot_state）。
+func runtimeState(rt *Runtime) string {
+	if rt == nil {
+		return ""
+	}
+	if rt.Bot != nil {
+		if st := rt.Bot.Status(); st != nil {
+			return st["bot_state"]
+		}
+	}
+	if rt.QQ != nil {
+		if st := rt.QQ.Status(); st != nil {
+			return st["bot_state"]
+		}
+	}
+	return ""
+}
+
+// isOnlineState 把各平台的「真连上了」统一成一个判断：
+// Telegram 用「在线」，QQ 用「已连接」。
+func isOnlineState(state string) bool {
+	switch strings.TrimSpace(state) {
+	case "在线", "已连接":
+		return true
+	}
+	return false
 }
 
 // migrateLegacyTo 第一次启动最低 ID 的 Bot 时，把旧单 Bot 注册表库里的业务数据复制过来。
