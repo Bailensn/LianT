@@ -390,7 +390,10 @@ LianT/
 │   ├── manager/            多 Bot 注册表与运行时管理器
 │   ├── qqbot/              QQ 网关/业务运行时（qbot 移植）
 │   ├── admin/              网页管理端（admin.go + qbot_compat.go）
-│   │   └── web/admin.html  后台页面（qbot 同款 UI）
+│   │   └── web/            后台页面（qbot 同款 UI）
+│   │       ├── admin.html  页面骨架
+│   │       ├── admin.css   样式
+│   │       └── admin.js    前端逻辑
 │   ├── store/              SQLite 存储层（注册表 + 每 Bot 业务库）
 │   ├── rules/              回复规则 + 违禁词引擎（纯逻辑）
 │   ├── config/             配置、路径、.env

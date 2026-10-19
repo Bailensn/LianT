@@ -12,18 +12,25 @@ import (
 )
 
 // ============================================================================
-// 管理页面的 HTML
+// 管理页面的 HTML / CSS / JS
 //
-//   * 真正的 .html 文件：internal/admin/web/admin.html（编辑器里能高亮/格式化）
-//   * 编译时用 go:embed 打一份进去兜底，磁盘上找不到文件也能用
-//   * 运行时优先读磁盘上的 admin.html（改完刷新即生效，不用重编译）：
+//   * 真正的文件：internal/admin/web/admin.html、admin.css、admin.js
+//   * 编译时用 go:embed 各打一份进去兜底，磁盘上找不到文件也能用
+//   * 运行时优先读磁盘（改完刷新即生效，不用重编译）：
 //       LIANT_ADMIN_HTML
 //         > 当前目录/admin.html            > 当前目录/internal/admin/web/admin.html（在源码目录里跑时）
 //         > 可执行文件旁/admin.html
+//     css/js 与命中的 html 同目录。
 // ============================================================================
 
 //go:embed web/admin.html
 var HTMLEmbedded string
+
+//go:embed web/admin.css
+var CSSEmbedded string
+
+//go:embed web/admin.js
+var JSEmbedded string
 
 var (
 	adminHTMLMu      sync.Mutex
@@ -92,4 +99,37 @@ func LoadAdminHTML() (string, string) {
 	adminHTMLCache, adminHTMLPath = HTMLEmbedded, "内置(internal/admin/web/admin.html)"
 	adminHTMLMu.Unlock()
 	return HTMLEmbedded, "内置(internal/admin/web/admin.html)"
+}
+
+// AdminAssetCandidates 返回 css/js 的磁盘候选位置：与 admin.html 同目录。
+func AdminAssetCandidates(name string) []string {
+	htmls := AdminHTMLCandidates()
+	out := make([]string, 0, len(htmls))
+	for _, p := range htmls {
+		out = append(out, filepath.Join(filepath.Dir(p), name))
+	}
+	return out
+}
+
+// LoadAdminAsset 返回 css/js 的内容和来源（文件路径或 "内置"）。
+// 磁盘上有就跟 HTML 一样热更新；没有就回落到编译进去的那份。
+func LoadAdminAsset(name string) (string, string) {
+	for _, p := range AdminAssetCandidates(name) {
+		st, err := os.Stat(p)
+		if err != nil || st.IsDir() {
+			continue
+		}
+		b, err := os.ReadFile(p)
+		if err != nil || len(b) == 0 {
+			continue
+		}
+		return string(b), p
+	}
+	switch name {
+	case "admin.css":
+		return CSSEmbedded, "内置(internal/admin/web/admin.css)"
+	case "admin.js":
+		return JSEmbedded, "内置(internal/admin/web/admin.js)"
+	}
+	return "", ""
 }

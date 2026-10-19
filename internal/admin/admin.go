@@ -230,6 +230,14 @@ func (a *Server) Handler() http.Handler {
 			a.ServeUI(w, r)
 			return
 		}
+		switch p {
+		case "/admin.css":
+			a.ServeAsset(w, r, "admin.css", "text/css; charset=utf-8")
+			return
+		case "/admin.js":
+			a.ServeAsset(w, r, "admin.js", "application/javascript; charset=utf-8")
+			return
+		}
 		if !strings.HasPrefix(p, "/api/") {
 			http.NotFound(w, r)
 			return
@@ -1420,6 +1428,18 @@ func (a *Server) ServeUI(w http.ResponseWriter, r *http.Request) {
 	html, _ := LoadAdminHTML()
 	page := strings.ReplaceAll(html, "__BASE_PATH__", jsString(a.BasePath(r)))
 	_, _ = w.Write([]byte(page))
+}
+
+// ServeAsset 输出管理页面的 css/js；和 HTML 一样优先读磁盘（改完刷新即生效）。
+func (a *Server) ServeAsset(w http.ResponseWriter, r *http.Request, name, contentType string) {
+	body, _ := LoadAdminAsset(name)
+	if name == "admin.js" {
+		body = strings.ReplaceAll(body, "__BASE_PATH__", jsString(a.BasePath(r)))
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write([]byte(body))
 }
 
 func jsString(s string) string {
