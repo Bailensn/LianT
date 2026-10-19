@@ -75,7 +75,8 @@ cp config/.env.example .env
 
 ```sh
 go mod tidy
-go build -trimpath -ldflags "-s -w" -o LianT .
+go build -trimpath -ldflags "-s -w" -o LianT .          # 根入口
+# 或：go build -trimpath -ldflags "-s -w" -o LianT ./cmd/liant
 ```
 
 > 只需要 Go 1.27+（依赖 modernc.org/sqlite 要求 1.26+），不需要 gcc/cgo。Windows 编译出来是 `LianT.exe`。
@@ -326,20 +327,23 @@ type Adapter interface {
 
 ```
 LianT/
-├── main.go                 CLI / 控制台 / 进程拉起
+├── main.go                 薄入口（保留 `go build .`）
+├── cmd/liant/main.go       标准入口（`go build ./cmd/liant`）
 ├── internal/
-│   ├── cfg/                配置、路径、.env
+│   ├── app/                CLI 主进程（start/stop/status/bot…）
 │   ├── platform/           平台兼容层（Adapter/Capabilities）+ telegram 适配器
-│   ├── tg/                 Telegram Bot API 客户端（长轮询/消息/成员/禁言）
+│   ├── telegram/           Telegram Bot API 客户端（长轮询/消息/成员/禁言）
 │   ├── bot/                业务：事件循环、规则、指令、处置动作
 │   ├── manager/            多 Bot 注册表与运行时管理器
-│   ├── admin/              网页管理端（admin.go + admin.html）
+│   ├── admin/              网页管理端（admin.go + qbot_compat.go）
+│   │   └── web/admin.html  后台页面（qbot 同款 UI）
 │   ├── store/              SQLite 存储层（注册表 + 每 Bot 业务库）
 │   ├── rules/              回复规则 + 违禁词引擎（纯逻辑）
+│   ├── config/             配置、路径、.env
 │   ├── daemon/             任务进程装配
 │   ├── ipc/                主进程 ↔ 任务进程协议
-│   ├── logfile/            日志轮转
-│   └── proc/               独立会话拉起
+│   ├── logging/            日志轮转
+│   └── process/            独立会话拉起
 ├── config/.env.example
 └── docs/
 ```

@@ -13,9 +13,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"LianT/internal/cfg"
+	"LianT/internal/config"
 	"LianT/internal/store"
-	"LianT/internal/tg"
+	"LianT/internal/telegram"
 )
 
 // ============================================================================
@@ -51,8 +51,8 @@ type Bot struct {
 	startedAt time.Time
 
 	mu      sync.RWMutex
-	client  *tg.Client
-	me      tg.User
+	client  *telegram.Client
+	me      telegram.User
 	state   string
 	lastErr string
 
@@ -113,7 +113,7 @@ type RecentMsg struct {
 const RecentKeep = 200
 
 // Classify 把 Telegram 消息归类（只用于日志/审计/撤回提示）。
-func Classify(m *tg.Message) string {
+func Classify(m *telegram.Message) string {
 	if m == nil {
 		return "other"
 	}
@@ -179,7 +179,7 @@ func KindLabel(kind string) string {
 	return ""
 }
 
-func (b *Bot) remember(m *tg.Message) {
+func (b *Bot) remember(m *telegram.Message) {
 	if m == nil || m.MessageID == 0 {
 		return
 	}
@@ -359,7 +359,7 @@ func (b *Bot) run() error {
 		}
 		return fmt.Errorf("%s 未配置 Token：请在网页后台「机器人」里填写", name)
 	}
-	c, err := tg.New(token, cfg.APIBase(), cfg.Proxy())
+	c, err := telegram.New(token, config.APIBase(), config.Proxy())
 	if err != nil {
 		return err
 	}
@@ -372,7 +372,7 @@ func (b *Bot) run() error {
 	b.client, b.me = c, me
 	b.mu.Unlock()
 
-	log.Printf("[OK] 已连接 @%s（ID %d，API %s）", me.Username, me.ID, cfg.APIBase())
+	log.Printf("[OK] 已连接 @%s（ID %d，API %s）", me.Username, me.ID, config.APIBase())
 	b.registerCommands(c)
 	b.setState("在线")
 	b.setLastErr("")
@@ -405,7 +405,7 @@ func (b *Bot) run() error {
 			if b.Stopped() {
 				return nil
 			}
-			if ae, ok := err.(*tg.APIError); ok && ae.Code == 409 {
+			if ae, ok := err.(*telegram.APIError); ok && ae.Code == 409 {
 				log.Printf("[!] getUpdates 409：存在 webhook，自动删除后重试")
 				_ = c.DeleteWebhook(false)
 				time.Sleep(2 * time.Second)
@@ -433,7 +433,7 @@ func (b *Bot) run() error {
 	}
 }
 
-func (b *Bot) registerCommands(c *tg.Client) {
+func (b *Bot) registerCommands(c *telegram.Client) {
 	cmds := []map[string]string{
 		{"command": "start", "description": "启动 / 查看机器人状态"},
 		{"command": "help", "description": "查看可用指令"},
@@ -459,7 +459,7 @@ func (b *Bot) registerCommands(c *tg.Client) {
 
 // ---------------- 事件分发 ----------------
 
-func (b *Bot) handleUpdate(c *tg.Client, u tg.Update) {
+func (b *Bot) handleUpdate(c *telegram.Client, u telegram.Update) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[X] 处理更新 panic: %v", r)
@@ -522,7 +522,7 @@ func (b *Bot) handleUpdate(c *tg.Client, u tg.Update) {
 //   del:<message_id>
 //   mute:<user_id>:<seconds>
 //   unmute:<user_id> / ban:<user_id> / unban:<user_id>
-func (b *Bot) handleCallbackQuery(c *tg.Client, q *tg.CallbackQuery) {
+func (b *Bot) handleCallbackQuery(c *telegram.Client, q *telegram.CallbackQuery) {
 	if q == nil {
 		return
 	}
@@ -622,7 +622,7 @@ func (b *Bot) handleCallbackQuery(c *tg.Client, q *tg.CallbackQuery) {
 }
 
 // handleInlineQuery 处理 @机器人 的内联查询：把 settings.inline_results 的每行作为一条结果。
-func (b *Bot) handleInlineQuery(c *tg.Client, q *tg.InlineQuery) {
+func (b *Bot) handleInlineQuery(c *telegram.Client, q *telegram.InlineQuery) {
 	if q == nil {
 		return
 	}
@@ -683,7 +683,7 @@ func allowedUpdates() []string {
 }
 
 // runWebhook 走 webhook 模式（需要公网 HTTPS），收到更新后交给 handleUpdate。
-func (b *Bot) runWebhook(c *tg.Client) error {
+func (b *Bot) runWebhook(c *telegram.Client) error {
 	if err := c.SetWebhook(b.cfg.WebhookURL, b.cfg.WebhookSecret, allowedUpdates()); err != nil {
 		return fmt.Errorf("设置 webhook 失败: %w", err)
 	}
@@ -704,7 +704,7 @@ func (b *Bot) runWebhook(c *tg.Client) error {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		var u tg.Update
+		var u telegram.Update
 		if err := json.Unmarshal(body, &u); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
@@ -730,7 +730,7 @@ func (b *Bot) runWebhook(c *tg.Client) error {
 	}
 }
 
-func (b *Bot) handleMessage(c *tg.Client, m *tg.Message) {
+func (b *Bot) handleMessage(c *telegram.Client, m *telegram.Message) {
 	if m == nil || m.From == nil {
 		return
 	}
@@ -756,7 +756,7 @@ func (b *Bot) handleMessage(c *tg.Client, m *tg.Message) {
 	b.handlePrivateMessage(c, m, chatID, userID)
 }
 
-func (b *Bot) handlePrivateMessage(c *tg.Client, m *tg.Message, chatID, userID string) {
+func (b *Bot) handlePrivateMessage(c *telegram.Client, m *telegram.Message, chatID, userID string) {
 	if b.st != nil && b.st.IsBlacklisted("", userID) {
 		log.Printf("[blacklist] 私聊用户 %s 在黑名单，忽略", userID)
 		return
@@ -778,7 +778,7 @@ func (b *Bot) handlePrivateMessage(c *tg.Client, m *tg.Message, chatID, userID s
 	b.reply(c, m, res.Text, 0)
 }
 
-func (b *Bot) handleGroupMessage(c *tg.Client, m *tg.Message, chatID, userID string) {
+func (b *Bot) handleGroupMessage(c *telegram.Client, m *telegram.Message, chatID, userID string) {
 	if b.st == nil {
 		return
 	}
@@ -860,7 +860,7 @@ func (b *Bot) handleGroupMessage(c *tg.Client, m *tg.Message, chatID, userID str
 	})
 }
 
-func (b *Bot) handleNewMembers(c *tg.Client, m *tg.Message, chatID string) {
+func (b *Bot) handleNewMembers(c *telegram.Client, m *telegram.Message, chatID string) {
 	for _, u := range m.NewChatMembers {
 		role := "member"
 		if u.ID == b.me.ID {
@@ -883,7 +883,7 @@ func (b *Bot) handleNewMembers(c *tg.Client, m *tg.Message, chatID string) {
 	}
 }
 
-func (b *Bot) handleMyChatMember(ev *tg.ChatMemberUpdated) {
+func (b *Bot) handleMyChatMember(ev *telegram.ChatMemberUpdated) {
 	chatID := chatIDStr(ev.Chat.ID)
 	status := ev.NewChatMember.Status
 	log.Printf("[bot] 机器人状态变化 chat=%s(%s): %s → %s", chatID, ev.Chat.Display(), ev.OldChatMember.Status, status)
@@ -907,7 +907,7 @@ func (b *Bot) handleMyChatMember(ev *tg.ChatMemberUpdated) {
 	}
 }
 
-func (b *Bot) handleChatMember(ev *tg.ChatMemberUpdated) {
+func (b *Bot) handleChatMember(ev *telegram.ChatMemberUpdated) {
 	if b.st == nil || !ev.Chat.IsGroup() {
 		return
 	}
@@ -930,7 +930,7 @@ func (b *Bot) handleChatMember(ev *tg.ChatMemberUpdated) {
 	}
 }
 
-func (b *Bot) handleJoinRequest(c *tg.Client, req *tg.ChatJoinRequest) {
+func (b *Bot) handleJoinRequest(c *telegram.Client, req *telegram.ChatJoinRequest) {
 	chatID := chatIDStr(req.Chat.ID)
 	userID := chatIDStr(req.From.ID)
 	log.Printf("[入群申请] 群=%s 用户=%s(%s) 验证=%q", chatID, req.From.Display(), userID, req.Bio)
@@ -959,14 +959,14 @@ func (b *Bot) handleJoinRequest(c *tg.Client, req *tg.ChatJoinRequest) {
 
 // ---------------- 发送 ----------------
 
-func (b *Bot) clientOrNil() *tg.Client {
+func (b *Bot) clientOrNil() *telegram.Client {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return b.client
 }
 
 // reply 异步回复某条消息（失败只写日志）。
-func (b *Bot) reply(c *tg.Client, m *tg.Message, text string, replyTo int64) {
+func (b *Bot) reply(c *telegram.Client, m *telegram.Message, text string, replyTo int64) {
 	if strings.TrimSpace(text) == "" || m == nil {
 		return
 	}
@@ -980,7 +980,7 @@ func (b *Bot) reply(c *tg.Client, m *tg.Message, text string, replyTo int64) {
 				log.Printf("[X] 回复 panic: %v", r)
 			}
 		}()
-		out, err := c.SendMessage(chatID, text, tg.SendOptions{ReplyTo: replyTo})
+		out, err := c.SendMessage(chatID, text, telegram.SendOptions{ReplyTo: replyTo})
 		if err != nil {
 			log.Printf("[X] 回复失败: %v", err)
 			return
@@ -997,7 +997,7 @@ func (b *Bot) SendNow(chatID, text string, replyTo int64) (int64, error) {
 	if c == nil {
 		return 0, errors.New("机器人尚未连接")
 	}
-	out, err := c.SendMessage(chatID, text, tg.SendOptions{ReplyTo: replyTo})
+	out, err := c.SendMessage(chatID, text, telegram.SendOptions{ReplyTo: replyTo})
 	if err != nil {
 		return 0, err
 	}
@@ -1008,7 +1008,7 @@ func (b *Bot) SendNow(chatID, text string, replyTo int64) (int64, error) {
 }
 
 // SendMessageOpt 发文本并支持回复/话题/按钮/解析模式（网页后台用）。
-func (b *Bot) SendMessageOpt(chatID, text string, opt tg.SendOptions) (int64, error) {
+func (b *Bot) SendMessageOpt(chatID, text string, opt telegram.SendOptions) (int64, error) {
 	c := b.clientOrNil()
 	if c == nil {
 		return 0, errors.New("机器人尚未连接")
@@ -1024,7 +1024,7 @@ func (b *Bot) SendMessageOpt(chatID, text string, opt tg.SendOptions) (int64, er
 }
 
 // SendMediaNow 发媒体消息（网页后台用）。
-func (b *Bot) SendMediaNow(chatID, kind, media, caption string, opt tg.SendOptions) (int64, error) {
+func (b *Bot) SendMediaNow(chatID, kind, media, caption string, opt telegram.SendOptions) (int64, error) {
 	c := b.clientOrNil()
 	if c == nil {
 		return 0, errors.New("机器人尚未连接")
@@ -1046,7 +1046,7 @@ func (b *Bot) SendText(scope, chatID, userID string, msgID int64, text string) {
 		return
 	}
 	go func() {
-		out, err := c.SendMessage(chatID, text, tg.SendOptions{ReplyTo: msgID})
+		out, err := c.SendMessage(chatID, text, telegram.SendOptions{ReplyTo: msgID})
 		if err != nil {
 			log.Printf("[X] 发送失败: %v", err)
 			return
@@ -1074,7 +1074,7 @@ func (b *Bot) Status() map[string]string {
 		"reconnects": strconv.FormatInt(atomic.LoadInt64(&b.reconnects), 10),
 		"uptime":     time.Since(b.startedAt).Round(time.Second).String(),
 		"platform":   platformOr(b.cfg.Platform),
-		"api_base":   cfg.APIBase(),
+		"api_base":   config.APIBase(),
 		"mode":       mode,
 		"bot_name":   b.cfg.Name,
 	}
@@ -1091,7 +1091,7 @@ func (b *Bot) Status() map[string]string {
 	return d
 }
 
-func (b *Bot) Me() tg.User {
+func (b *Bot) Me() telegram.User {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return b.me
@@ -1138,7 +1138,7 @@ func (b *Bot) saveOffset(n int64) {
 // ---------------- 角色缓存 ----------------
 
 // memberRole 取群成员角色（admin/owner/member），带 5 分钟缓存。
-func (b *Bot) memberRole(c *tg.Client, chatID, userID string) string {
+func (b *Bot) memberRole(c *telegram.Client, chatID, userID string) string {
 	key := chatID + ":" + userID
 	b.roleMu.Lock()
 	if e, ok := b.roleCache[key]; ok && time.Since(e.at) < 5*time.Minute {
@@ -1165,7 +1165,7 @@ func (b *Bot) memberRole(c *tg.Client, chatID, userID string) string {
 }
 
 // RefreshGroupAdmin 查询机器人在群里的管理员状态并回写 groups 表。
-func (b *Bot) RefreshGroupAdmin(c *tg.Client, chatID string) (bool, error) {
+func (b *Bot) RefreshGroupAdmin(c *telegram.Client, chatID string) (bool, error) {
 	if b.st == nil || c == nil || b.me.ID == 0 {
 		return false, errors.New("未连接")
 	}
@@ -1228,7 +1228,7 @@ func (b *Bot) webhookPath() string {
 
 func chatIDStr(id int64) string { return strconv.FormatInt(id, 10) }
 
-func chatLabel(c tg.Chat) string {
+func chatLabel(c telegram.Chat) string {
 	switch c.Type {
 	case "private":
 		return "私聊"
@@ -1254,7 +1254,7 @@ func errText(err error) string {
 	if err == nil {
 		return ""
 	}
-	var ae *tg.APIError
+	var ae *telegram.APIError
 	if errors.As(err, &ae) {
 		if h := ae.Hint(); h != "" {
 			return ae.Description + "（" + h + "）"
@@ -1297,4 +1297,4 @@ func (b *Bot) RefreshAllGroups(pause time.Duration) {
 }
 
 // Client 返回当前 Telegram 客户端（未连接时为 nil），供管理端查询群信息用。
-func (b *Bot) Client() *tg.Client { return b.clientOrNil() }
+func (b *Bot) Client() *telegram.Client { return b.clientOrNil() }

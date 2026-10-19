@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"LianT/internal/cfg"
+	"LianT/internal/config"
 	"LianT/internal/platform"
-	"LianT/internal/tg"
+	tgclient "LianT/internal/telegram"
 )
 
 type adapter struct{}
@@ -31,7 +31,7 @@ func (adapter) ValidateToken(token string) (platform.Identity, error) {
 	if token == "" {
 		return platform.Identity{}, fmt.Errorf("token 不能为空")
 	}
-	c, err := tg.New(token, cfg.APIBase(), cfg.Proxy())
+	c, err := tgclient.New(token, config.APIBase(), config.Proxy())
 	if err != nil {
 		return platform.Identity{}, err
 	}

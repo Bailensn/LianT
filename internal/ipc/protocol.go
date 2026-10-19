@@ -1,7 +1,7 @@
 package ipc
 
 import (
-	"LianT/internal/cfg"
+	"LianT/internal/config"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -36,7 +36,7 @@ func CallAt(addr, cmd string, args map[string]string, timeout time.Duration) (*R
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(timeout))
 
-	if err := json.NewEncoder(conn).Encode(Request{V: cfg.ProtocolVersion, Cmd: cmd, Args: args}); err != nil {
+	if err := json.NewEncoder(conn).Encode(Request{V: config.ProtocolVersion, Cmd: cmd, Args: args}); err != nil {
 		return nil, err
 	}
 	var resp Response
@@ -50,25 +50,25 @@ func CallAt(addr, cmd string, args map[string]string, timeout time.Duration) (*R
 // 先用当前配置的端口探测，失败再看 runtime 文件里记录的端口（主进程与任务进程
 // 的 LIANT_PORT 不一致时也能找到）。
 func FindDaemonAddr() (string, bool) {
-	if resp, err := CallAt(cfg.ControlAddr(), "ping", nil, 1200*time.Millisecond); err == nil && resp.OK {
-		return cfg.ControlAddr(), true
+	if resp, err := CallAt(config.ControlAddr(), "ping", nil, 1200*time.Millisecond); err == nil && resp.OK {
+		return config.ControlAddr(), true
 	}
-	if info, ok := cfg.ReadRuntimeInfo(); ok {
+	if info, ok := config.ReadRuntimeInfo(); ok {
 		addr := fmt.Sprintf("127.0.0.1:%d", info.Port)
-		if addr != cfg.ControlAddr() {
+		if addr != config.ControlAddr() {
 			if resp, err := CallAt(addr, "ping", nil, 1200*time.Millisecond); err == nil && resp.OK {
 				return addr, true
 			}
 		}
 	}
-	return cfg.ControlAddr(), false
+	return config.ControlAddr(), false
 }
 
 // DaemonStatus 任务进程是否在跑；在跑则返回它的状态数据。
 func DaemonStatus() (bool, string, map[string]string) {
 	addr, ok := FindDaemonAddr()
 	if !ok {
-		return false, cfg.ControlAddr(), nil
+		return false, config.ControlAddr(), nil
 	}
 	resp, err := CallAt(addr, "status", nil, 5*time.Second)
 	if err != nil || resp == nil {

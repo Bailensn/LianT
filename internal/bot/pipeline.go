@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"LianT/internal/cfg"
+	"LianT/internal/config"
 	"LianT/internal/rules"
 )
 
@@ -76,7 +76,7 @@ func (b *Bot) InvalidateRules() {
 // ReplyInfo 状态快照（规则/违禁词/数据库）。
 func (b *Bot) ReplyInfo() map[string]string {
 	group, _, words := b.Rules()
-	dbFile := cfg.DBPath
+	dbFile := config.DBPath
 	if b.cfg.DBFile != "" {
 		dbFile = b.cfg.DBFile
 	}

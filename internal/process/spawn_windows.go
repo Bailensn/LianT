@@ -1,6 +1,6 @@
 //go:build windows
 
-package proc
+package process
 
 import (
 	"os"
@@ -36,8 +36,8 @@ func SpawnDetached(exe string, args []string, logFile string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	pid := proc.Pid
-	_ = proc.Release()
+	pid := process.Pid
+	_ = process.Release()
 	return pid, nil
 }
 

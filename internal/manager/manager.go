@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"LianT/internal/bot"
-	"LianT/internal/cfg"
+	"LianT/internal/config"
 	"LianT/internal/platform"
 	_ "LianT/internal/platform/telegram"
 	"LianT/internal/rules"
@@ -48,7 +48,7 @@ func (m *Manager) Registry() *store.Store { return m.reg }
 
 // BotDBPath 返回某个 Bot 的业务库路径。
 func BotDBPath(id int64) string {
-	return filepath.Join(cfg.DataDir, "bots", fmt.Sprintf("%d.db", id))
+	return filepath.Join(config.DataDir, "bots", fmt.Sprintf("%d.db", id))
 }
 
 // StartAll 启动所有 enabled 的 Bot（任务进程启动时调用一次）。

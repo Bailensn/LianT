@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"LianT/internal/store"
-	"LianT/internal/tg"
+	"LianT/internal/telegram"
 )
 
 // ============================================================================
@@ -399,7 +399,7 @@ func (b *Bot) CommandAllowed(ctx CommandContext) bool {
 }
 
 // handleCommand 尝试把消息当指令执行；返回 (是否已处理, 回复)。
-func (b *Bot) handleCommand(c *tg.Client, m *tg.Message, chatID, userID, role string) (bool, string) {
+func (b *Bot) handleCommand(c *telegram.Client, m *telegram.Message, chatID, userID, role string) (bool, string) {
 	if b.st == nil {
 		return false, ""
 	}
@@ -434,7 +434,7 @@ func (b *Bot) handleCommand(c *tg.Client, m *tg.Message, chatID, userID, role st
 }
 
 // handleSlashCommand 处理 /mute /ban 等 Telegram 风格命令。
-func (b *Bot) handleSlashCommand(c *tg.Client, m *tg.Message, cctx CommandContext) (bool, string) {
+func (b *Bot) handleSlashCommand(c *telegram.Client, m *telegram.Message, cctx CommandContext) (bool, string) {
 	cmd, rest := splitSlash(m.Content())
 	cmd = strings.ToLower(cmd)
 	switch cmd {
@@ -559,7 +559,7 @@ func (b *Bot) handleSlashCommand(c *tg.Client, m *tg.Message, cctx CommandContex
 }
 
 // RunGroupCommand 执行中文指令。
-func (b *Bot) RunGroupCommand(cctx CommandContext, intent CmdIntent, m *tg.Message, quoted *Quote) string {
+func (b *Bot) RunGroupCommand(cctx CommandContext, intent CmdIntent, m *telegram.Message, quoted *Quote) string {
 	actor := cctx.Username
 	switch intent.Action {
 	case "help":
@@ -673,7 +673,7 @@ func (b *Bot) RunGroupCommand(cctx CommandContext, intent CmdIntent, m *tg.Messa
 }
 
 // recallByReply 处理"撤回"：优先回复的那条，其次目标最后一条，最后上一条。
-func (b *Bot) recallByReply(cctx CommandContext, m *tg.Message, rest string) string {
+func (b *Bot) recallByReply(cctx CommandContext, m *telegram.Message, rest string) string {
 	count := ParseRecallCount(m.Content())
 	raw := strings.ToLower(m.Content())
 	wantBot := strings.Contains(raw, "机器人") || strings.Contains(raw, "你")
@@ -753,7 +753,7 @@ func splitSlash(text string) (string, string) {
 	return cmd, rest
 }
 
-func quoteFrom(m *tg.Message) *Quote {
+func quoteFrom(m *telegram.Message) *Quote {
 	if m == nil || m.ReplyToMessage == nil || m.ReplyToMessage.From == nil {
 		return nil
 	}
@@ -761,7 +761,7 @@ func quoteFrom(m *tg.Message) *Quote {
 	return &Quote{UserID: chatIDStr(u.ID), Username: u.Display()}
 }
 
-func (b *Bot) mentionsFrom(m *tg.Message, chatID string) ([]Mention, string) {
+func (b *Bot) mentionsFrom(m *telegram.Message, chatID string) ([]Mention, string) {
 	var out []Mention
 	var firstUsername string
 	for _, e := range m.Entities {

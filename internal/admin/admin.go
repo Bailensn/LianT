@@ -16,11 +16,11 @@ import (
 	"time"
 
 	"LianT/internal/bot"
-	"LianT/internal/cfg"
+	"LianT/internal/config"
 	"LianT/internal/manager"
 	"LianT/internal/platform"
 	"LianT/internal/store"
-	"LianT/internal/tg"
+	"LianT/internal/telegram"
 )
 
 // ============================================================================
@@ -76,7 +76,7 @@ type chatView struct {
 	LastText   string `json:"last_text,omitempty"`
 }
 
-func ListenAddr() string { return cfg.AdminAddr() }
+func ListenAddr() string { return config.AdminAddr() }
 
 func NormalizePrefix(p string) string {
 	p = strings.TrimSpace(p)
@@ -91,10 +91,10 @@ func NormalizePrefix(p string) string {
 
 // TokenSource 返回管理端 token 以及它的来源。
 func TokenSource(st *store.Store) (string, string) {
-	if v := strings.TrimSpace(cfg.AdminToken()); v != "" {
+	if v := strings.TrimSpace(config.AdminToken()); v != "" {
 		return v, "环境变量 LIANT_ADMIN_TOKEN"
 	}
-	if v, ok := cfg.EnvFile().Lookup("LIANT_ADMIN_TOKEN"); ok && strings.TrimSpace(v) != "" {
+	if v, ok := config.EnvFile().Lookup("LIANT_ADMIN_TOKEN"); ok && strings.TrimSpace(v) != "" {
 		return strings.TrimSpace(v), ".env 文件"
 	}
 	if st == nil {
@@ -126,7 +126,7 @@ func RandomToken(n int) string {
 
 // Start 启动管理端；返回 nil 表示没启动。
 func Start(m *manager.Manager, reg *store.Store) *Server {
-	if strings.EqualFold(cfg.EnvOr("LIANT_ADMIN_ENABLE", "true"), "false") {
+	if strings.EqualFold(config.EnvOr("LIANT_ADMIN_ENABLE", "true"), "false") {
 		log.Printf("[i] 网页管理端已按 LIANT_ADMIN_ENABLE=false 关闭")
 		return nil
 	}
@@ -138,14 +138,14 @@ func Start(m *manager.Manager, reg *store.Store) *Server {
 	}
 	a := &Server{
 		m: m, reg: reg, token: tok,
-		prefix: NormalizePrefix(cfg.AdminPrefix()),
+		prefix: NormalizePrefix(config.AdminPrefix()),
 		addr:   ListenAddr(),
 	}
 	host := a.addr
 	if i := strings.LastIndex(a.addr, ":"); i > 0 {
 		host = a.addr[:i]
 	}
-	loopback := cfg.IsLoopbackHost(host) || host == ""
+	loopback := config.IsLoopbackHost(host) || host == ""
 	if a.token == "" && !loopback {
 		log.Printf("[X] 管理端绑在 %s（非回环）但没有 token，出于安全拒绝启动。请设 LIANT_ADMIN_TOKEN 或改回 127.0.0.1", a.addr)
 		return nil
@@ -318,7 +318,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			"recent":   []store.AuditRec{},
 			"cmd_help": bot.HelpText(),
 			"no_bot":   true,
-			"db_file":  cfg.DBPath,
+			"db_file":  config.DBPath,
 			"admin_url": a.addr + a.prefix,
 		})
 		return
@@ -348,7 +348,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		if _, src := TokenSource(reg); src != "" {
 			tokenSource = src
 		}
-		dbFile := cfg.DBPath
+		dbFile := config.DBPath
 		if rt != nil {
 			dbFile = manager.BotDBPath(rt.Rec.ID)
 		}
@@ -902,7 +902,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		if kind == "" {
 			kind = "text"
 		}
-		opt := tg.SendOptions{ThreadID: in.ThreadID, ParseMode: strings.TrimSpace(in.ParseMode)}
+		opt := telegram.SendOptions{ThreadID: in.ThreadID, ParseMode: strings.TrimSpace(in.ParseMode)}
 		type oneResult struct {
 			ChatID string `json:"chat_id"`
 			OK     bool   `json:"ok"`
@@ -1050,7 +1050,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			return
 		}
 
-		opt := tg.SendOptions{
+		opt := telegram.SendOptions{
 			ReplyTo:        in.ReplyTo,
 			ThreadID:       in.ThreadID,
 			ParseMode:      strings.TrimSpace(in.ParseMode),
@@ -1182,7 +1182,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			ApiErr(w, 400, "缺少文件: "+err.Error())
 			return
 		}
-		tmp, err := os.CreateTemp(cfg.DataDir, "LianT-upload-*")
+		tmp, err := os.CreateTemp(config.DataDir, "LianT-upload-*")
 		if err != nil {
 			_ = file.Close()
 			ApiErr(w, 500, "创建临时文件失败: "+err.Error())
@@ -1298,7 +1298,7 @@ func tgErr(err error) string {
 	if err == nil {
 		return ""
 	}
-	var ae *tg.APIError
+	var ae *telegram.APIError
 	if ok := asAPIError(err, &ae); ok {
 		if h := ae.Hint(); h != "" {
 			return ae.Description + "（" + h + "）"
@@ -1308,9 +1308,9 @@ func tgErr(err error) string {
 	return err.Error()
 }
 
-func asAPIError(err error, target **tg.APIError) bool {
+func asAPIError(err error, target **telegram.APIError) bool {
 	for err != nil {
-		if e, ok := err.(*tg.APIError); ok {
+		if e, ok := err.(*telegram.APIError); ok {
 			*target = e
 			return true
 		}

@@ -1,4 +1,4 @@
-package logfile
+package logging
 
 import (
 	"bytes"

@@ -119,7 +119,7 @@ ALTER TABLE admins RENAME COLUMN member_openid TO user_id;
 1. **抽平台包**：把 qbot 的 `internal/qq` 包装成 `internal/platform/qq`，实现 `Adapter` 与 QQ runtime。
 2. **统一数据模型**：按上表重命名列；业务库沿用 LianT schema。
 3. **统一管理 API**：qbot 的 admin 路由改成 LianT 这套 `/api/*` 契约（至少实现上表）。
-4. **复用 UI**：直接使用 `internal/admin/admin.html`；每个按钮先看 `capabilities`。
+4. **复用 UI**：直接使用 `internal/admin/web/admin.html`；每个按钮先看 `capabilities`。
 5. **注册多 Bot**：`bots` 表加 `platform='qq'`，token 存 AppID/AppSecret 的组合或平台自定义格式。
 6. **能力开关**：QQ 隐藏 inline/topics/webhook/payments；保留入群审批/禁言/撤回。
 

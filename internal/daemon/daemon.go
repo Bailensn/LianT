@@ -15,11 +15,11 @@ import (
 	"time"
 
 	"LianT/internal/admin"
-	"LianT/internal/cfg"
+	"LianT/internal/config"
 	"LianT/internal/ipc"
-	"LianT/internal/logfile"
+	"LianT/internal/logging"
 	"LianT/internal/manager"
-	"LianT/internal/proc"
+	"LianT/internal/process"
 	"LianT/internal/store"
 )
 
@@ -38,26 +38,26 @@ var DaemonStartedAt = time.Now()
 func Run(args []string) int {
 	console := HasFlag(args, "console") || os.Getenv("LIANT_CONSOLE") == "1"
 
-	w, err := logfile.Setup(cfg.LogPath, console)
+	w, err := logging.Setup(config.LogPath, console)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[X] 打开日志文件失败 %s: %v\n", cfg.LogPath, err)
+		fmt.Fprintf(os.Stderr, "[X] 打开日志文件失败 %s: %v\n", config.LogPath, err)
 		return 1
 	}
 	defer w.Close()
 
 	DaemonStartedAt = time.Now()
 	log.Printf("============ LianT 任务进程启动 pid=%d ============", os.Getpid())
-	log.Printf("[i] 数据目录: %s", cfg.DataDir)
-	log.Printf("[i] 日志文件: %s", cfg.LogPath)
+	log.Printf("[i] 数据目录: %s", config.DataDir)
+	log.Printf("[i] 日志文件: %s", config.LogPath)
 
-	if !cfg.FileExists(cfg.EnvPath) && cfg.EnsureDotEnvTemplate(cfg.EnvPath) {
-		log.Printf("[i] 已生成 .env 模板: %s（只放路径/端口；Bot token 在 SQLite 里）", cfg.EnvPath)
+	if !config.FileExists(config.EnvPath) && config.EnsureDotEnvTemplate(config.EnvPath) {
+		log.Printf("[i] 已生成 .env 模板: %s（只放路径/端口；Bot token 在 SQLite 里）", config.EnvPath)
 	}
-	log.Printf("[i] 配置文件(.env): %s", cfg.EnvPath)
-	log.Printf("[i] 注册表数据库: %s", cfg.DBPath)
+	log.Printf("[i] 配置文件(.env): %s", config.EnvPath)
+	log.Printf("[i] 注册表数据库: %s", config.DBPath)
 
 	// ---- 注册表（bots 表 + admin token 等全局设置） ----
-	reg, err := store.Open(cfg.DBPath)
+	reg, err := store.Open(config.DBPath)
 	if err != nil {
 		log.Printf("[X] 打开注册表数据库失败: %v", err)
 		return 1
@@ -72,7 +72,7 @@ func Run(args []string) int {
 	migrateLegacyToken(mgr, reg)
 
 	// ---- 单例锁：控制端口 ----
-	addr := cfg.ControlAddr()
+	addr := config.ControlAddr()
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Printf("[!] 控制端口 %s 已被占用：已有一个任务进程在运行，本次启动放弃。", addr)
@@ -82,23 +82,23 @@ func Run(args []string) int {
 	}
 	defer ln.Close()
 
-	info := cfg.RuntimeInfo{
-		Version: cfg.ProtocolVersion, PID: os.Getpid(), Port: cfg.ControlPort(),
-		DataDir: cfg.DataDir, LogPath: cfg.LogPath,
+	info := config.RuntimeInfo{
+		Version: config.ProtocolVersion, PID: os.Getpid(), Port: config.ControlPort(),
+		DataDir: config.DataDir, LogPath: config.LogPath,
 		StartedAt: DaemonStartedAt.Format(time.RFC3339),
 	}
 	if exe, err := os.Executable(); err == nil {
 		info.Executable = exe
 	}
-	if err := cfg.WriteRuntimeInfo(info); err != nil {
+	if err := config.WriteRuntimeInfo(info); err != nil {
 		log.Printf("[!] 写 runtime 文件失败: %v", err)
 	}
-	_ = os.WriteFile(cfg.PIDPath, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o644)
+	_ = os.WriteFile(config.PIDPath, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o644)
 
-	proc.IgnoreHangup()
+	process.IgnoreHangup()
 	log.Printf("[OK] 控制端口就绪: %s", addr)
-	log.Printf("[i] Telegram API: %s | 代理: %s", cfg.APIBase(), maskProxy(cfg.Proxy()))
-	if !cfg.IsLoopbackHost(cfg.ControlHost()) {
+	log.Printf("[i] Telegram API: %s | 代理: %s", config.APIBase(), maskProxy(config.Proxy()))
+	if !config.IsLoopbackHost(config.ControlHost()) {
 		log.Printf("[!] 警告：控制端口绑在 %s（非回环），同网段的人可以控制这些机器人；建议改回 LIANT_BIND=127.0.0.1", addr)
 	}
 
@@ -118,8 +118,8 @@ func Run(args []string) int {
 				adm.Close()
 			}
 			mgr.StopAll()
-			_ = os.Remove(cfg.RuntimePath)
-			_ = os.Remove(cfg.PIDPath)
+			_ = os.Remove(config.RuntimePath)
+			_ = os.Remove(config.PIDPath)
 			log.Printf("[OK] 任务进程已退出")
 			close(done)
 		})
@@ -155,7 +155,7 @@ func migrateLegacyToken(mgr *manager.Manager, reg *store.Store) {
 	}
 	token := strings.TrimSpace(os.Getenv("LIANT_BOT_TOKEN"))
 	if token == "" {
-		if v, ok := cfg.EnvFile().Lookup("LIANT_BOT_TOKEN"); ok {
+		if v, ok := config.EnvFile().Lookup("LIANT_BOT_TOKEN"); ok {
 			token = strings.TrimSpace(v)
 		}
 	}
@@ -206,18 +206,18 @@ func DispatchControl(req ipc.Request, mgr *manager.Manager) (ipc.Response, bool)
 	switch cmd {
 	case "", "ping":
 		return ipc.Response{OK: true, Msg: "pong", Data: map[string]string{
-			"pid": strconv.Itoa(os.Getpid()), "port": strconv.Itoa(cfg.ControlPort()),
-			"protocol": strconv.Itoa(cfg.ProtocolVersion), "app": cfg.AppVersion,
+			"pid": strconv.Itoa(os.Getpid()), "port": strconv.Itoa(config.ControlPort()),
+			"protocol": strconv.Itoa(config.ProtocolVersion), "app": config.AppVersion,
 			"bots": strconv.Itoa(len(views)), "running": strconv.Itoa(running),
 		}}, false
 
 	case "status":
 		data := map[string]string{
-			"pid": strconv.Itoa(os.Getpid()), "port": strconv.Itoa(cfg.ControlPort()),
-			"protocol": strconv.Itoa(cfg.ProtocolVersion), "app": cfg.AppVersion,
-			"data_dir": cfg.DataDir, "log_path": cfg.LogPath, "env_file": cfg.EnvPath,
-			"db_file": cfg.DBPath, "admin_addr": admin.ListenAddr(),
-			"admin_prefix": admin.NormalizePrefix(cfg.AdminPrefix()),
+			"pid": strconv.Itoa(os.Getpid()), "port": strconv.Itoa(config.ControlPort()),
+			"protocol": strconv.Itoa(config.ProtocolVersion), "app": config.AppVersion,
+			"data_dir": config.DataDir, "log_path": config.LogPath, "env_file": config.EnvPath,
+			"db_file": config.DBPath, "admin_addr": admin.ListenAddr(),
+			"admin_prefix": admin.NormalizePrefix(config.AdminPrefix()),
 			"started_at": DaemonStartedAt.Format("2006-01-02 15:04:05"),
 			"bots": strconv.Itoa(len(views)), "running": strconv.Itoa(running),
 		}

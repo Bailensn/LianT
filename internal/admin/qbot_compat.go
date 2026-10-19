@@ -11,7 +11,7 @@ import (
 	"LianT/internal/bot"
 	"LianT/internal/manager"
 	"LianT/internal/store"
-	"LianT/internal/tg"
+	"LianT/internal/telegram"
 )
 
 // ============================================================================
@@ -625,7 +625,7 @@ func (c *qctx) chatSend(w http.ResponseWriter, r *http.Request, method string) {
 	text := content
 	if strings.TrimSpace(in.Title) != "" { text = strings.TrimSpace(in.Title) + "\n\n" + content }
 	if len([]rune(text)) > 4000 { ApiErr(w, 400, "消息内容太长（最多 4000 字）"); return }
-	id, err := c.b.SendMessageOpt(in.GroupOpenID, text, tg.SendOptions{})
+	id, err := c.b.SendMessageOpt(in.GroupOpenID, text, telegram.SendOptions{})
 	if err != nil { ApiErr(w, 502, err.Error()); return }
 	ApiOK(w, map[string]interface{}{"id": id, "group_openid": in.GroupOpenID, "format": "text"})
 }
