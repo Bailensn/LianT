@@ -2123,7 +2123,7 @@ body::before{ background:radial-gradient(45% 70% at 84% -10%,var(--glow-a),trans
     const isQQ = platform === "qq";
     return `
       ${fieldHTML("平台", selectHTML("platform", platforms.map(p => [p.id, p.name]), platform), "Telegram 用 Bot Token；QQ 用 AppID + AppSecret")}
-      ${fieldHTML("名称", inputHTML("name", { value: b.name || "", placeholder: "主 Bot", maxlength: 60 }))}
+      ${fieldHTML("显示名称", inputHTML("name", { value: b.name || "", placeholder: "留空自动用平台 Bot 名称", maxlength: 60 }), isEdit ? "留空保留现有名称" : "留空自动使用平台 Bot 名称（QQ 用 AppID）")}
       <div class="span-2" data-cred-wrap>
         <div data-cred="telegram" ${isQQ ? "hidden" : ""}>
           ${fieldHTML("Bot Token", inputHTML("token", { type: "password", value: "", placeholder: isEdit ? "留空 = 不修改" : "123456789:AA…", autocomplete: false }), isEdit ? "留空保留原 token" : "必填；AES-256-GCM 加密存储")}

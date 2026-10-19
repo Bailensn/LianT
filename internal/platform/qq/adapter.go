@@ -29,7 +29,7 @@ func (adapter) ValidateToken(token string) (platform.Identity, error) {
 	id, secret, ok := strings.Cut(token, ":")
 	id, secret = strings.TrimSpace(id), strings.TrimSpace(secret)
 	if !ok || id == "" || secret == "" {
-		return platform.Identity{}, fmt.Errorf("QQ token 格式应为 AppID:AppSecret")
+		return platform.Identity{}, fmt.Errorf("QQ 凭据格式应为 AppID:AppSecret")
 	}
 	for _, ch := range id {
 		if ch < '0' || ch > '9' {

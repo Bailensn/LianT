@@ -544,13 +544,16 @@ func cmdBot(args []string) int {
 		}
 		ident, err := ad.ValidateToken(token)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[X] %s token 校验失败（检查凭据、网络或代理）: %v\n", plat, err)
+			label := "Telegram token"
+			if plat == "qq" {
+				label = "QQ AppID/AppSecret"
+			}
+			fmt.Fprintf(os.Stderr, "[X] %s 校验失败（检查凭据、网络或代理）: %v\n", label, err)
 			return 1
 		}
 		if name == "" {
-			if plat == "qq" {
-				name = ident.Name
-			} else {
+			name = ident.Name
+			if strings.TrimSpace(name) == "" {
 				name = "@" + ident.Username
 			}
 		}

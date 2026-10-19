@@ -70,12 +70,12 @@ Bot token 存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个
 2. 添加时选平台 `qq`，分别填 AppID 和 AppSecret：
 
 ```sh
-./LianT bot add --platform qq "QQ 主 Bot"
+./LianT bot add --platform qq
 # QQ AppID: ...
 # QQ AppSecret: ...
 ```
 
-网页后台「机器人 → 添加 Bot」选 QQ，会自适应切换成 **AppID** + **AppSecret** 两个字段；Telegram 仍只填 Bot Token。
+网页后台「机器人 → 添加 Bot」选 QQ，会自适应切换成 **AppID** + **AppSecret** 两个字段；Telegram 仍只填 Bot Token。显示名称留空即可，Telegram 会用 `getMe` 的 Bot 名称，QQ 用 AppID 作为默认名称。
 
 QQ 网关是 WebSocket，不需要 webhook；入群审批、禁言、群信息/成员/黑名单接口是否可用取决于 QQ 平台给机器人开的权限（常见错误码 11253）。
 

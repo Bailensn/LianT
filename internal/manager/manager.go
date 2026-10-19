@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -101,10 +102,13 @@ func (m *Manager) Add(rec store.BotRec) (int64, error) {
 	}
 	ident, err := ad.ValidateToken(rec.Token)
 	if err != nil {
-		return 0, fmt.Errorf("Telegram token 校验失败（检查 token、网络或代理）: %w", err)
+		return 0, fmt.Errorf("%s 凭据校验失败（检查凭据、网络或代理）: %w", ad.Name(), err)
 	}
 	if rec.Name == "" {
-		rec.Name = "@" + ident.Username
+		rec.Name = ident.Name
+		if strings.TrimSpace(rec.Name) == "" {
+			rec.Name = "@" + ident.Username
+		}
 	}
 	rec.Username = ident.Username
 	rec.PlatformID = ident.ID
@@ -177,7 +181,7 @@ func (m *Manager) Update(rec store.BotRec) error {
 		}
 		ident, err := ad.ValidateToken(token)
 		if err != nil {
-			return fmt.Errorf("Telegram token 校验失败（检查 token、网络或代理）: %w", err)
+			return fmt.Errorf("%s 凭据校验失败（检查凭据、网络或代理）: %w", ad.Name(), err)
 		}
 		rec.Username = ident.Username
 		rec.PlatformID = ident.ID
@@ -410,7 +414,7 @@ func (m *Manager) start(rec store.BotRec) error {
 		appID, secret, ok := qqapi.SplitToken(rec.Token)
 		if !ok {
 			_ = st.Close()
-			return fmt.Errorf("QQ token 格式应为 AppID:AppSecret")
+			return fmt.Errorf("QQ 凭据格式应为 AppID:AppSecret")
 		}
 		q := qqbot.New(qqbot.Config{
 			AppID: appID, AppSecret: secret, Intents: (1 << 25) | (1 << 30),
