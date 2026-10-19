@@ -35,7 +35,12 @@ type Identity struct {
 }
 ```
 
-当前实现：`internal/platform/telegram`。
+当前实现：
+
+- `internal/platform/telegram`（Telegram Bot API）
+- `internal/platform/qq`（QQ 开放平台 API + Adapter）
+- `internal/qqbot`（QQ WebSocket 网关/业务运行时，从 qbot 移植）
+- `internal/platform/qq/store`（把 LianT 的 chat_id/user_id 库适配成 qbot 的 OpenID 视图）
 
 新增平台：
 
@@ -46,7 +51,7 @@ type Identity struct {
 
 ## 3. Capabilities
 
-| 能力 | Telegram | qbot / QQ（建议） |
+| 能力 | Telegram | QQ（已实现） |
 | --- | --- | --- |
 | `text` | ✅ | ✅ |
 | `media` | ✅ | ✅ |
@@ -61,7 +66,7 @@ type Identity struct {
 | `payments` | ✅ | ❌ |
 | `recall_48h` | ✅ | QQ 撤回窗口更短 |
 
-管理端根据这些字段显示/隐藏入口；例如 qbot 不会显示 Webhook、话题、内联、支付。
+管理端根据这些字段显示/隐藏入口；例如 QQ 不会显示 Webhook、话题、内联、支付。
 
 ## 4. 后台 API 契约
 
@@ -114,14 +119,21 @@ ALTER TABLE admins RENAME COLUMN member_openid TO user_id;
 
 或者保留旧列，在 adapter 层做视图/映射；但新代码只认 `chat_id` / `user_id`。
 
-## 6. qbot 合并步骤
+## 6. qbot 合并状态
 
-1. **抽平台包**：把 qbot 的 `internal/qq` 包装成 `internal/platform/qq`，实现 `Adapter` 与 QQ runtime。
-2. **统一数据模型**：按上表重命名列；业务库沿用 LianT schema。
-3. **统一管理 API**：qbot 的 admin 路由改成 LianT 这套 `/api/*` 契约（至少实现上表）。
-4. **复用 UI**：直接使用 `internal/admin/web/admin.html`；每个按钮先看 `capabilities`。
-5. **注册多 Bot**：`bots` 表加 `platform='qq'`，token 存 AppID/AppSecret 的组合或平台自定义格式。
-6. **能力开关**：QQ 隐藏 inline/topics/webhook/payments；保留入群审批/禁言/撤回。
+已完成：
+
+1. **平台包**：`internal/platform/qq` 实现 Adapter，`internal/qqbot` 跑 QQ WebSocket 网关。
+2. **数据模型**：QQ runtime 通过 `internal/platform/qq/store` 适配 LianT 的 `chat_id/user_id` 业务库，不维护第二套规则/群数据。
+3. **管理 API**：qbot 页面所需的 `chat/*`、`qq/*`、`groups`、`joins` 已在 `admin/qbot_compat.go` 中分支到 QQ runtime。
+4. **UI**：同一份 `admin/web/admin.html`，添加 Bot 时选 QQ，Token 填 `AppID:AppSecret`。
+5. **凭据**：QQ token 与 Telegram token 一样 AES-256-GCM 加密；一个进程可同时跑两种平台。
+6. **能力开关**：QQ 隐藏 inline/topics/webhook/payments；保留入群审批/禁言/撤回/卡片。
+
+后续：
+
+- 把 QQ 的 `QqResp` 错误码映射补全到 UI 提示（目前直接显示 `Hint()`）。
+- Discord 等新平台继续按 Adapter 接入。
 
 ## 7. 已知差异
 

@@ -19,6 +19,7 @@ import (
 	"LianT/internal/config"
 	"LianT/internal/manager"
 	"LianT/internal/platform"
+	"LianT/internal/qqbot"
 	"LianT/internal/store"
 	"LianT/internal/telegram"
 )
@@ -337,9 +338,18 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		rt, _ = a.m.First()
 	}
 	var b *bot.Bot
+	var qb *qqbot.Bot
 	var st *store.Store
 	if rt != nil {
-		b, st = rt.Bot, rt.Store
+		b, qb, st = rt.Bot, rt.QQ, rt.Store
+	}
+	invalidateRules := func() {
+		if b != nil {
+			b.InvalidateRules()
+		}
+		if qb != nil {
+			qb.InvalidateRules()
+		}
 	}
 	if route == "overview" && rt == nil {
 		ApiOK(w, map[string]interface{}{
@@ -360,7 +370,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 	}
 
 	// qbot 页面兼容层：qbot admin.html 使用 OpenID/MemberOpenID 字段。
-	if a.compat(w, r, route, method, rt, b, st) {
+	if a.compat(w, r, route, method, rt, b, qb, st) {
 		return
 	}
 
@@ -1012,7 +1022,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 					return
 				}
 			}
-			b.InvalidateRules()
+			invalidateRules()
 			ApiOK(w, "saved")
 		default:
 			ApiErr(w, 405, "不支持的方法")
@@ -1295,8 +1305,12 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		w.Header().Set("Content-Disposition", `attachment; filename="LianT-config.json"`)
 		_, _ = w.Write(buf)
 	case "reload":
-		_ = b.ReloadAll()
-		ApiOK(w, "已重载规则缓存与 Token，已请求重连 Telegram")
+		if b != nil {
+			_ = b.ReloadAll()
+		} else if qb != nil {
+			_ = qb.ReloadAll()
+		}
+		ApiOK(w, "已重载规则缓存与凭据，已请求重连")
 	case "help":
 		ApiOK(w, map[string]interface{}{"commands": bot.HelpText(), "actions": "禁言/解禁/踢出/封禁/撤回/规则/违禁词/管理员"})
 	default:

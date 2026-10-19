@@ -1,10 +1,10 @@
 # LianT
 
-**自托管的多 Bot 管理后台 + Telegram 群管理机器人。**
+**自托管的多 Bot 管理后台 + Telegram / QQ 群管理机器人。**
 
 单文件 Go 程序，不需要公网 IP、域名或 HTTPS 回调 —— 用 Telegram Bot API 长轮询收消息；
 Bot token 存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个 Bot 有独立业务库。
-网页后台用同一套 UI 管理所有 Bot，并通过平台适配层（`telegram` 目前；QQ/其他平台可扩展）复用。
+网页后台用同一套 UI 管理所有 Bot，平台适配层已接入 `telegram` 和 `qq`（qbot 的 QQ 网关/卡片/入群/禁言能力）。
 
 设计取向上参考了 [LensnTeam/LianT](https://github.com/LensnTeam/LianT)：Bot 管理、自托管、SQLite、网页后台。
 
@@ -20,10 +20,11 @@ Bot token 存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个
 - **入群**：欢迎语（`{name}` / `{username}` / `{chat}`）、入群申请自动通过或留在 Telegram 里人工审批。
 - **网页后台**：总览、群组、消息、群发、入群审批、规则、违禁词、管理员、禁言、黑名单、
   群工具、Bot 资料、Bot API/文件上传、审计、设置；支持搜索、筛选、明暗主题。
-- **多 Bot**：一个任务进程跑 N 个 Bot；注册表在 `LianT.db`，每个 Bot 的业务库在 `bots/<id>.db`。
-- **平台兼容层**：`platform.Adapter` 统一身份校验与能力声明；管理端按 capabilities 显示功能。
+- **多 Bot**：一个任务进程跑 N 个 Bot（Telegram 长轮询/webhook + QQ WebSocket 网关）；注册表在 `LianT.db`，每个 Bot 的业务库在 `bots/<id>.db`。
+- **平台兼容层**：`platform.Adapter` 统一身份校验与能力声明；Telegram 和 QQ 共用同一套后台与业务库。
+- **QQ 原生能力**：群消息、Markdown 卡片、入群审批、禁言、群信息、成员列表、黑名单（视 QQ 白名单权限）。
 - **单文件 + SQLite**：纯 Go 驱动（`modernc.org/sqlite`），不需要 cgo/gcc，方便手机和 arm 机器。
-- **两种收消息方式**：默认长轮询（无需公网/证书）；也可设 webhook + 密钥走公网回调。
+- **收消息**：Telegram 默认长轮询（无需公网/证书），也可 webhook + 密钥；QQ 走官方 WebSocket 网关。
 - **媒体与交互**：图片/文件/视频/音频/语音/贴纸/动图/位置/投票/骰子、相册、按钮回调、话题、置顶、编辑消息。
 - **内联查询**：`@机器人 关键词` 返回配置好的结果（`inline_results`）。
 - **Bot API 全覆盖**：管理端「Bot API」页可直接调用任意 Bot API 方法，并支持上传本地文件
@@ -62,6 +63,20 @@ Bot token 存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个
 1. Telegram 找 **@BotFather**，`/newbot` 拿到 token（形如 `123456789:AA...`）。
 2. 把机器人拉进群，设为**管理员**，至少勾选「删除消息」「封禁用户」。
 3. 想让机器人看到群里全部消息（而不只是 @ 它的）：@BotFather → `/setprivacy` → 选机器人 → **Disable**。
+
+### QQ Bot（可选）
+
+1. 在 QQ 开放平台创建机器人，拿 **AppID** 和 **AppSecret**。
+2. 添加时选平台 `qq`，凭据填成 `AppID:AppSecret`：
+
+```sh
+./LianT bot add --platform qq "QQ 主 Bot"
+# QQ AppID:AppSecret: ...
+```
+
+网页后台「机器人 → 添加 Bot」选 QQ，Token 填 `AppID:AppSecret` 也可以。
+
+QQ 网关是 WebSocket，不需要 webhook；入群审批、禁言、群信息/成员/黑名单接口是否可用取决于 QQ 平台给机器人开的权限（常见错误码 11253）。
 
 ### 2. 配置
 
@@ -169,11 +184,15 @@ Telegram 普通 @username 不带用户 ID，所以 LianT 会用本地名册（�
 
 ### 卡片消息
 
-qbot 的「卡片」在 Telegram 里没有等价消息类型。LianT 会把它转成 **HTML 富文本**发送：
+QQ Bot 直接发原生 Markdown 卡片。Telegram 没有等价消息类型，LianT 会把它转成 **HTML 富文本**发送：
 标题加粗、正文保留换行、`**加粗**`、`- 列表`、行内代码和 http(s) 链接会被转换；
 后台「最近消息」仍按卡片气泡显示（以 `## 标题` 存储），所以发送完刷新不会变成纯文本。
 
-## Webhook（可选）
+## Webhook（可选，仅 Telegram）
+
+QQ 使用 WebSocket 网关，不需要 webhook。
+
+
 
 Webhook 按 Bot 配置，在网页后台「机器人 → 编辑」里填写：
 
@@ -238,10 +257,10 @@ type Adapter interface {
 }
 ```
 
-- 当前实现：`internal/platform/telegram`。
+- 当前实现：`internal/platform/telegram` 和 `internal/platform/qq`；QQ 运行时在 `internal/qqbot`。
 - 管理端所有页面通过 `/api/bots` 拿到 `platform` 与 `capabilities`，据此显示/隐藏话题、邀请链接、内联、支付等入口。
-- 接入 qbot（QQ）或新平台时：实现一个 adapter、给 Bot 注册表加 `platform`，再用同一套 `admin.html` 与 `/api/*` 契约。
-- 合并 qbot 的字段映射与待办见 [docs/platforms.md](docs/platforms.md)。
+- 接入新平台时：实现一个 `platform.Adapter`，给 Bot 注册表加 `platform`，再用同一套 `admin.html` 与 `/api/*` 契约。
+- 字段映射与 QQ 合并细节见 [docs/platforms.md](docs/platforms.md)。
 
 ## 配置
 
@@ -276,7 +295,8 @@ type Adapter interface {
 | `LianT logs [行数] [-f]` | 看日志 |
 | `LianT admin` | 网页后台地址 + token |
 | `LianT bot list` | 列出 SQLite 里的 Bot |
-| `LianT bot add [名称]` | 交互输入 token，校验并添加 Bot（加密写入 SQLite） |
+| `LianT bot add [名称]` | 交互输入 token；加 `--platform qq` 添加 QQ |
+| `LianT bot platforms` | 查看已接入平台与能力 |
 | `LianT bot remove <id>` | 删除 Bot 注册（业务库保留） |
 | `LianT bot enable/disable <id>` | 启用/停用 Bot |
 | `LianT db` | 注册表统计 |
@@ -323,6 +343,14 @@ type Adapter interface {
 备份：拷整个 `LianT-data/`（注册表 + 所有 Bot 业务库），或单个 Bot 用网页「设置 → 导出 JSON 配置」。
 升级旧版时，第一次添加 Bot 会自动把旧 `LianT.db` 里的单 Bot 业务数据复制到 `bots/<id>.db`（原库保留）。
 
+## QQ 侧限制
+
+- 凭据是 `AppID:AppSecret`，在网页后台选平台 `qq` 添加；token 同样加密存储。
+- QQ 消息主动发送有频控；卡片消息用 QQ Markdown，长度上限约 2000 字。
+- 撤回他人消息需要机器人是群管理员，窗口约 2 分钟。
+- 入群审批、群信息、成员列表、黑名单接口需要 QQ 平台白名单；常见错误码 `11253`。
+- 群成员列表/群信息不可用时，后台仍可从机器人见过的成员名册里选人。
+
 ## Telegram 侧限制
 
 - 机器人必须是群管理员才能撤回他人消息、禁言、封禁；否则 Telegram 返回 `not enough rights`。
@@ -347,10 +375,13 @@ LianT/
 ├── cmd/liant/main.go       标准入口（`go build ./cmd/liant`）
 ├── internal/
 │   ├── app/                CLI 主进程（start/stop/status/bot…）
-│   ├── platform/           平台兼容层（Adapter/Capabilities）+ telegram 适配器
+│   ├── platform/           平台兼容层（Adapter/Capabilities）
+│   │   ├── telegram/       Telegram 适配器
+│   │   └── qq/             QQ 适配器 + QQ API + store 适配
 │   ├── telegram/           Telegram Bot API 客户端（长轮询/消息/成员/禁言）
 │   ├── bot/                业务：事件循环、规则、指令、处置动作
 │   ├── manager/            多 Bot 注册表与运行时管理器
+│   ├── qqbot/              QQ 网关/业务运行时（qbot 移植）
 │   ├── admin/              网页管理端（admin.go + qbot_compat.go）
 │   │   └── web/admin.html  后台页面（qbot 同款 UI）
 │   ├── store/              SQLite 存储层（注册表 + 每 Bot 业务库）
@@ -366,7 +397,7 @@ LianT/
 
 ## 路线图
 
-- [ ] qbot（QQ）平台适配器与统一事件模型
+- [x] qbot（QQ）平台适配器与统一事件模型
 - [ ] Discord / 其他平台 adapter
 - [ ] 规则模板变量与更细的匹配条件
 - [ ] 封禁/禁言到期自动解封的任务

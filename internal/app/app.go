@@ -370,15 +370,24 @@ func registryDBPath() string {
 }
 
 // botAddInput 解析 bot add 参数。推荐交互输入 token，避免 shell history/ps 泄漏。
-func botAddInput(args []string) (token, name string, err error) {
+func botAddInput(args []string) (token, name, platformID string, err error) {
+	platformID = "telegram"
 	var nameParts []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
+		case strings.HasPrefix(a, "--platform="):
+			platformID = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(a, "--platform=")))
+		case a == "--platform":
+			if i+1 >= len(args) {
+				return "", "", platformID, fmt.Errorf("--platform 后面缺少值")
+			}
+			i++
+			platformID = strings.ToLower(strings.TrimSpace(args[i]))
 		case a == "--token-stdin":
 			line, rerr := bufio.NewReader(os.Stdin).ReadString('\n')
 			if rerr != nil && strings.TrimSpace(line) == "" {
-				return "", "", fmt.Errorf("从 stdin 读取 token 失败: %w", rerr)
+				return "", "", platformID, fmt.Errorf("从 stdin 读取 token 失败: %w", rerr)
 			}
 			token = strings.TrimSpace(line)
 		case strings.HasPrefix(a, "--token="):
@@ -386,7 +395,7 @@ func botAddInput(args []string) (token, name string, err error) {
 			fmt.Fprintln(os.Stderr, "[!] --token 会留在 shell history；建议直接 LianT bot add 交互输入")
 		case a == "--token":
 			if i+1 >= len(args) {
-				return "", "", fmt.Errorf("--token 后面缺少值")
+				return "", "", platformID, fmt.Errorf("--token 后面缺少值")
 			}
 			i++
 			token = strings.TrimSpace(args[i])
@@ -406,16 +415,26 @@ func botAddInput(args []string) (token, name string, err error) {
 	if name == "" {
 		name = strings.Join(nameParts, " ")
 	}
+	if platformID == "" {
+		platformID = "telegram"
+	}
+	if platformID != "telegram" && platformID != "qq" {
+		return "", "", platformID, fmt.Errorf("平台只支持 telegram / qq")
+	}
 	if token == "" {
-		token, err = readSecretLine("Token: ")
+		label := "Token: "
+		if platformID == "qq" {
+			label = "QQ AppID:AppSecret: "
+		}
+		token, err = readSecretLine(label)
 		if err != nil && token == "" {
-			return "", "", fmt.Errorf("读取 token 失败: %w", err)
+			return "", "", platformID, fmt.Errorf("读取 token 失败: %w", err)
 		}
 	}
 	if token == "" {
-		return "", "", fmt.Errorf("token 不能为空")
+		return "", "", platformID, fmt.Errorf("token 不能为空")
 	}
-	return token, name, nil
+	return token, name, platformID, nil
 }
 
 func looksLikeBotToken(s string) bool {
@@ -435,13 +454,25 @@ func cmdBot(args []string) int {
 	defer reg.Close()
 
 	if len(args) == 0 {
-		fmt.Println("用法: LianT bot list | add [名称] | add --token-stdin [名称] | remove <id> | enable <id> | disable <id>")
+		fmt.Println("用法: LianT bot platforms | list | add [--platform qq|telegram] [名称] | add --token-stdin [名称] | remove <id> | enable <id> | disable <id>")
 		fmt.Printf("注册表: %s\n", dbPath)
 		fmt.Printf("加密  : AES-256-GCM（%s）\n", secretKeyLabel(dbPath))
 		return 0
 	}
 	sub := strings.ToLower(strings.TrimSpace(args[0]))
 	switch sub {
+	case "platforms", "platform":
+		for _, ad := range platform.List() {
+			caps := ad.Capabilities()
+			modes := []string{}
+			if caps.Text { modes = append(modes, "文本") }
+			if caps.Media { modes = append(modes, "媒体") }
+			if caps.Inline { modes = append(modes, "内联") }
+			if caps.JoinApproval { modes = append(modes, "入群审批") }
+			fmt.Printf("%-10s %-10s %s\n", ad.ID(), ad.Name(), strings.Join(modes, " / "))
+		}
+		return 0
+
 	case "list", "ls":
 		recs, err := reg.Bots()
 		if err != nil {
@@ -465,14 +496,14 @@ func cmdBot(args []string) int {
 		return 0
 
 	case "add":
-		token, name, err := botAddInput(args[1:])
+		token, name, plat, err := botAddInput(args[1:])
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[X] %v\n", err)
 			return 2
 		}
-		ad := platform.Get("telegram")
+		ad := platform.Get(plat)
 		if ad == nil {
-			fmt.Fprintln(os.Stderr, "[X] Telegram 适配器未注册")
+			fmt.Fprintf(os.Stderr, "[X] %s 适配器未注册\n", plat)
 			return 1
 		}
 		existing, err := reg.Bots()
@@ -488,11 +519,15 @@ func cmdBot(args []string) int {
 		}
 		ident, err := ad.ValidateToken(token)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[X] Telegram token 校验失败（检查 token、网络或代理）: %v\n", err)
+			fmt.Fprintf(os.Stderr, "[X] %s token 校验失败（检查凭据、网络或代理）: %v\n", plat, err)
 			return 1
 		}
 		if name == "" {
-			name = "@" + ident.Username
+			if plat == "qq" {
+				name = ident.Name
+			} else {
+				name = "@" + ident.Username
+			}
 		}
 		var tgID int64
 		if n, err := strconv.ParseInt(ident.ID, 10, 64); err == nil {
@@ -500,7 +535,7 @@ func cmdBot(args []string) int {
 		}
 		id, err := reg.AddBot(store.BotRec{
 			Name: name, Token: token, Username: ident.Username,
-			Platform: "telegram", PlatformID: ident.ID, TelegramID: tgID,
+			Platform: plat, PlatformID: ident.ID, TelegramID: tgID,
 			Mode: "polling", Enabled: true,
 		})
 		if err != nil {
@@ -905,7 +940,7 @@ func printUsage() {
   LianT init               生成 .env 模板（Bot token 在 SQLite / 网页后台）
   LianT path               打印数据目录/日志/配置文件等路径
   LianT bot list           列出 SQLite 里的 Bot
-  LianT bot add [名称]     交互输入 token（也可用网页后台）
+  LianT bot add [名称]     交互输入 token；加 --platform qq 添加 QQ Bot
   LianT bot remove <id>    删除 Bot 注册
   LianT bot enable/disable <id>
   LianT help               本帮助

@@ -13,7 +13,10 @@ import (
 	"LianT/internal/bot"
 	"LianT/internal/config"
 	"LianT/internal/platform"
+	qqapi "LianT/internal/platform/qq"
+	qqstore "LianT/internal/platform/qq/store"
 	_ "LianT/internal/platform/telegram"
+	"LianT/internal/qqbot"
 	"LianT/internal/rules"
 	"LianT/internal/store"
 )
@@ -31,7 +34,8 @@ import (
 type Runtime struct {
 	Rec   store.BotRec
 	Store *store.Store
-	Bot   *bot.Bot
+	Bot   *bot.Bot   // platform=telegram
+	QQ    *qqbot.Bot // platform=qq
 }
 
 type Manager struct {
@@ -263,6 +267,9 @@ func (m *Manager) ReloadAll() {
 		if rt.Bot != nil {
 			_ = rt.Bot.ReloadAll()
 		}
+		if rt.QQ != nil {
+			_ = rt.QQ.ReloadAll()
+		}
 	}
 }
 
@@ -273,6 +280,9 @@ func (m *Manager) StopAll() {
 	for id, rt := range m.items {
 		if rt.Bot != nil {
 			rt.Bot.Stop(10 * time.Second)
+		}
+		if rt.QQ != nil {
+			rt.QQ.Stop(10 * time.Second)
 		}
 		if rt.Store != nil {
 			_ = rt.Store.Close()
@@ -378,21 +388,41 @@ func (m *Manager) start(rec store.BotRec) error {
 	}
 	_ = os.Chmod(path, 0o600)
 	seedDefaults(st)
-	b := bot.New(bot.Config{
-		Store:         st,
-		ID:            rec.ID,
-		Name:          rec.Name,
-		Platform:      rec.Platform,
-		DBFile:        path,
-		Token:         rec.Token,
-		Mode:          rec.Mode,
-		WebhookURL:    rec.WebhookURL,
-		WebhookSecret: rec.WebhookSecret,
-		WebhookListen: rec.WebhookListen,
-		WebhookPath:   rec.WebhookPath,
-	})
-	b.Start()
-	m.items[rec.ID] = &Runtime{Rec: rec, Store: st, Bot: b}
+	rt := &Runtime{Rec: rec, Store: st}
+	switch rec.Platform {
+	case "", "telegram":
+		b := bot.New(bot.Config{
+			Store:         st,
+			ID:            rec.ID,
+			Name:          rec.Name,
+			Platform:      "telegram",
+			DBFile:        path,
+			Token:         rec.Token,
+			Mode:          rec.Mode,
+			WebhookURL:    rec.WebhookURL,
+			WebhookSecret: rec.WebhookSecret,
+			WebhookListen: rec.WebhookListen,
+			WebhookPath:   rec.WebhookPath,
+		})
+		b.Start()
+		rt.Bot = b
+	case "qq":
+		appID, secret, ok := qqapi.SplitToken(rec.Token)
+		if !ok {
+			_ = st.Close()
+			return fmt.Errorf("QQ token 格式应为 AppID:AppSecret")
+		}
+		q := qqbot.New(qqbot.Config{
+			AppID: appID, AppSecret: secret, Intents: (1 << 25) | (1 << 30),
+			Name: rec.Name, DBFile: path, Store: qqstore.New(st),
+		})
+		q.Start()
+		rt.QQ = q
+	default:
+		_ = st.Close()
+		return platform.ErrUnsupported(rec.Platform)
+	}
+	m.items[rec.ID] = rt
 	return nil
 }
 
@@ -405,6 +435,9 @@ func (m *Manager) stop(id int64) {
 	}
 	if rt.Bot != nil {
 		rt.Bot.Stop(10 * time.Second)
+	}
+	if rt.QQ != nil {
+		rt.QQ.Stop(10 * time.Second)
 	}
 	if rt.Store != nil {
 		_ = rt.Store.Close()

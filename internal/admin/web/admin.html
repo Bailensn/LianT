@@ -996,7 +996,7 @@ details[open] > summary .chev{ transform:rotate(90deg); }
     { id: "admins", label: "管理员", icon: "key", desc: "决定谁能在群里使用中文指令。" },
     { id: "mutes", label: "禁言", icon: "clock", desc: "本地禁言记录与平台侧状态，最长 30 天。" },
     { id: "blacklist", label: "黑名单", icon: "ban", desc: "本地立即生效；平台侧同步需要相应权限。" },
-    { id: "bots", label: "机器人", icon: "bot", desc: "多 Bot 注册、平台适配、token 与启停。" },
+    { id: "bots", label: "机器人", icon: "bot", desc: "多 Bot 注册、Telegram/QQ、token 与启停。" },
     { id: "audit", label: "操作日志", icon: "list", desc: "谁、在哪个群、对谁做了什么。" },
     { id: "qq", label: "手动操作", icon: "terminal", desc: "直接调用平台接口，所有操作写入日志。" },
     { id: "settings", label: "设置", icon: "settings", desc: "回复策略、入群审批与配置导出。" }
@@ -1844,10 +1844,10 @@ details[open] > summary .chev{ transform:rotate(90deg); }
     return `
       ${fieldHTML("平台", selectHTML("platform", platforms.map(p => [p.id, p.name]), b.platform || "telegram"))}
       ${fieldHTML("名称", inputHTML("name", { value: b.name || "", placeholder: "主 Bot", maxlength: 60 }))}
-      ${fieldHTML("Token", inputHTML("token", { type: "password", value: "", placeholder: isEdit ? "留空 = 不修改" : "123456789:AA…", autocomplete: false }), isEdit ? "留空保留原 token；新 token 会用 AES-256-GCM 加密存储" : "必填；AES-256-GCM 加密存储，不显示明文", "span-2")}
+      ${fieldHTML("Token", inputHTML("token", { type: "password", value: "", placeholder: isEdit ? "留空 = 不修改" : "Telegram: 123456789:AA… / QQ: AppID:AppSecret", autocomplete: false }), isEdit ? "留空保留原 token；Telegram 填 数字:AA…，QQ 填 AppID:AppSecret" : "AES-256-GCM 加密存储；Telegram 填 数字:AA…，QQ 填 AppID:AppSecret", "span-2")}
       ${fieldHTML("收消息方式", selectHTML("mode", [["polling", "长轮询"], ["webhook", "Webhook"]], b.mode || "polling"))}
       ${switchHTML("enabled", "启用并启动", "保存后立即启动该 Bot", isEdit ? Boolean(b.enabled) : true)}
-      <p class="field-hint span-2" style="margin:0">多个 webhook Bot 请使用不同的本地监听端口。</p>
+      <p class="field-hint span-2" style="margin:0">Telegram 多个 webhook Bot 请使用不同本地端口；QQ 使用 WebSocket 网关，webhook 字段忽略即可。</p>
       ${fieldHTML("Webhook URL", inputHTML("webhook_url", { value: b.webhook_url || "", placeholder: "https://example.com/telegram/webhook", mono: true }), "webhook 模式必填", "span-2")}
       ${fieldHTML("Webhook secret", inputHTML("webhook_secret", { value: b.webhook_secret || "", placeholder: "A-Za-z0-9_-" }))}
       ${fieldHTML("本地监听", inputHTML("webhook_listen", { value: b.webhook_listen || ("127.0.0.1:" + (28743 + state.bots.length)), mono: true }))}
@@ -1920,9 +1920,9 @@ details[open] > summary .chev{ transform:rotate(90deg); }
         ${table}
       </section>
       <section class="card card-pad">
-        <div class="head-row"><div><h2>平台兼容层</h2><p>后台只依赖统一能力声明；QQ/Discord 接入时复用同一页面。</p></div></div>
+        <div class="head-row"><div><h2>平台兼容层</h2><p>后台只依赖统一能力声明；Telegram / QQ 共用同一页面。</p></div></div>
         <div class="chip-row">${state.platforms.map(p => `<span class="badge">${esc(p.name)} · ${esc(p.id)}</span>`).join("") || '<span class="muted">没有平台适配器</span>'}</div>
-        <p class="field-hint" style="margin-top:10px">当前实现：Telegram。新增平台实现 platform.Adapter 即可，不需要改页面。</p>
+        <p class="field-hint" style="margin-top:10px">当前已实现：Telegram、QQ。新增平台实现 platform.Adapter 即可，不需要改页面。</p>
       </section>`;
   }
 
