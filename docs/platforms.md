@@ -143,3 +143,35 @@ ALTER TABLE admins RENAME COLUMN member_openid TO user_id;
 - 支付只在声明 `payments=true` 的平台显示。
 
 新增能力时，先加 `Capabilities` 字段，再在 UI 里按字段显示；不要在页面里写死平台名。
+
+## 8. 管理端兼容层（admin compat）
+
+后台页面走的是 **qbot 形态的 HTTP 契约**，由 `internal/admin/qbot_compat.go` 提供。它目前靠两个运行时指针分支：
+
+- Telegram：`qctx.b`（`*bot.Bot`），`isQQ() == false`；
+- QQ：`qctx.q`（`*qqbot.Bot`），`isQQ() == true`。
+
+`compat()` 按路由名接管：`overview`、`rules`、`words`、`groups`、`admins`、`members`、`mutes`、
+`blacklist`、`audit`、`joins`、`chat/*`、`qq/*`；其余路由（`bots`、`chats`、`send`、`broadcast`…）
+由 `admin.go` 自己的 switch 处理。
+
+字段层同时接受两套命名（`group_openid` 与 `chat_id`、`member_openid` 与 `user_id`），响应里两套 key 都给。
+
+**已知结构债**：每个 handler 现在写的是 `if c.isQQ() { c.q.X() } else { c.b.Y() }`，
+接 Discord 时要在每一处再加分支。正确做法见下一节。
+
+## 9. 接入新平台（以 Discord 为例）
+
+1. **适配器**：`internal/platform/discord/adapter.go` 实现 `Adapter`（`ID/Name/Capabilities/ValidateToken`），
+   在 `init()` 里 `platform.Register(...)`。
+2. **运行时**：新建 `internal/discordbot/`；`internal/manager.Runtime` 加字段，`manager.start()` 加 `case "discord"`。
+3. **管理端**：把运行时实现成一套平台无关接口（状态、发文本/卡片、撤回、禁言/解禁、踢人、黑名单、
+   成员、入群审批、缓存失效）。Telegram 与 QQ 各写一个适配器，`qbot_compat.go` 只依赖接口；
+   能力缺失的方法返回 `ErrUnsupported`，由 handler 转成 `409`。
+4. **存储**：业务库继续用中性 `chat_id` / `user_id`，不要为平台加列；平台专有字段留在 adapter 内部。
+5. **UI**：靠 `capabilities` 决定显示哪些入口，页面里不要写死平台名。
+6. **文档**：回来更新第 3 节能力表和第 6 节状态。
+
+> 动手前先确认平台是否开放服务端事件订阅，以及撤回/禁言/成员列表的真实限制——这些写进 `Capabilities`，
+> 不要散落在业务代码里判断平台名。
+

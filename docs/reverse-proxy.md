@@ -47,8 +47,9 @@ location /LianT/ {
 | `LIANT_ADMIN_ADDR` | `127.0.0.1:28742` | 管理端监听地址 |
 | `LIANT_ADMIN_TOKEN` | 自动生成 | 访问 token |
 | `LIANT_ADMIN_PREFIX` | 空 | 页面挂载前缀，如 `/LianT` |
-| `LIANT_ADMIN_HTML` | 内置 | 自定义页面文件 |
+| `LIANT_ADMIN_HTML` | 内置 | 自定义页面文件（同目录放 `admin.css` / `admin.js` 可热更新） |
 | `LIANT_ADMIN_ENABLE` | `true` | 设 `false` 完全关掉管理端 |
+| `LIANT_ADMIN_TLS_CERT` / `LIANT_ADMIN_TLS_KEY` | 空 | 直接给管理端上 TLS（也可以交给反代） |
 
 ## Telegram Webhook（可选）
 
@@ -72,3 +73,29 @@ location /telegram/webhook {
 程序启动/保存时会自动 `setWebhook`，并校验
 `X-Telegram-Bot-Api-Secret-Token`。想切回长轮询：把该 Bot 的模式改成「长轮询」并保存，
 或在网页里清空 Webhook URL。
+
+## 静态资源
+
+后台页面拆成了三个文件，都由程序自己输出（编译时 `go:embed` 打进二进制）：
+
+| 路径 | 内容 |
+| --- | --- |
+| `/` | `admin.html` 页面骨架 |
+| `/admin.css` | 样式 |
+| `/admin.js` | 前端逻辑（`__BASE_PATH__` 按请求替换） |
+
+- 三者都带 `Cache-Control: no-store`，改完刷新即生效；
+- 优先读磁盘：程序会在命中的 `admin.html` 同目录找 `admin.css` / `admin.js`，找不到才用内置版本；
+  想改样式不必重编译，用 `LIANT_ADMIN_HTML` 指到你的目录即可；
+- 反代要把 `/`、`/admin.css`、`/admin.js`、`/api/*` 一起转发，前缀规则与页面一致。
+
+## 排错
+
+| 现象 | 原因 |
+| --- | --- |
+| 页面能开，但没样式、按钮没反应 | 反代只转发了 `/`，`/admin.css`、`/admin.js` 返回 404 |
+| 刷新后 404 | 前缀没配：剥前缀的反代要设 `X-Forwarded-Prefix`，或给程序设 `LIANT_ADMIN_PREFIX` |
+| 401 | token 没带或不对；用 `?token=` 打开一次会写 cookie |
+| Webhook 收不到 | 本地监听端口没被转发，或 `X-Telegram-Bot-Api-Secret-Token` 不匹配 |
+| 日志出现 `Webhook 模式没有设置 secret_token` | 没配 Webhook secret，任何能访问该路径的人都能伪造更新 |
+

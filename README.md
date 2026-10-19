@@ -1,6 +1,11 @@
 # LianT
 
+> **这个项目是 AI 写的。** 需求、方向与验收由开发者负责；代码、文档和提交信息由 AI Agent 生成。
+> 请按「AI 辅助产出」对待，上生产前自己审一遍，尤其是鉴权、SQL 和平台接口部分。
+
 **自托管的多 Bot 管理后台 + Telegram / QQ 群管理机器人。**
+
+**许可证：AGPL-3.0**（[LICENSE](LICENSE)）——改过的版本对外提供网络服务时，必须公开源码，详见[许可证](#许可证)一节。
 
 单文件 Go 程序，不需要公网 IP、域名或 HTTPS 回调 —— 用 Telegram Bot API 长轮询收消息；
 Bot token 存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个 Bot 有独立业务库。
@@ -9,6 +14,15 @@ Bot token 存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个
 设计取向上参考了 [LensnTeam/LianT](https://github.com/LensnTeam/LianT)：Bot 管理、自托管、SQLite、网页后台。
 
 ---
+
+## 文档
+
+| 文档 | 内容 |
+| --- | --- |
+| 本页 | 功能、部署、配置、CLI、数据库 |
+| [docs/api.md](docs/api.md) | 管理端 HTTP API：鉴权、返回格式、路由表、示例 |
+| [docs/platforms.md](docs/platforms.md) | 平台兼容层：Adapter、能力声明、qbot 合并、接入 Discord |
+| [docs/reverse-proxy.md](docs/reverse-proxy.md) | Nginx / Caddy 反代、前缀、Webhook、静态资源、排错 |
 
 ## 功能
 
@@ -403,11 +417,15 @@ LianT/
 │   └── process/            独立会话拉起
 ├── config/.env.example
 └── docs/
+    ├── api.md              管理端 API 参考
+    ├── platforms.md        平台兼容层与 qbot 合并
+    └── reverse-proxy.md    反代配置与排错
 ```
 
 ## 路线图
 
 - [x] qbot（QQ）平台适配器与统一事件模型
+- [ ] 管理端兼容层抽成平台无关接口（去掉 `qctx` 的 `b`/`q` 双指针）
 - [ ] Discord / 其他平台 adapter
 - [ ] 规则模板变量与更细的匹配条件
 - [ ] 封禁/禁言到期自动解封的任务
@@ -417,3 +435,19 @@ LianT/
 
 LianT 是一个 Telegram 群管理机器人，不是 Telegram 客户端，也不使用用户账号；
 所有操作都通过官方 Bot API 完成。请遵守 Telegram 服务条款和所在群组规则。
+
+## 许可证
+
+本项目以 **GNU Affero General Public License v3.0（AGPL-3.0）** 发布，完整条款见 [LICENSE](LICENSE)。
+
+用白话说：
+
+- **自己用、给自家群用**：没有额外义务，改了也不必公开；
+- **分发**（发二进制、发源码、打包进镜像）：必须同样以 AGPL-3.0 提供完整源码，并保留版权声明；
+- **作为网络服务对外提供**（AGPL 第 13 条）：比如你把改过的 LianT 托管给别人用、让别人通过网页后台访问，
+  就必须向这些用户提供你运行的这一版的源码。开个公网地址给人用却不开源，是不行的。
+
+不修改、只原样运行官方版本的话，源码在仓库里就有，通常不构成额外负担。
+
+版权归各贡献者所有；如需其他授权（商业闭源等），请单独联系仓库维护者。
+
