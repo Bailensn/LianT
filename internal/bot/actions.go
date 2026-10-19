@@ -292,7 +292,11 @@ func (b *Bot) RecallMessage(chatID string, messageID int64) error {
 	if messageID <= 0 {
 		return fmt.Errorf("缺少消息 ID")
 	}
-	return c.DeleteMessage(chatID, messageID)
+	if err := c.DeleteMessage(chatID, messageID); err != nil {
+		return err
+	}
+	b.ForgetRecent(chatID, messageID)
+	return nil
 }
 
 // RecallMessages 批量撤回，返回成功条数和第一个错误。

@@ -240,6 +240,37 @@ func (b *Bot) RecentList(chatID string, n int, onlyWithin time.Duration) []Recen
 	return out
 }
 
+// ForgetRecent 把已经撤回的消息从最近消息里移除，
+// 否则网页的「最近消息」和「撤回机器人」还会看到它们。
+func (b *Bot) ForgetRecent(chatID string, ids ...int64) {
+	if len(ids) == 0 {
+		return
+	}
+	drop := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id > 0 {
+			drop[id] = struct{}{}
+		}
+	}
+	if len(drop) == 0 {
+		return
+	}
+	b.recentMu.Lock()
+	defer b.recentMu.Unlock()
+	list := b.recent[chatID]
+	if len(list) == 0 {
+		return
+	}
+	kept := make([]RecentMsg, 0, len(list))
+	for _, m := range list {
+		if _, ok := drop[m.MessageID]; ok {
+			continue
+		}
+		kept = append(kept, m)
+	}
+	b.recent[chatID] = kept
+}
+
 // LookupRecent 按消息 ID 查最近消息。
 func (b *Bot) LookupRecent(chatID string, messageID int64) (RecentMsg, bool) {
 	b.recentMu.Lock()
@@ -574,6 +605,7 @@ func (b *Bot) handleCallbackQuery(c *telegram.Client, q *telegram.CallbackQuery)
 			answer = errText(err)
 			return
 		}
+		b.ForgetRecent(chatID, id)
 		answer = "已撤回"
 	case "mute":
 		if len(parts) < 3 {
@@ -806,6 +838,7 @@ func (b *Bot) handleGroupMessage(c *telegram.Client, m *telegram.Message, chatID
 
 	if b.st.IsBlacklisted(chatID, userID) {
 		_ = c.DeleteMessage(chatID, m.MessageID)
+		b.ForgetRecent(chatID, m.MessageID)
 		log.Printf("[blacklist] %s(%s) 被拦截并撤回", m.From.Display(), userID)
 		return
 	}

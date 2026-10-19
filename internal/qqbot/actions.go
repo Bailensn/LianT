@@ -190,7 +190,11 @@ func (b *Bot) QqRecallMessage(groupOpenID, messageID string) QqResp {
 	if groupOpenID == "" || messageID == "" {
 		return QqResp{status: 200}
 	}
-	return b.QqAPI("DELETE", qq.GroupRecallURL(groupOpenID, messageID), nil, nil)
+	resp := b.QqAPI("DELETE", qq.GroupRecallURL(groupOpenID, messageID), nil, nil)
+	if resp.Ok() {
+		b.ForgetRecent(groupOpenID, messageID)
+	}
+	return resp
 }
 
 // QqRemoveMembers 批量移除群成员，可选同时加入群黑名单（仅白名单机器人可用）。

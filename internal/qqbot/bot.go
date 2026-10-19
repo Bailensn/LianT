@@ -228,6 +228,36 @@ func (b *Bot) RecentList(groupOpenID string, n int, onlyWithin time.Duration) []
 	return out
 }
 
+// ForgetRecent 撤回成功后把消息从最近消息里移除，网页的消息列表才不会留着已撤回的消息。
+func (b *Bot) ForgetRecent(groupOpenID string, ids ...string) {
+	if len(ids) == 0 {
+		return
+	}
+	drop := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if id != "" {
+			drop[id] = struct{}{}
+		}
+	}
+	if len(drop) == 0 {
+		return
+	}
+	b.recentMu.Lock()
+	defer b.recentMu.Unlock()
+	list := b.recent[groupOpenID]
+	if len(list) == 0 {
+		return
+	}
+	kept := make([]RecentMsg, 0, len(list))
+	for _, m := range list {
+		if _, ok := drop[m.ID]; ok {
+			continue
+		}
+		kept = append(kept, m)
+	}
+	b.recent[groupOpenID] = kept
+}
+
 // LookupBotRecent 机器人自己最近发的一条消息。
 func (b *Bot) LookupBotRecent(groupOpenID string, onlyWithin time.Duration) (RecentMsg, bool) {
 	b.recentMu.Lock()
