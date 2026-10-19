@@ -48,6 +48,8 @@ type botInput struct {
 	ID            int64  `json:"id"`
 	Name          string `json:"name"`
 	Token         string `json:"token"`
+	AppID         string `json:"app_id"`
+	AppSecret     string `json:"app_secret"`
 	Mode          string `json:"mode"`
 	WebhookURL    string `json:"webhook_url"`
 	WebhookSecret string `json:"webhook_secret"`
@@ -58,11 +60,20 @@ type botInput struct {
 }
 
 func (in botInput) toRec() store.BotRec {
+	platform := strings.ToLower(strings.TrimSpace(in.Platform))
+	token := strings.TrimSpace(in.Token)
+	if platform == "qq" {
+		appID := strings.TrimSpace(in.AppID)
+		appSecret := strings.TrimSpace(in.AppSecret)
+		if appID != "" && appSecret != "" {
+			token = appID + ":" + appSecret
+		}
+	}
 	return store.BotRec{
-		ID: in.ID, Name: in.Name, Token: in.Token, Mode: in.Mode,
+		ID: in.ID, Name: in.Name, Token: token, Mode: in.Mode,
 		WebhookURL: in.WebhookURL, WebhookSecret: in.WebhookSecret,
 		WebhookListen: in.WebhookListen, WebhookPath: in.WebhookPath,
-		Platform: in.Platform, Enabled: in.Enabled,
+		Platform: platform, Enabled: in.Enabled,
 	}
 }
 
@@ -423,7 +434,12 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 				return
 			}
 			rec := in.toRec()
-			if strings.TrimSpace(rec.Token) == "" {
+			if rec.Platform == "qq" {
+				if strings.TrimSpace(in.AppID) == "" || strings.TrimSpace(in.AppSecret) == "" {
+					ApiErr(w, 400, "QQ 需要 AppID 和 AppSecret")
+					return
+				}
+			} else if strings.TrimSpace(rec.Token) == "" {
 				ApiErr(w, 400, "需要 token")
 				return
 			}
@@ -469,7 +485,28 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			ApiErr(w, 400, "需要 id")
 			return
 		}
-		if err := a.m.Update(in.toRec()); err != nil {
+		rec := in.toRec()
+		if rec.Platform == "qq" {
+			old, ok := reg.Bot(in.ID)
+			if !ok {
+				ApiErr(w, 404, "Bot 不存在")
+				return
+			}
+			appID := strings.TrimSpace(in.AppID)
+			if appID == "" {
+				appID = old.PlatformID
+			}
+			appSecret := strings.TrimSpace(in.AppSecret)
+			if appSecret == "" && appID != old.PlatformID {
+				ApiErr(w, 400, "修改 QQ AppID 需要同时填写新的 AppSecret")
+				return
+			}
+			rec.Token = ""
+			if appSecret != "" {
+				rec.Token = appID + ":" + appSecret
+			}
+		}
+		if err := a.m.Update(rec); err != nil {
 			ApiErr(w, 502, err.Error())
 			return
 		}

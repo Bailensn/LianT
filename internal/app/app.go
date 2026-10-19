@@ -373,9 +373,26 @@ func registryDBPath() string {
 func botAddInput(args []string) (token, name, platformID string, err error) {
 	platformID = "telegram"
 	var nameParts []string
+	var appID, appSecret string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
+		case strings.HasPrefix(a, "--app-id="):
+			appID = strings.TrimSpace(strings.TrimPrefix(a, "--app-id="))
+		case a == "--app-id":
+			if i+1 >= len(args) {
+				return "", "", platformID, fmt.Errorf("--app-id 后面缺少值")
+			}
+			i++
+			appID = strings.TrimSpace(args[i])
+		case strings.HasPrefix(a, "--app-secret="):
+			appSecret = strings.TrimSpace(strings.TrimPrefix(a, "--app-secret="))
+		case a == "--app-secret":
+			if i+1 >= len(args) {
+				return "", "", platformID, fmt.Errorf("--app-secret 后面缺少值")
+			}
+			i++
+			appSecret = strings.TrimSpace(args[i])
 		case strings.HasPrefix(a, "--platform="):
 			platformID = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(a, "--platform=")))
 		case a == "--platform":
@@ -421,18 +438,30 @@ func botAddInput(args []string) (token, name, platformID string, err error) {
 	if platformID != "telegram" && platformID != "qq" {
 		return "", "", platformID, fmt.Errorf("平台只支持 telegram / qq")
 	}
+	if platformID == "qq" && token == "" {
+		if appID == "" {
+			appID, err = readSecretLine("QQ AppID: ")
+			if err != nil && appID == "" {
+				return "", "", platformID, fmt.Errorf("读取 AppID 失败: %w", err)
+			}
+		}
+		if appSecret == "" {
+			appSecret, err = readSecretLine("QQ AppSecret: ")
+			if err != nil && appSecret == "" {
+				return "", "", platformID, fmt.Errorf("读取 AppSecret 失败: %w", err)
+			}
+		}
+		token = strings.TrimSpace(appID) + ":" + strings.TrimSpace(appSecret)
+	}
 	if token == "" {
 		label := "Token: "
-		if platformID == "qq" {
-			label = "QQ AppID:AppSecret: "
-		}
 		token, err = readSecretLine(label)
 		if err != nil && token == "" {
 			return "", "", platformID, fmt.Errorf("读取 token 失败: %w", err)
 		}
 	}
-	if token == "" {
-		return "", "", platformID, fmt.Errorf("token 不能为空")
+	if token == "" || token == ":" {
+		return "", "", platformID, fmt.Errorf("凭据不能为空")
 	}
 	return token, name, platformID, nil
 }
@@ -454,7 +483,7 @@ func cmdBot(args []string) int {
 	defer reg.Close()
 
 	if len(args) == 0 {
-		fmt.Println("用法: LianT bot platforms | list | add [--platform qq|telegram] [名称] | add --token-stdin [名称] | remove <id> | enable <id> | disable <id>")
+		fmt.Println("用法: LianT bot platforms | list | add [--platform qq|telegram] [名称] | add --token-stdin [名称] | add --app-id ID --app-secret SECRET [名称] | remove <id> | enable <id> | disable <id>")
 		fmt.Printf("注册表: %s\n", dbPath)
 		fmt.Printf("加密  : AES-256-GCM（%s）\n", secretKeyLabel(dbPath))
 		return 0

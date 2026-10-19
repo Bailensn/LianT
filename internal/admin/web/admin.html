@@ -946,6 +946,7 @@ body::before{ background:radial-gradient(45% 70% at 84% -10%,var(--glow-a),trans
 .launcher-brand strong{ display:block; font-size:15px; letter-spacing:-.025em; line-height:1.1; }
 .launcher-brand small{ display:block; margin-top:3px; font-size:10px; color:var(--text-3); letter-spacing:.08em; text-transform:uppercase; }
 .launcher-tools{ display:flex; align-items:center; gap:8px; }
+[data-cred][hidden],[data-tg-only][hidden]{ display:none !important; }
 .launcher-hero{ padding:clamp(26px,6vw,74px) 0 clamp(8px,2vw,18px); max-width:820px; }
 .eyebrow{ margin:0 0 12px; font-size:10px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); }
 .launcher-hero h1{ margin:0; font-size:clamp(38px,6.4vw,74px); line-height:.98; letter-spacing:-.06em; font-weight:680; color:var(--text); }
@@ -2118,33 +2119,63 @@ body::before{ background:radial-gradient(45% 70% at 84% -10%,var(--glow-a),trans
     const isEdit = Boolean(bot);
     const b = bot || {};
     const platforms = state.platforms.length ? state.platforms : [{ id: "telegram", name: "Telegram" }];
+    const platform = (b.platform || "telegram").toLowerCase();
+    const isQQ = platform === "qq";
     return `
-      ${fieldHTML("平台", selectHTML("platform", platforms.map(p => [p.id, p.name]), b.platform || "telegram"))}
+      ${fieldHTML("平台", selectHTML("platform", platforms.map(p => [p.id, p.name]), platform), "Telegram 用 Bot Token；QQ 用 AppID + AppSecret")}
       ${fieldHTML("名称", inputHTML("name", { value: b.name || "", placeholder: "主 Bot", maxlength: 60 }))}
-      ${fieldHTML("Token", inputHTML("token", { type: "password", value: "", placeholder: isEdit ? "留空 = 不修改" : "Telegram: 123456789:AA… / QQ: AppID:AppSecret", autocomplete: false }), isEdit ? "留空保留原 token；Telegram 填 数字:AA…，QQ 填 AppID:AppSecret" : "AES-256-GCM 加密存储；Telegram 填 数字:AA…，QQ 填 AppID:AppSecret", "span-2")}
-      ${fieldHTML("收消息方式", selectHTML("mode", [["polling", "长轮询"], ["webhook", "Webhook"]], b.mode || "polling"))}
-      ${switchHTML("enabled", "启用并启动", "保存后立即启动该 Bot", isEdit ? Boolean(b.enabled) : true)}
-      <p class="field-hint span-2" style="margin:0">Telegram 多个 webhook Bot 请使用不同本地端口；QQ 使用 WebSocket 网关，webhook 字段忽略即可。</p>
-      ${fieldHTML("Webhook URL", inputHTML("webhook_url", { value: b.webhook_url || "", placeholder: "https://example.com/telegram/webhook", mono: true }), "webhook 模式必填", "span-2")}
-      ${fieldHTML("Webhook secret", inputHTML("webhook_secret", { value: b.webhook_secret || "", placeholder: "A-Za-z0-9_-" }))}
-      ${fieldHTML("本地监听", inputHTML("webhook_listen", { value: b.webhook_listen || ("127.0.0.1:" + (28743 + state.bots.length)), mono: true }))}
-      ${fieldHTML("Webhook 路径", inputHTML("webhook_path", { value: b.webhook_path || "/telegram/webhook", mono: true }))}
+      <div class="span-2" data-cred-wrap>
+        <div data-cred="telegram" ${isQQ ? "hidden" : ""}>
+          ${fieldHTML("Bot Token", inputHTML("token", { type: "password", value: "", placeholder: isEdit ? "留空 = 不修改" : "123456789:AA…", autocomplete: false }), isEdit ? "留空保留原 token" : "必填；AES-256-GCM 加密存储")}
+        </div>
+        <div class="form-grid" data-cred="qq" ${isQQ ? "" : "hidden"}>
+          ${fieldHTML("AppID", inputHTML("app_id", { value: platform === "qq" ? (b.platform_id || "") : "", placeholder: "QQ 机器人 AppID", mono: true, autocomplete: false }), "QQ 开放平台的机器人 AppID")}
+          ${fieldHTML("AppSecret", inputHTML("app_secret", { type: "password", value: "", placeholder: isEdit ? "留空 = 不修改" : "QQ 机器人 AppSecret", autocomplete: false }), isEdit ? "留空保留原 AppSecret" : "必填；AES-256-GCM 加密存储")}
+        </div>
+      </div>
+      <div class="span-2 form-grid" data-tg-only ${isQQ ? "hidden" : ""}>
+        ${fieldHTML("收消息方式", selectHTML("mode", [["polling", "长轮询"], ["webhook", "Webhook"]], b.mode || "polling"))}
+        ${fieldHTML("Webhook URL", inputHTML("webhook_url", { value: b.webhook_url || "", placeholder: "https://example.com/telegram/webhook", mono: true }), "webhook 模式必填")}
+        ${fieldHTML("Webhook secret", inputHTML("webhook_secret", { value: b.webhook_secret || "", placeholder: "A-Za-z0-9_-" }))}
+        ${fieldHTML("本地监听", inputHTML("webhook_listen", { value: b.webhook_listen || ("127.0.0.1:" + (28743 + state.bots.length)), mono: true }))}
+        ${fieldHTML("Webhook 路径", inputHTML("webhook_path", { value: b.webhook_path || "/telegram/webhook", mono: true }))}
+      </div>
+      <p class="field-hint span-2" style="margin:0">${isQQ ? "QQ 使用 WebSocket 网关，不需要 webhook。" : "多个 webhook Bot 请使用不同本地端口。"}</p>
+      <div class="span-2">${switchHTML("enabled", "启用并启动", "保存后立即启动该 Bot", isEdit ? Boolean(b.enabled) : true)}</div>
     `;
   }
+
   function openBotForm(bot) {
     const isEdit = Boolean(bot);
     openForm({
       title: isEdit ? "编辑 Bot" : "添加 Bot",
-      desc: "token 存入 SQLite；每个 Bot 拥有独立业务库。",
+      desc: "凭据加密存入 SQLite；每个 Bot 拥有独立业务库。",
       submitText: isEdit ? "保存并重启" : "添加并启动",
       body: botFormHTML(bot),
       onSubmit: async form => {
         const fd = new FormData(form);
+        const platform = String(fd.get("platform") || "telegram").toLowerCase();
+        const appID = String(fd.get("app_id") || "").trim();
+        const appSecret = String(fd.get("app_secret") || "").trim();
+        const token = String(fd.get("token") || "").trim();
+        if (isEdit && platform !== String(bot.platform || "")) {
+          if (platform === "qq" && (!appID || !appSecret)) throw new Error("切换到 QQ 需要完整填写 AppID 和 AppSecret");
+          if (platform !== "qq" && !token) throw new Error("切换到 Telegram 需要填写新的 Bot Token");
+        }
+        if (platform === "qq") {
+          if (!isEdit && (!appID || !appSecret)) throw new Error("QQ 需要填写 AppID 和 AppSecret");
+          if (isEdit && appSecret && !appID) throw new Error("填写 AppSecret 时也要填写 AppID");
+          if (isEdit && appID !== String(bot.platform_id || "") && !appSecret) throw new Error("修改 AppID 需要同时填写新的 AppSecret");
+        } else if (!isEdit && !token) {
+          throw new Error("Telegram 需要填写 Bot Token");
+        }
         const body = {
           id: isEdit ? bot.id : 0,
-          platform: String(fd.get("platform") || "telegram"),
+          platform,
           name: String(fd.get("name") || "").trim(),
-          token: String(fd.get("token") || "").trim(),
+          token: platform === "qq" ? "" : token,
+          app_id: platform === "qq" ? appID : "",
+          app_secret: platform === "qq" ? appSecret : "",
           mode: String(fd.get("mode") || "polling"),
           webhook_url: String(fd.get("webhook_url") || "").trim(),
           webhook_secret: String(fd.get("webhook_secret") || "").trim(),
@@ -2152,7 +2183,6 @@ body::before{ background:radial-gradient(45% 70% at 84% -10%,var(--glow-a),trans
           webhook_path: String(fd.get("webhook_path") || "").trim(),
           enabled: fd.get("enabled") === "on"
         };
-        if (!isEdit && !body.token) throw new Error("token 不能为空");
         const data = await api(isEdit ? "bots/update" : "bots", { method: "POST", body, timeout: 60000 });
         const newID = isEdit ? bot.id : (data && data.id);
         await loadBots(newID);
@@ -2161,6 +2191,17 @@ body::before{ background:radial-gradient(45% 70% at 84% -10%,var(--glow-a),trans
       }
     });
   }
+
+  function syncBotCredentialFields(form, platform) {
+    if (!form) return;
+    form.querySelectorAll("[data-cred]").forEach(el => {
+      el.hidden = el.dataset.cred !== platform;
+    });
+    form.querySelectorAll("[data-tg-only]").forEach(el => {
+      el.hidden = platform !== "telegram";
+    });
+  }
+
   async function renderBots() {
     await loadBots();
     const total = state.bots.length;
@@ -2211,7 +2252,7 @@ body::before{ background:radial-gradient(45% 70% at 84% -10%,var(--glow-a),trans
     const empty = `<div class="launcher-empty">
       <div class="empty-icon">${icon("bot")}</div>
       <h2>还没有 Bot</h2>
-      <p>先添加一个 Telegram token 或 QQ AppID:AppSecret，之后所有规则、群和操作都会收进它的工作台。</p>
+      <p>先添加一个 Telegram Bot 或 QQ AppID + AppSecret，之后所有规则、群和操作都会收进它的工作台。</p>
       <button class="btn primary" type="button" data-act="new-bot">${icon("plus")}添加第一个 Bot</button>
     </div>`;
     return `<div class="launcher">
@@ -4094,6 +4135,8 @@ body::before{ background:radial-gradient(45% 70% at 84% -10%,var(--glow-a),trans
     document.addEventListener("change", event => {
       const memberSelect = event.target.closest("[data-member-select]");
       if (memberSelect) handleMemberSelect(memberSelect);
+      const platformSelect = event.target.closest('#app-form select[name="platform"]');
+      if (platformSelect) syncBotCredentialFields(platformSelect.form, platformSelect.value);
     });
 
     view.addEventListener("change", event => {

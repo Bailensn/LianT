@@ -126,8 +126,8 @@ ALTER TABLE admins RENAME COLUMN member_openid TO user_id;
 1. **平台包**：`internal/platform/qq` 实现 Adapter，`internal/qqbot` 跑 QQ WebSocket 网关。
 2. **数据模型**：QQ runtime 通过 `internal/platform/qq/store` 适配 LianT 的 `chat_id/user_id` 业务库，不维护第二套规则/群数据。
 3. **管理 API**：qbot 页面所需的 `chat/*`、`qq/*`、`groups`、`joins` 已在 `admin/qbot_compat.go` 中分支到 QQ runtime。
-4. **UI**：同一份 `admin/web/admin.html`，添加 Bot 时选 QQ，Token 填 `AppID:AppSecret`。
-5. **凭据**：QQ token 与 Telegram token 一样 AES-256-GCM 加密；一个进程可同时跑两种平台。
+4. **UI**：同一份 `admin/web/admin.html`，添加 Bot 时选 QQ，表单自适应显示 AppID / AppSecret。
+5. **凭据**：QQ AppID/AppSecret 与 Telegram token 一样 AES-256-GCM 加密；一个进程可同时跑两种平台。
 6. **能力开关**：QQ 隐藏 inline/topics/webhook/payments；保留入群审批/禁言/撤回/卡片。
 
 后续：

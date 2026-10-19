@@ -67,14 +67,15 @@ Bot token 存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个
 ### QQ Bot（可选）
 
 1. 在 QQ 开放平台创建机器人，拿 **AppID** 和 **AppSecret**。
-2. 添加时选平台 `qq`，凭据填成 `AppID:AppSecret`：
+2. 添加时选平台 `qq`，分别填 AppID 和 AppSecret：
 
 ```sh
 ./LianT bot add --platform qq "QQ 主 Bot"
-# QQ AppID:AppSecret: ...
+# QQ AppID: ...
+# QQ AppSecret: ...
 ```
 
-网页后台「机器人 → 添加 Bot」选 QQ，Token 填 `AppID:AppSecret` 也可以。
+网页后台「机器人 → 添加 Bot」选 QQ，会自适应切换成 **AppID** + **AppSecret** 两个字段；Telegram 仍只填 Bot Token。
 
 QQ 网关是 WebSocket，不需要 webhook；入群审批、禁言、群信息/成员/黑名单接口是否可用取决于 QQ 平台给机器人开的权限（常见错误码 11253）。
 
@@ -301,7 +302,7 @@ type Adapter interface {
 | `LianT logs [行数] [-f]` | 看日志 |
 | `LianT admin` | 网页后台地址 + token |
 | `LianT bot list` | 列出 SQLite 里的 Bot |
-| `LianT bot add [名称]` | 交互输入 token；加 `--platform qq` 添加 QQ |
+| `LianT bot add [名称]` | 交互输入 token；加 `--platform qq` 分别输入 AppID / AppSecret |
 | `LianT bot platforms` | 查看已接入平台与能力 |
 | `LianT bot remove <id>` | 删除 Bot 注册（业务库保留） |
 | `LianT bot enable/disable <id>` | 启用/停用 Bot |
@@ -351,7 +352,7 @@ type Adapter interface {
 
 ## QQ 侧限制
 
-- 凭据是 `AppID:AppSecret`，在网页后台选平台 `qq` 添加；token 同样加密存储。
+- 凭据是 **AppID + AppSecret**，在网页后台选平台 `qq` 后自适应显示两个字段；同样加密存储。
 - QQ 消息主动发送有频控；卡片消息用 QQ Markdown，长度上限约 2000 字。
 - 撤回他人消息需要机器人是群管理员，窗口约 2 分钟。
 - 入群审批、群信息、成员列表、黑名单接口需要 QQ 平台白名单；常见错误码 `11253`。
