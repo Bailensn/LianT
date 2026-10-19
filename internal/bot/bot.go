@@ -1023,6 +1023,25 @@ func (b *Bot) SendMessageOpt(chatID, text string, opt telegram.SendOptions) (int
 	return out.MessageID, nil
 }
 
+// SendCardNow 发一张 Telegram HTML“卡片”，最近消息里保存为 qbot 卡片文本。
+func (b *Bot) SendCardNow(chatID, title, content string) (int64, error) {
+	c := b.clientOrNil()
+	if c == nil {
+		return 0, errors.New("机器人尚未连接")
+	}
+	out, err := c.SendMessage(chatID, BuildCardHTML(title, content), telegram.SendOptions{
+		ParseMode:      "HTML",
+		DisablePreview: true,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if out.MessageID > 0 {
+		b.RememberOutgoing(chatID, out.MessageID, CardDisplay(title, content))
+	}
+	return out.MessageID, nil
+}
+
 // SendMediaNow 发媒体消息（网页后台用）。
 func (b *Bot) SendMediaNow(chatID, kind, media, caption string, opt telegram.SendOptions) (int64, error) {
 	c := b.clientOrNil()

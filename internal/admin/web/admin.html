@@ -2671,12 +2671,12 @@ details[open] > summary .chev{ transform:rotate(90deg); }
             <button class="seg" type="button" data-act="chat-format" data-format="card" aria-pressed="${format === "card"}">卡片</button>
             <button class="seg" type="button" data-act="chat-format" data-format="text" aria-pressed="${format === "text"}">文本</button>
           </div>
-          <span class="composer-hint">${format === "card" ? "Markdown · 发送为 Markdown 文本" : "纯文本 · 不包装卡片"}</span>
+          <span class="composer-hint">${format === "card" ? "Markdown · Telegram HTML 卡片" : "纯文本 · 直接发送"}</span>
         </div>
         <div data-chat-title-wrap${format === "text" ? " hidden" : ""}>
           <input class="input chat-title" name="title" maxlength="60" placeholder="卡片标题（可选）" value="${esc(draft.title)}" autocomplete="off">
         </div>
-        <textarea class="input textarea chat-textarea" name="content" maxlength="1800" placeholder="${format === "card" ? "输入 Markdown 内容，支持 **加粗**、列表和链接…" : "输入要发送的文本…"}" aria-label="消息内容">${esc(draft.content)}</textarea>
+        <textarea class="input textarea chat-textarea" name="content" maxlength="1800" placeholder="${format === "card" ? "输入 Markdown 卡片内容，支持 **加粗**、列表和链接…" : "输入要发送的文本…"}" aria-label="消息内容">${esc(draft.content)}</textarea>
         <div class="composer-foot">
           <select class="input select" data-chat-template aria-label="插入模板">
             <option value="">模板…</option>
@@ -2855,10 +2855,10 @@ details[open] > summary .chev{ transform:rotate(90deg); }
     const wrap = form.querySelector("[data-chat-title-wrap]");
     if (wrap) wrap.hidden = next === "text";
     const hint = form.querySelector(".composer-hint");
-    if (hint) hint.textContent = next === "card" ? "Markdown · 发送为 Markdown 文本" : "纯文本 · 不包装卡片";
+    if (hint) hint.textContent = next === "card" ? "Markdown · Telegram HTML 卡片" : "纯文本 · 直接发送";
     const area = form.elements.content;
     if (area) {
-      area.placeholder = next === "card" ? "输入 Markdown 内容，支持 **加粗**、列表和链接…" : "输入要发送的文本…";
+      area.placeholder = next === "card" ? "输入 Markdown 卡片内容，支持 **加粗**、列表和链接…" : "输入要发送的文本…";
       area.focus();
     }
   }

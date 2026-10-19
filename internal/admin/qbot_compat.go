@@ -622,10 +622,20 @@ func (c *qctx) chatSend(w http.ResponseWriter, r *http.Request, method string) {
 	content := strings.TrimSpace(in.Content)
 	if strings.TrimSpace(in.GroupOpenID) == "" { ApiErr(w, 400, "需要 group_openid"); return }
 	if content == "" { ApiErr(w, 400, "消息内容不能为空"); return }
-	text := content
-	if strings.TrimSpace(in.Title) != "" { text = strings.TrimSpace(in.Title) + "\n\n" + content }
-	if len([]rune(text)) > 4000 { ApiErr(w, 400, "消息内容太长（最多 4000 字）"); return }
-	id, err := c.b.SendMessageOpt(in.GroupOpenID, text, telegram.SendOptions{})
+	format := strings.ToLower(strings.TrimSpace(in.Format))
+	if format != "text" {
+		title := strings.TrimSpace(in.Title)
+		if title == "" { title = "群消息" }
+		if len([]rune(content))+len([]rune(title)) > 3800 {
+			ApiErr(w, 400, "卡片内容太长（最多 3800 字）"); return
+		}
+		id, err := c.b.SendCardNow(in.GroupOpenID, title, content)
+		if err != nil { ApiErr(w, 502, err.Error()); return }
+		ApiOK(w, map[string]interface{}{"id": id, "group_openid": in.GroupOpenID, "format": "card", "markdown": bot.CardDisplay(title, content)})
+		return
+	}
+	if len([]rune(content)) > 4000 { ApiErr(w, 400, "消息内容太长（最多 4000 字）"); return }
+	id, err := c.b.SendMessageOpt(in.GroupOpenID, content, telegram.SendOptions{})
 	if err != nil { ApiErr(w, 502, err.Error()); return }
 	ApiOK(w, map[string]interface{}{"id": id, "group_openid": in.GroupOpenID, "format": "text"})
 }
