@@ -1,0 +1,33 @@
+# compiled binary / build output
+/qbot
+/LianT
+qbot.exe
+LianT.exe
+*.test
+*.out
+
+# runtime data (generated next to the executable / cwd)
+.qbot/
+qbot-data/
+LianT-data/
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.log.*
+*.pid
+.runtime.json
+
+# secrets
+.env
+.env.*
+!.env.example
+
+# old-version config
+Reply.json
+Reply.json.bak
+
+# editor / OS noise
+.DS_Store
+.idea/
+.vscode/
