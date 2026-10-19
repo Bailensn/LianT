@@ -109,9 +109,14 @@ type Message struct {
 	Sticker   *Sticker    `json:"sticker"`
 	Animation *Animation  `json:"animation"`
 	VideoNote *VideoNote  `json:"video_note"`
-	Poll      *Poll       `json:"poll"`
-	Location  *Location   `json:"location"`
-	Contact   *Contact    `json:"contact"`
+	Poll          *Poll           `json:"poll"`
+	Location      *Location       `json:"location"`
+	Contact       *Contact        `json:"contact"`
+	Venue         *Venue          `json:"venue"`
+	Dice          *Dice           `json:"dice"`
+	MediaGroupID  string          `json:"media_group_id"`
+	ReplyMarkup   json.RawMessage `json:"reply_markup"`
+	PinnedMessage *Message        `json:"pinned_message"`
 }
 
 // 下面是最小化的媒体类型（只用于分类/展示，不处理下载）。
@@ -161,6 +166,21 @@ type Location struct {
 type Contact struct {
 	PhoneNumber string `json:"phone_number"`
 	FirstName   string `json:"first_name"`
+	LastName    string `json:"last_name"`
+	UserID      int64  `json:"user_id"`
+}
+
+type Venue struct {
+	Location      Location `json:"location"`
+	Title         string   `json:"title"`
+	Address       string   `json:"address"`
+	FoursquareID  string   `json:"foursquare_id"`
+	GooglePlaceID string   `json:"google_place_id"`
+}
+
+type Dice struct {
+	Emoji string `json:"emoji"`
+	Value int    `json:"value"`
 }
 
 // Content 返回消息正文（文本或媒体说明）。
@@ -254,8 +274,17 @@ type Update struct {
 	EditedChannelPost *Message           `json:"edited_channel_post"`
 	MyChatMember      *ChatMemberUpdated `json:"my_chat_member"`
 	ChatMember        *ChatMemberUpdated `json:"chat_member"`
-	ChatJoinRequest   *ChatJoinRequest   `json:"chat_join_request"`
-	CallbackQuery     *CallbackQuery     `json:"callback_query"`
+	ChatJoinRequest       *ChatJoinRequest       `json:"chat_join_request"`
+	CallbackQuery         *CallbackQuery         `json:"callback_query"`
+	InlineQuery           *InlineQuery           `json:"inline_query"`
+	ChosenInlineResult    *ChosenInlineResult    `json:"chosen_inline_result"`
+	PollAnswer            *PollAnswer            `json:"poll_answer"`
+	PreCheckoutQuery      *PreCheckoutQuery      `json:"pre_checkout_query"`
+	ShippingQuery         *ShippingQuery         `json:"shipping_query"`
+	BusinessConnection    *BusinessConnection    `json:"business_connection"`
+	BusinessMessage       *Message               `json:"business_message"`
+	EditedBusinessMessage *Message               `json:"edited_business_message"`
+	DeletedBusinessMessages *BusinessMessagesDeleted `json:"deleted_business_messages"`
 }
 
 type CallbackQuery struct {
@@ -393,6 +422,57 @@ func (e *APIError) Hint() string {
 		return "群里禁止发言"
 	}
 	return ""
+}
+
+type InlineQuery struct {
+	ID       string `json:"id"`
+	From     User   `json:"from"`
+	Query    string `json:"query"`
+	Offset   string `json:"offset"`
+	ChatType string `json:"chat_type"`
+}
+
+type ChosenInlineResult struct {
+	ResultID        string `json:"result_id"`
+	From            User   `json:"from"`
+	InlineMessageID string `json:"inline_message_id"`
+	Query           string `json:"query"`
+}
+
+type PollAnswer struct {
+	PollID    string `json:"poll_id"`
+	User      *User  `json:"user"`
+	OptionIDs []int  `json:"option_ids"`
+}
+
+type PreCheckoutQuery struct {
+	ID             string `json:"id"`
+	From           User   `json:"from"`
+	Currency       string `json:"currency"`
+	TotalAmount    int    `json:"total_amount"`
+	InvoicePayload string `json:"invoice_payload"`
+}
+
+type ShippingQuery struct {
+	ID              string                 `json:"id"`
+	From            User                   `json:"from"`
+	InvoicePayload  string                 `json:"invoice_payload"`
+	ShippingAddress map[string]interface{} `json:"shipping_address"`
+}
+
+type BusinessConnection struct {
+	ID         string `json:"id"`
+	User       User   `json:"user"`
+	UserChatID int64  `json:"user_chat_id"`
+	Date       int64  `json:"date"`
+	CanReply   bool   `json:"can_reply"`
+	IsEnabled  bool   `json:"is_enabled"`
+}
+
+type BusinessMessagesDeleted struct {
+	BusinessConnectionID string  `json:"business_connection_id"`
+	Chat                 Chat    `json:"chat"`
+	MessageIDs           []int64 `json:"message_ids"`
 }
 
 // Response 是 Bot API 的统一响应信封。

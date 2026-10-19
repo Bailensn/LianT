@@ -502,6 +502,58 @@ func (b *Bot) handleSlashCommand(c *tg.Client, m *tg.Message, cctx CommandContex
 		}), "已解除 "+displayTarget(target, targetName)+" 的封禁")
 	case "del", "delete", "recall":
 		return true, b.recallByReply(cctx, m, rest)
+	case "pin":
+		if m.ReplyToMessage == nil {
+			return true, "用法：回复要置顶的消息发 /pin"
+		}
+		if err := c.PinChatMessage(cctx.ChatID, m.ReplyToMessage.MessageID, true); err != nil {
+			return true, "置顶失败：" + errText(err)
+		}
+		return true, "已置顶"
+	case "unpin":
+		id := int64(0)
+		if m.ReplyToMessage != nil {
+			id = m.ReplyToMessage.MessageID
+		}
+		if err := c.UnpinChatMessage(cctx.ChatID, id); err != nil {
+			return true, "取消置顶失败：" + errText(err)
+		}
+		return true, "已取消置顶"
+	case "invite":
+		link, err := c.CreateChatInviteLink(cctx.ChatID, "LianT", 0, 0)
+		if err != nil {
+			return true, "创建邀请链接失败：" + errText(err)
+		}
+		return true, "邀请链接：" + link
+	case "topic":
+		if strings.TrimSpace(rest) == "" {
+			return true, "用法：/topic 话题名称"
+		}
+		id, err := c.CreateForumTopic(cctx.ChatID, rest, 0)
+		if err != nil {
+			return true, "创建话题失败：" + errText(err)
+		}
+		return true, fmt.Sprintf("已创建话题「%s」，message_thread_id = %d", rest, id)
+	case "settitle":
+		if strings.TrimSpace(rest) == "" {
+			return true, "用法：/settitle 新群名"
+		}
+		if err := c.SetChatTitle(cctx.ChatID, rest); err != nil {
+			return true, "改群名失败：" + errText(err)
+		}
+		return true, "已修改群名"
+	case "setdesc":
+		if err := c.SetChatDescription(cctx.ChatID, rest); err != nil {
+			return true, "改群简介失败：" + errText(err)
+		}
+		return true, "已修改群简介"
+	case "rules":
+		rules, _ := b.st.Rules()
+		words, _ := b.st.Words()
+		return true, fmt.Sprintf("回复规则 %d 条，违禁词 %d 条", len(rules), len(words))
+	case "me":
+		me := b.Me()
+		return true, fmt.Sprintf("LianT @%s（ID %d）", me.Username, me.ID)
 	}
 	return false, ""
 }
@@ -820,6 +872,7 @@ func HelpText() string {
 		"中文也可以：禁言 @某人 10分钟 / 解禁 @某人 / 踢 @某人 / 撤回 / 状态 / 帮助",
 		"改违禁词：加违禁词 词 [时长] / 删违禁词 词",
 		"管理员：加管理 @某人 / 删管理 @某人",
+		"群设置：/pin /unpin（回复消息）、/invite、/topic 名称、/settitle 名称、/setdesc 简介、/rules、/me",
 		"（以上管理指令仅群管理员或后台配置的管理员可用）",
 	}, "\n")
 }

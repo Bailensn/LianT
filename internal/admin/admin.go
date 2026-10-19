@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -722,28 +724,31 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			return
 		}
 		var in struct {
-			ChatID  string `json:"chat_id"`
-			Content string `json:"content"`
-			ReplyTo int64  `json:"reply_to"`
+			ChatID        string          `json:"chat_id"`
+			Content       string          `json:"content"`
+			Kind          string          `json:"kind"`
+			Media         string          `json:"media"`
+			Caption       string          `json:"caption"`
+			ParseMode     string          `json:"parse_mode"`
+			ReplyTo       int64           `json:"reply_to"`
+			ThreadID      int64           `json:"thread_id"`
+			DisablePreview bool           `json:"disable_preview"`
+			Buttons       json.RawMessage `json:"buttons"`
 		}
 		if err := DecodeBody(r, &in); err != nil {
 			ApiErr(w, 400, "请求体不是合法 JSON: "+err.Error())
 			return
 		}
-		content := strings.TrimSpace(in.Content)
-		if strings.TrimSpace(in.ChatID) == "" {
+		chatID := strings.TrimSpace(in.ChatID)
+		if chatID == "" {
 			ApiErr(w, 400, "需要 chat_id")
 			return
 		}
-		if content == "" {
-			ApiErr(w, 400, "消息内容不能为空")
-			return
+		kind := strings.ToLower(strings.TrimSpace(in.Kind))
+		if kind == "" {
+			kind = "text"
 		}
-		if len([]rune(content)) > 4000 {
-			ApiErr(w, 400, "消息太长（Telegram 单条上限 4096 字）")
-			return
-		}
-		g, ok := st.Group(in.ChatID)
+		g, ok := st.Group(chatID)
 		if !ok {
 			ApiErr(w, 404, "会话还没有登记，请先在「群组」里添加")
 			return
@@ -752,20 +757,64 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			ApiErr(w, 400, "该会话已停用，请先在「群组」里启用")
 			return
 		}
-		messageID, sendErr := a.b.SendNow(in.ChatID, content, in.ReplyTo)
-		result, detail := "ok", fmt.Sprintf("id=%d", messageID)
+
+		opt := tg.SendOptions{
+			ReplyTo:        in.ReplyTo,
+			ThreadID:       in.ThreadID,
+			ParseMode:      strings.TrimSpace(in.ParseMode),
+			DisablePreview: in.DisablePreview,
+		}
+		if len(in.Buttons) > 0 {
+			var v interface{}
+			if err := json.Unmarshal(in.Buttons, &v); err != nil {
+				ApiErr(w, 400, "buttons 不是合法 JSON: "+err.Error())
+				return
+			}
+			// 直接传二维数组时自动包成 inline_keyboard；传完整对象则原样使用。
+			if arr, ok := v.([]interface{}); ok {
+				opt.ReplyMarkup = map[string]interface{}{"inline_keyboard": arr}
+			} else {
+				opt.ReplyMarkup = v
+			}
+		}
+
+		var (
+			messageID int64
+			sendErr   error
+			content   string
+			detailTxt string
+		)
+		if kind == "text" {
+			content = strings.TrimSpace(in.Content)
+			if content == "" {
+				ApiErr(w, 400, "消息内容不能为空")
+				return
+			}
+			messageID, sendErr = a.b.SendMessageOpt(chatID, content, opt)
+			detailTxt = fmt.Sprintf("id=%d kind=text", messageID)
+		} else {
+			media := strings.TrimSpace(in.Media)
+			if media == "" {
+				ApiErr(w, 400, "需要 media（file_id / URL / 坐标 / 投票问题）")
+				return
+			}
+			content = media
+			messageID, sendErr = a.b.SendMediaNow(chatID, kind, media, strings.TrimSpace(in.Caption), opt)
+			detailTxt = fmt.Sprintf("id=%d kind=%s media=%s", messageID, kind, media)
+		}
+		result := "ok"
 		if sendErr != nil {
-			result, detail = "fail", sendErr.Error()
+			result, detailTxt = "fail", sendErr.Error()
 		}
 		_ = st.AddAudit(store.AuditRec{
-			Kind: "push", ChatID: in.ChatID, Username: "网页后台", Content: content,
-			Hit: "网页发消息", Actions: `["send"]`, Result: result, Detail: detail,
+			Kind: "push", ChatID: chatID, Username: "网页后台", Content: content,
+			Hit: "网页发消息", Actions: `["send"]`, Result: result, Detail: detailTxt,
 		})
 		if sendErr != nil {
 			ApiErr(w, 502, tgErr(sendErr))
 			return
 		}
-		ApiOK(w, map[string]interface{}{"id": messageID, "chat_id": in.ChatID})
+		ApiOK(w, map[string]interface{}{"id": messageID, "chat_id": chatID, "kind": kind})
 
 	// ---- 撤回 ----
 	case "recall":
@@ -806,6 +855,109 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		}
 		ApiOK(w, map[string]interface{}{"ok": true, "count": n, "error": tgErr(err)})
 
+	// ---- 上传本地文件并调用 Bot API（multipart） ----
+	case "upload":
+		if method != http.MethodPost {
+			ApiErr(w, 405, "不支持的方法")
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			ApiErr(w, 400, "上传表单解析失败: "+err.Error())
+			return
+		}
+		m := strings.TrimSpace(r.FormValue("method"))
+		if !validAPIMethod(m) {
+			ApiErr(w, 400, "需要合法的 method（字母数字）")
+			return
+		}
+		field := strings.TrimSpace(r.FormValue("file_field"))
+		if field == "" {
+			field = "photo"
+		}
+		params := map[string]interface{}{}
+		if raw := strings.TrimSpace(r.FormValue("params")); raw != "" {
+			if err := json.Unmarshal([]byte(raw), &params); err != nil {
+				ApiErr(w, 400, "params 不是合法 JSON: "+err.Error())
+				return
+			}
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			ApiErr(w, 400, "缺少文件: "+err.Error())
+			return
+		}
+		tmp, err := os.CreateTemp(cfg.DataDir, "LianT-upload-*")
+		if err != nil {
+			_ = file.Close()
+			ApiErr(w, 500, "创建临时文件失败: "+err.Error())
+			return
+		}
+		tmpName := tmp.Name()
+		defer os.Remove(tmpName)
+		if _, err := io.Copy(tmp, file); err != nil {
+			_ = file.Close()
+			_ = tmp.Close()
+			ApiErr(w, 500, "保存上传文件失败: "+err.Error())
+			return
+		}
+		_ = file.Close()
+		_ = tmp.Close()
+		c := a.b.Client()
+		if c == nil {
+			ApiErr(w, 503, "机器人尚未连接 Telegram")
+			return
+		}
+		out, err := c.CallMultipart(m, params, field, tmpName)
+		if err != nil {
+			ApiErr(w, 502, tgErr(err))
+			return
+		}
+		_ = st.AddAudit(store.AuditRec{
+			Kind: "manual", Username: "网页后台", Hit: "Bot API 上传: " + m,
+			Actions: `["upload"]`, Result: "ok",
+		})
+		ApiOK(w, map[string]interface{}{"method": m, "result": out})
+
+	// ---- 通用 Bot API 控制台：任意方法都能调 ----
+	case "botapi":
+		if method != http.MethodPost {
+			ApiErr(w, 405, "不支持的方法")
+			return
+		}
+		var in struct {
+			Method string                 `json:"method"`
+			Params map[string]interface{} `json:"params"`
+		}
+		if err := DecodeBody(r, &in); err != nil {
+			ApiErr(w, 400, "请求体不是合法 JSON: "+err.Error())
+			return
+		}
+		m := strings.TrimSpace(in.Method)
+		if m == "" {
+			ApiErr(w, 400, "需要 method")
+			return
+		}
+		if !validAPIMethod(m) {
+			ApiErr(w, 400, "method 只能是字母数字")
+			return
+		}
+		c := a.b.Client()
+		if c == nil {
+			ApiErr(w, 503, "机器人尚未连接 Telegram")
+			return
+		}
+		var out json.RawMessage
+		if err := c.Call(m, in.Params, &out); err != nil {
+			ApiErr(w, 502, tgErr(err))
+			return
+		}
+		_ = st.AddAudit(store.AuditRec{
+			Kind: "manual", Username: "网页后台", Hit: "Bot API: " + m,
+			Actions: `["botapi"]`, Result: "ok",
+		})
+		ApiOK(w, map[string]interface{}{"method": m, "result": out})
+
 	// ---- 导出 / 重载 / 帮助 ----
 	case "export":
 		buf, err := st.ExportJSON()
@@ -824,6 +976,19 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 	default:
 		ApiErr(w, http.StatusNotFound, "未知接口: "+route)
 	}
+}
+
+// validAPIMethod 只允许字母数字，避免 method 被拼进 URL 做路径注入。
+func validAPIMethod(m string) bool {
+	if m == "" {
+		return false
+	}
+	for _, ch := range m {
+		if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9') {
+			return false
+		}
+	}
+	return true
 }
 
 func OrDefault(s, def string) string {

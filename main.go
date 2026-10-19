@@ -221,6 +221,9 @@ func cmdStatus() int {
 		if v := data["api_base"]; v != "" {
 			fmt.Printf("  API       : %s\n", v)
 		}
+		if v := data["mode"]; v != "" {
+			fmt.Printf("  收消息    : %s\n", v)
+		}
 		if v := data["last_error"]; v != "" {
 			fmt.Printf("  最近错误  : %s\n", v)
 		}

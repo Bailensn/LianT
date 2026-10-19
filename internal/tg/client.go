@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -182,6 +185,10 @@ func (c *Client) GetUpdates(offset int64, timeout int) ([]Update, error) {
 		"allowed_updates": []string{
 			"message", "edited_message", "channel_post",
 			"my_chat_member", "chat_member", "chat_join_request", "callback_query",
+			"inline_query", "chosen_inline_result", "poll_answer",
+			"pre_checkout_query", "shipping_query",
+			"business_connection", "business_message", "edited_business_message",
+			"deleted_business_messages",
 		},
 	}
 	if offset > 0 {
@@ -199,8 +206,10 @@ type SendOptions struct {
 	ReplyTo             int64
 	ThreadID            int64
 	DisablePreview      bool
-	ParseMode           string // 空 = 纯文本
+	ParseMode           string      // 空 = 纯文本；HTML / MarkdownV2
 	DisableNotification bool
+	ReplyMarkup         interface{} // inline_keyboard 等
+	ProtectContent      bool
 }
 
 // SendMessage 发一条消息，返回落库后的消息（含 message_id）。
@@ -247,6 +256,12 @@ func (c *Client) sendOne(chatID, text string, opt SendOptions) (Message, error) 
 	}
 	if opt.ThreadID > 0 {
 		p["message_thread_id"] = opt.ThreadID
+	}
+	if opt.ReplyMarkup != nil {
+		p["reply_markup"] = opt.ReplyMarkup
+	}
+	if opt.ProtectContent {
+		p["protect_content"] = true
 	}
 	var m Message
 	if err := c.Call("sendMessage", p, &m); err != nil {
@@ -392,6 +407,437 @@ func (c *Client) SendChatAction(chatID, action string) error {
 // LeaveChat 让机器人退群。
 func (c *Client) LeaveChat(chatID string) error {
 	return c.Call("leaveChat", map[string]interface{}{"chat_id": chatID}, nil)
+}
+
+// SendMedia 发送媒体消息。kind 支持：
+// photo / document / video / audio / voice / sticker / animation / video_note /
+// location（media="纬度,经度"）/ poll（media=问题，caption 里用 | 分隔选项）/ dice。
+func (c *Client) SendMedia(chatID, kind, media, caption string, opt SendOptions) (Message, error) {
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	media = strings.TrimSpace(media)
+	if media == "" {
+		return Message{}, errors.New("缺少媒体 file_id / URL / 坐标")
+	}
+	p := baseSendParams(chatID, opt)
+	var method string
+	switch kind {
+	case "photo":
+		method = "sendPhoto"
+		p["photo"] = media
+	case "document":
+		method = "sendDocument"
+		p["document"] = media
+	case "video":
+		method = "sendVideo"
+		p["video"] = media
+	case "audio":
+		method = "sendAudio"
+		p["audio"] = media
+	case "voice":
+		method = "sendVoice"
+		p["voice"] = media
+	case "sticker":
+		method = "sendSticker"
+		p["sticker"] = media
+	case "animation":
+		method = "sendAnimation"
+		p["animation"] = media
+	case "video_note":
+		method = "sendVideoNote"
+		p["video_note"] = media
+	case "dice":
+		method = "sendDice"
+		if media != "" && media != "0" {
+			p["emoji"] = media
+		}
+	case "location":
+		parts := strings.SplitN(media, ",", 2)
+		if len(parts) != 2 {
+			return Message{}, errors.New("位置格式应为 纬度,经度")
+		}
+		lat, err1 := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+		lon, err2 := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+		if err1 != nil || err2 != nil {
+			return Message{}, errors.New("位置格式应为 纬度,经度")
+		}
+		method = "sendLocation"
+		p["latitude"] = lat
+		p["longitude"] = lon
+	case "poll":
+		opts := splitPollOptions(caption)
+		if len(opts) < 2 {
+			return Message{}, errors.New("投票需要至少 2 个选项（在说明里用 | 分隔）")
+		}
+		method = "sendPoll"
+		p["question"] = media
+		p["options"] = pollOptionsJSON(opts)
+		caption = ""
+	default:
+		return Message{}, errors.New("不支持的媒体类型: " + kind)
+	}
+	// 这些类型 Telegram 不接受 caption，避免管理员误填导致 400。
+	if kind == "voice" || kind == "sticker" || kind == "video_note" ||
+		kind == "location" || kind == "dice" || kind == "poll" {
+		caption = ""
+	}
+	if caption != "" {
+		p["caption"] = caption
+	}
+	var m Message
+	if err := c.Call(method, p, &m); err != nil {
+		return Message{}, err
+	}
+	return m, nil
+}
+
+// SendMediaGroup 相册（2-10 个媒体）。items 里每项形如
+// {"type":"photo","media":"file_id 或 URL","caption":"..."}。
+func (c *Client) SendMediaGroup(chatID string, items []map[string]interface{}, opt SendOptions) ([]Message, error) {
+	if len(items) < 2 || len(items) > 10 {
+		return nil, errors.New("相册需要 2-10 个媒体")
+	}
+	p := baseSendParams(chatID, opt)
+	p["media"] = items
+	var out []Message
+	if err := c.Call("sendMediaGroup", p, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func baseSendParams(chatID string, opt SendOptions) map[string]interface{} {
+	p := map[string]interface{}{
+		"chat_id":              chatID,
+		"disable_notification": opt.DisableNotification,
+	}
+	if opt.ParseMode != "" {
+		p["parse_mode"] = opt.ParseMode
+	}
+	if opt.ReplyTo > 0 {
+		p["reply_parameters"] = map[string]interface{}{
+			"message_id":                  opt.ReplyTo,
+			"allow_sending_without_reply": true,
+		}
+	}
+	if opt.ThreadID > 0 {
+		p["message_thread_id"] = opt.ThreadID
+	}
+	if opt.ReplyMarkup != nil {
+		p["reply_markup"] = opt.ReplyMarkup
+	}
+	if opt.ProtectContent {
+		p["protect_content"] = true
+	}
+	return p
+}
+
+func splitPollOptions(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, "|") {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func pollOptionsJSON(opts []string) []map[string]string {
+	out := make([]map[string]string, 0, len(opts))
+	for _, o := range opts {
+		out = append(out, map[string]string{"text": o})
+	}
+	return out
+}
+
+// SendLocation 发送位置。
+func (c *Client) SendLocation(chatID string, lat, lon float64, opt SendOptions) (Message, error) {
+	p := baseSendParams(chatID, opt)
+	p["latitude"], p["longitude"] = lat, lon
+	var m Message
+	err := c.Call("sendLocation", p, &m)
+	return m, err
+}
+
+// SendPoll 发送投票。options 至少 2 个。
+func (c *Client) SendPoll(chatID, question string, options []string, opt SendOptions) (Message, error) {
+	if len(options) < 2 {
+		return Message{}, errors.New("投票需要至少 2 个选项")
+	}
+	p := baseSendParams(chatID, opt)
+	p["question"], p["options"] = question, pollOptionsJSON(options)
+	var m Message
+	err := c.Call("sendPoll", p, &m)
+	return m, err
+}
+
+// SendDice 发送骰子/飞镖/篮球等。
+func (c *Client) SendDice(chatID, emoji string, opt SendOptions) (Message, error) {
+	p := baseSendParams(chatID, opt)
+	if emoji != "" {
+		p["emoji"] = emoji
+	}
+	var m Message
+	err := c.Call("sendDice", p, &m)
+	return m, err
+}
+
+// EditMessageText 编辑文本消息。
+func (c *Client) EditMessageText(chatID string, messageID int64, text string, opt SendOptions) error {
+	p := map[string]interface{}{"chat_id": chatID, "message_id": messageID, "text": text}
+	if opt.ParseMode != "" {
+		p["parse_mode"] = opt.ParseMode
+	}
+	if opt.ReplyMarkup != nil {
+		p["reply_markup"] = opt.ReplyMarkup
+	}
+	if opt.DisablePreview {
+		p["link_preview_options"] = map[string]interface{}{"is_disabled": true}
+	}
+	return c.Call("editMessageText", p, nil)
+}
+
+// EditMessageCaption 编辑媒体说明。
+func (c *Client) EditMessageCaption(chatID string, messageID int64, caption string, opt SendOptions) error {
+	p := map[string]interface{}{"chat_id": chatID, "message_id": messageID, "caption": caption}
+	if opt.ParseMode != "" {
+		p["parse_mode"] = opt.ParseMode
+	}
+	if opt.ReplyMarkup != nil {
+		p["reply_markup"] = opt.ReplyMarkup
+	}
+	return c.Call("editMessageCaption", p, nil)
+}
+
+// EditMessageReplyMarkup 只改按钮。
+func (c *Client) EditMessageReplyMarkup(chatID string, messageID int64, markup interface{}) error {
+	return c.Call("editMessageReplyMarkup", map[string]interface{}{
+		"chat_id": chatID, "message_id": messageID, "reply_markup": markup,
+	}, nil)
+}
+
+// ForwardMessage 转发消息。
+func (c *Client) ForwardMessage(chatID, fromChatID string, messageID, threadID int64) (Message, error) {
+	p := map[string]interface{}{"chat_id": chatID, "from_chat_id": fromChatID, "message_id": messageID}
+	if threadID > 0 {
+		p["message_thread_id"] = threadID
+	}
+	var m Message
+	err := c.Call("forwardMessage", p, &m)
+	return m, err
+}
+
+// CopyMessage 复制消息（不带"转发自"）。
+func (c *Client) CopyMessage(chatID, fromChatID string, messageID, threadID int64) (int64, error) {
+	p := map[string]interface{}{"chat_id": chatID, "from_chat_id": fromChatID, "message_id": messageID}
+	if threadID > 0 {
+		p["message_thread_id"] = threadID
+	}
+	var out struct {
+		MessageID int64 `json:"message_id"`
+	}
+	err := c.Call("copyMessage", p, &out)
+	return out.MessageID, err
+}
+
+// PinChatMessage / UnpinChatMessage / UnpinAllChatMessages。
+func (c *Client) PinChatMessage(chatID string, messageID int64, disableNotify bool) error {
+	p := map[string]interface{}{"chat_id": chatID, "message_id": messageID, "disable_notification": disableNotify}
+	return c.Call("pinChatMessage", p, nil)
+}
+
+func (c *Client) UnpinChatMessage(chatID string, messageID int64) error {
+	p := map[string]interface{}{"chat_id": chatID}
+	if messageID > 0 {
+		p["message_id"] = messageID
+	}
+	return c.Call("unpinChatMessage", p, nil)
+}
+
+func (c *Client) UnpinAllChatMessages(chatID string) error {
+	return c.Call("unpinAllChatMessages", map[string]interface{}{"chat_id": chatID}, nil)
+}
+
+// SetChatTitle / SetChatDescription / SetChatPermissions / DeleteChatPhoto。
+func (c *Client) SetChatTitle(chatID, title string) error {
+	return c.Call("setChatTitle", map[string]interface{}{"chat_id": chatID, "title": title}, nil)
+}
+
+func (c *Client) SetChatDescription(chatID, desc string) error {
+	return c.Call("setChatDescription", map[string]interface{}{"chat_id": chatID, "description": desc}, nil)
+}
+
+func (c *Client) SetChatPermissions(chatID string, permissions map[string]interface{}) error {
+	return c.Call("setChatPermissions", map[string]interface{}{"chat_id": chatID, "permissions": permissions}, nil)
+}
+
+func (c *Client) DeleteChatPhoto(chatID string) error {
+	return c.Call("deleteChatPhoto", map[string]interface{}{"chat_id": chatID}, nil)
+}
+
+// CreateChatInviteLink 创建邀请链接，返回 invite_link。
+func (c *Client) CreateChatInviteLink(chatID, name string, expireDate int64, memberLimit int) (string, error) {
+	p := map[string]interface{}{"chat_id": chatID}
+	if name != "" {
+		p["name"] = name
+	}
+	if expireDate > 0 {
+		p["expire_date"] = expireDate
+	}
+	if memberLimit > 0 {
+		p["member_limit"] = memberLimit
+	}
+	var out struct {
+		InviteLink string `json:"invite_link"`
+	}
+	err := c.Call("createChatInviteLink", p, &out)
+	return out.InviteLink, err
+}
+
+// RevokeChatInviteLink 撤销邀请链接。
+func (c *Client) RevokeChatInviteLink(chatID, link string) error {
+	return c.Call("revokeChatInviteLink", map[string]interface{}{"chat_id": chatID, "invite_link": link}, nil)
+}
+
+// CreateForumTopic 创建论坛话题，返回 message_thread_id。
+func (c *Client) CreateForumTopic(chatID, name string, iconColor int) (int64, error) {
+	p := map[string]interface{}{"chat_id": chatID, "name": name}
+	if iconColor > 0 {
+		p["icon_color"] = iconColor
+	}
+	var out struct {
+		MessageThreadID int64 `json:"message_thread_id"`
+	}
+	err := c.Call("createForumTopic", p, &out)
+	return out.MessageThreadID, err
+}
+
+func (c *Client) EditForumTopic(chatID string, threadID int64, name string) error {
+	p := map[string]interface{}{"chat_id": chatID, "message_thread_id": threadID}
+	if name != "" {
+		p["name"] = name
+	}
+	return c.Call("editForumTopic", p, nil)
+}
+
+func (c *Client) CloseForumTopic(chatID string, threadID int64) error {
+	return c.Call("closeForumTopic", map[string]interface{}{"chat_id": chatID, "message_thread_id": threadID}, nil)
+}
+
+func (c *Client) ReopenForumTopic(chatID string, threadID int64) error {
+	return c.Call("reopenForumTopic", map[string]interface{}{"chat_id": chatID, "message_thread_id": threadID}, nil)
+}
+
+func (c *Client) DeleteForumTopic(chatID string, threadID int64) error {
+	return c.Call("deleteForumTopic", map[string]interface{}{"chat_id": chatID, "message_thread_id": threadID}, nil)
+}
+
+func (c *Client) UnpinAllForumTopicMessages(chatID string, threadID int64) error {
+	return c.Call("unpinAllForumTopicMessages", map[string]interface{}{"chat_id": chatID, "message_thread_id": threadID}, nil)
+}
+
+// AnswerInlineQuery 回复内联查询。results 直接是 Bot API 的 InlineQueryResult 数组。
+func (c *Client) AnswerInlineQuery(id string, results []map[string]interface{}, cacheTime int) error {
+	p := map[string]interface{}{"inline_query_id": id, "results": results}
+	if cacheTime > 0 {
+		p["cache_time"] = cacheTime
+	}
+	return c.Call("answerInlineQuery", p, nil)
+}
+
+// SetWebhook 设置 webhook。
+func (c *Client) SetWebhook(webhookURL, secret string, allowed []string) error {
+	p := map[string]interface{}{"url": webhookURL}
+	if secret != "" {
+		p["secret_token"] = secret
+	}
+	if len(allowed) > 0 {
+		p["allowed_updates"] = allowed
+	}
+	return c.Call("setWebhook", p, nil)
+}
+
+// GetWebhookInfo 查询 webhook 状态。
+func (c *Client) GetWebhookInfo() (map[string]interface{}, error) {
+	var out map[string]interface{}
+	err := c.Call("getWebhookInfo", nil, &out)
+	return out, err
+}
+
+// SetMyDescription / SetMyShortDescription / DeleteMyCommands。
+func (c *Client) SetMyDescription(desc string) error {
+	return c.Call("setMyDescription", map[string]interface{}{"description": desc}, nil)
+}
+
+func (c *Client) SetMyShortDescription(desc string) error {
+	return c.Call("setMyShortDescription", map[string]interface{}{"short_description": desc}, nil)
+}
+
+func (c *Client) DeleteMyCommands() error {
+	return c.Call("deleteMyCommands", nil, nil)
+}
+
+// CallMultipart 用 multipart/form-data 调一个需要上传本地文件的方法。
+// params 里的非字符串值会转成 JSON 文本；fileField 是 Telegram 要的字段名
+// （sendPhoto=photo、sendDocument=document、createNewStickerSet=png_sticker 等）。
+func (c *Client) CallMultipart(method string, params map[string]interface{}, fileField, filePath string) (json.RawMessage, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("打开文件失败: %w", err)
+	}
+	defer f.Close()
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	for k, v := range params {
+		s, ok := v.(string)
+		if !ok {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return nil, fmt.Errorf("参数 %s 编码失败: %w", k, err)
+			}
+			s = string(b)
+		}
+		if err := mw.WriteField(k, s); err != nil {
+			return nil, err
+		}
+	}
+	if fileField == "" {
+		fileField = "file"
+	}
+	part, err := mw.CreateFormFile(fileField, filepath.Base(filePath))
+	if err != nil {
+		return nil, err
+	}
+	if _, err := io.Copy(part, f); err != nil {
+		return nil, err
+	}
+	if err := mw.Close(); err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", c.base+"/bot"+c.token+"/"+method, &buf)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("上传请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	var r Response
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return nil, fmt.Errorf("Telegram 响应无法解析(HTTP %d)", resp.StatusCode)
+	}
+	if !r.OK {
+		ae := &APIError{Method: method, Code: r.ErrorCode, Description: r.Description, RetryAfter: r.Parameters.RetryAfter}
+		if ae.Code == 0 {
+			ae.Code = resp.StatusCode
+		}
+		return nil, ae
+	}
+	return r.Result, nil
 }
 
 // ---------------- helpers ----------------

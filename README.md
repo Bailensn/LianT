@@ -20,7 +20,11 @@
 - **入群**：欢迎语（`{name}` / `{username}` / `{chat}`）、入群申请自动通过或留在 Telegram 里人工审批。
 - **网页后台**：总览、群组、最近消息与主动发送、回复规则、违禁词、管理员、禁言、黑名单、审计、设置。
 - **单文件 + SQLite**：纯 Go 驱动（`modernc.org/sqlite`），不需要 cgo/gcc，方便手机和 arm 机器。
-- **长轮询**：无需 webhook、端口映射或证书；断线自动退避重连。
+- **两种收消息方式**：默认长轮询（无需公网/证书）；也可设 webhook + 密钥走公网回调。
+- **媒体与交互**：图片/文件/视频/音频/语音/贴纸/动图/位置/投票/骰子、相册、按钮回调、话题、置顶、编辑消息。
+- **内联查询**：`@机器人 关键词` 返回配置好的结果（`inline_results`）。
+- **Bot API 全覆盖**：管理端「Bot API」页可直接调用任意 Bot API 方法，并支持上传本地文件
+  （邀请链接、论坛话题、权限、贴纸、支付、Business 等）；支付预结算/配送查询可按设置自动确认。
 
 ## 架构
 
@@ -133,6 +137,44 @@ Telegram 普通 @username 不带用户 ID，所以 LianT 会用本地名册（�
 
 反代示例见 [docs/reverse-proxy.md](docs/reverse-proxy.md)。
 
+## 媒体、按钮与内联
+
+网页后台「消息」页可以直接发送：
+
+- 文本、图片、文件、视频、音频、语音、贴纸、动图、位置、投票、骰子；
+- 媒体用 `file_id` 或公开 URL（`sendPhoto`/`sendDocument` 等支持的形式）；
+- 可选 `message_thread_id`（论坛话题）；
+- 可选按钮 JSON：二维数组会自动包成 `inline_keyboard`，也可以传完整 `reply_markup`。
+
+按钮回调支持 `del:<message_id>`、`mute:<user_id>:<seconds>`、`unmute:<user_id>`、`ban:<user_id>`、`unban:<user_id>`，执行前会校验操作者是不是管理员。
+
+内联模式：在「设置」里填 `inline_results`（每行 `标题|内容`），并到 @BotFather `/setinline` 开启内联；
+之后在任意聊天输入 `@你的机器人 关键词` 即可返回结果。
+
+## Webhook（可选）
+
+默认长轮询。要改用 webhook：
+
+```env
+LIANT_WEBHOOK_URL=https://你的域名/telegram/webhook
+LIANT_WEBHOOK_SECRET=随机字符串
+LIANT_WEBHOOK_LISTEN=127.0.0.1:28743
+```
+
+反向代理把 `/telegram/webhook` 转到 `127.0.0.1:28743`。LianT 启动时会自动 `setWebhook`，并校验
+`X-Telegram-Bot-Api-Secret-Token`；没有密钥的请求直接 403。
+
+## Bot API 控制台
+
+网页后台「Bot API」页可以调用 Telegram 支持的任何方法，例如：
+
+`getChat`、`getChatAdministrators`、`createChatInviteLink`、`createForumTopic`、
+`setChatPermissions`、`pinChatMessage`、`sendMediaGroup`、`getWebhookInfo`、`getMyCommands` 等。
+
+参数是 JSON 对象，结果原样展示。需要本地文件的方法（`sendPhoto`、`sendDocument`、`createNewStickerSet` 等）
+用「上传本地文件并调用」：填方法名、文件字段名（`photo`/`document`/`png_sticker`…）和参数，选文件即可。
+这样 Telegram 后续新增的方法不需要等 LianT 更新也能直接用；常用操作（发送/禁言/撤回/群组）仍有专门的 UI。
+
 ## 配置
 
 `.env` 只放启动期配置；业务数据都在数据库里。优先级：**环境变量 > `.env` > 代码默认值**。
@@ -152,6 +194,10 @@ Telegram 普通 @username 不带用户 ID，所以 LianT 会用本地名册（�
 | `LIANT_ADMIN_PREFIX` | 空 | 反代挂载前缀，如 `/LianT` |
 | `LIANT_ADMIN_HTML` | 内置 | 自定义管理页 |
 | `LIANT_ADMIN_ENABLE` | `true` | `false` 关闭网页后台 |
+| `LIANT_WEBHOOK_URL` | 空 | 公网 HTTPS 回调地址；设置后从长轮询切到 webhook |
+| `LIANT_WEBHOOK_SECRET` | 空 | webhook 校验密钥（`X-Telegram-Bot-Api-Secret-Token`） |
+| `LIANT_WEBHOOK_LISTEN` | `127.0.0.1:28743` | webhook 本地监听地址 |
+| `LIANT_WEBHOOK_PATH` | `/telegram/webhook` | webhook 本地路径 |
 
 改 Token / 规则**不用重启**：保存后最长 60 秒生效，或 `./LianT reload`。
 改端口 / 绑定地址 / 数据目录需要 `./LianT restart`。

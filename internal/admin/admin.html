@@ -160,7 +160,7 @@ const BASE = "__BASE_PATH__";
 const NAV = [
   ["overview","总览"],["chats","群组"],["messages","消息"],["rules","回复规则"],
   ["words","违禁词"],["admins","管理员"],["mutes","禁言"],["blacklist","黑名单"],
-  ["audit","操作日志"],["settings","设置"],["help","帮助"]
+  ["audit","操作日志"],["settings","设置"],["botapi","Bot API"],["help","帮助"]
 ];
 const state = {
   active:"overview", chats:[], rules:[], words:[], admins:[], mutes:[], blacklist:[],
@@ -219,7 +219,7 @@ function descOf(id){
   return ({overview:"机器人状态与运营数据",chats:"已登记的群组 / 频道",messages:"最近消息与主动发送",
     rules:"按匹配方式自动回复",words:"命中后的撤回/禁言/封禁",admins:"谁可以使用管理指令",
     mutes:"禁言记录与解除",blacklist:"黑名单成员",audit:"所有处置与后台操作",settings:"全局开关与欢迎语",
-    help:"群内指令与使用说明"})[id]||"";
+    botapi:"直接调用 Telegram Bot API 的任意方法",help:"群内指令与使用说明"})[id]||"";
 }
 
 // ---------- 加载 ----------
@@ -239,6 +239,7 @@ async function load(){
     else if(id==="blacklist"){ await ensureChats(); state.blacklist=await get("blacklist"); renderBlacklist(); }
     else if(id==="audit"){ await ensureChats(); state.audit=await get("audit?limit=300"); renderAudit(); }
     else if(id==="settings"){ state.settings=await get("settings"); renderSettings(); }
+    else if(id==="botapi"){ renderBotAPI(); }
     else if(id==="help"){ state.overview=state.overview||await get("overview"); renderHelp(); }
     renderFoot();
   }catch(e){
@@ -266,6 +267,7 @@ function renderOverview(){
     <div class="card"><div class="card-head"><div><h2>运行信息</h2><p>Token 来源：${esc(o.token_source||"—")}</p></div><span class="pill ${stateBad}">${esc(b.bot_state||"未知")}</span></div>
       <div class="card-body"><dl class="kv">
         <dt>Telegram API</dt><dd class="mono">${esc(b.api_base||"—")}</dd>
+        <dt>收消息方式</dt><dd>${esc(b.mode||"long-polling")}</dd>
         <dt>Bot ID</dt><dd class="mono">${esc(b.bot_id||"—")}</dd>
         <dt>最近消息</dt><dd>${esc(fmtTime(b.last_message_at))}</dd>
         <dt>重连次数</dt><dd>${esc(b.reconnects||"0")}</dd>
@@ -330,9 +332,23 @@ function renderMessages(){
       <div class="toolbar"><select id="msg-chat" style="padding:8px 10px;border-radius:9px;border:1px solid var(--border-2);background:var(--bg-2)">${chatOptions(state.selectedChat,"选择会话")}</select>
       <button class="btn" data-act="reload-messages">刷新</button></div></div>
       <div class="card-body"><div class="msg-list">${list||'<div class="empty">还没有消息。</div>'}</div></div></div>
-    <div class="card"><div class="card-head"><div><h2>发送消息</h2><p>纯文本；发送会写入审计。</p></div></div>
-      <div class="card-body"><form id="form-send">
-        <label class="field"><span>内容</span><textarea name="content" placeholder="输入要发送到群里的内容…" maxlength="4000"></textarea></label>
+    <div class="card"><div class="card-head"><div><h2>发送消息</h2><p>文本 / 图片 / 文件 / 投票 / 位置，支持按钮与话题；发送会写入审计。</p></div></div>
+      <div class="card-body"><form id="form-send" class="grid-form">
+        <label class="field"><span>类型</span><select name="kind" id="send-kind">
+          <option value="text">文本</option><option value="photo">图片</option><option value="document">文件</option>
+          <option value="video">视频</option><option value="audio">音频</option><option value="voice">语音</option>
+          <option value="sticker">贴纸</option><option value="animation">动图</option>
+          <option value="location">位置</option><option value="poll">投票</option><option value="dice">骰子</option>
+        </select></label>
+        <label class="field"><span>话题 ID（论坛群可选）</span><input name="thread_id" type="number" placeholder="message_thread_id"></label>
+        <label class="field"><span>解析模式</span><select name="parse_mode">
+          <option value="">纯文本</option><option value="HTML">HTML</option><option value="MarkdownV2">MarkdownV2</option>
+        </select></label>
+        <label class="field" style="grid-column:1/-1"><span>文本内容 / 投票问题</span><textarea name="content" placeholder="文本消息内容，或投票问题…" maxlength="4000"></textarea></label>
+        <label class="field" style="grid-column:1/-1"><span>媒体（file_id / URL；位置填“纬度,经度”；投票选项写在说明里用 | 分隔）</span><input name="media" placeholder="https://... 或 AgACAg..."></label>
+        <label class="field" style="grid-column:1/-1"><span>说明 / 投票选项</span><textarea name="caption" placeholder="媒体说明；投票选项如：选项A|选项B|选项C"></textarea></label>
+        <label class="field" style="grid-column:1/-1"><span>按钮 JSON（可选，二维数组或完整 reply_markup）</span><textarea name="buttons" placeholder='[[{"text":"删除","callback_data":"del:123"}]]'></textarea></label>
+        <label class="check"><input type="checkbox" name="disable_preview"> 不显示链接预览</label>
         <div class="form-actions"><button class="btn primary" type="submit">发送</button></div>
       </form></div></div>`;
   const sel=$("#msg-chat");
@@ -483,10 +499,76 @@ function renderSettings(){
           <option value="true"${pick("join_auto_approve","false")==="true"?" selected":""}>自动通过</option>
         </select></label>
         <label class="field" style="grid-column:1/-1"><span>入群欢迎语（留空 = 不发送）</span><textarea name="welcome_text" placeholder="欢迎 {name} 加入 {chat}！">${esc(pick("welcome_text",""))}</textarea></label>
+        <label class="field" style="grid-column:1/-1"><span>内联查询结果（每行 标题|内容；留空则返回默认帮助）</span><textarea name="inline_results" style="min-height:110px" placeholder="LianT 帮助|发送 /help 查看指令">${esc(pick("inline_results",""))}</textarea></label>
+        <label class="field"><span>支付/配送自动确认</span><select name="payment_auto_approve">
+          <option value="false"${pick("payment_auto_approve","false")==="false"?" selected":""}>关闭（拒绝预结算/配送查询）</option>
+          <option value="true"${pick("payment_auto_approve","false")==="true"?" selected":""}>自动确认</option>
+        </select></label>
         <div class="form-actions"><button class="btn primary" type="submit">保存设置</button></div>
       </form></div></div>
     <div class="card"><div class="card-head"><div><h2>备份</h2><p>导出规则/违禁词/群组/管理员/设置（不含 Token）。</p></div></div>
       <div class="card-body"><a class="btn" href="${BASE}/api/export" target="_blank" rel="noopener">导出 JSON 配置</a></div></div>`;
+}
+
+// ---------- Bot API ----------
+function renderBotAPI(){
+  $("#view").innerHTML=`
+    <div class="card"><div class="card-head"><div><h2>调用任意 Bot API 方法</h2><p>直接透传给 Telegram，参数是 JSON 对象。例如 getChat、sendPhoto、createForumTopic、setChatPermissions、getWebhookInfo、createChatInviteLink 等。注意：运行长轮询时不要调 getUpdates，切 webhook 请改环境变量而不是在这里 setWebhook。</p></div></div>
+      <div class="card-body"><form id="form-botapi">
+        <div class="grid-form">
+          <label class="field"><span>方法名</span><input id="api-method" placeholder="getChat" value="getMe"></label>
+          <label class="field" style="grid-column:1/-1"><span>参数 JSON</span><textarea id="api-params" style="min-height:140px" placeholder='{"chat_id":"-1001234567890"}'>{}</textarea></label>
+        </div>
+        <div class="form-actions"><button class="btn primary" type="submit">调用</button></div>
+      </form>
+      <pre id="api-result" style="white-space:pre-wrap;word-break:break-all;font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:60px;margin:14px 0 0">结果会显示在这里</pre></div></div>
+    <div class="card"><div class="card-head"><div><h2>常用方法</h2><p>点一下填入参数模板。</p></div></div>
+      <div class="card-body toolbar">
+        <button class="btn sm" data-api="getChat" data-params='{"chat_id":"-1001234567890"}'>getChat</button>
+        <button class="btn sm" data-api="getChatAdministrators" data-params='{"chat_id":"-1001234567890"}'>getChatAdministrators</button>
+        <button class="btn sm" data-api="getChatMemberCount" data-params='{"chat_id":"-1001234567890"}'>getChatMemberCount</button>
+        <button class="btn sm" data-api="getWebhookInfo" data-params="{}">getWebhookInfo</button>
+        <button class="btn sm" data-api="createChatInviteLink" data-params='{"chat_id":"-1001234567890","name":"LianT"}'>createChatInviteLink</button>
+        <button class="btn sm" data-api="createForumTopic" data-params='{"chat_id":"-1001234567890","name":"公告"}'>createForumTopic</button>
+        <button class="btn sm" data-api="setChatPermissions" data-params='{"chat_id":"-1001234567890","permissions":{"can_send_messages":true}}'>setChatPermissions</button>
+        <button class="btn sm" data-api="getMyCommands" data-params="{}">getMyCommands</button>
+      </div></div>
+    <div class="card"><div class="card-head"><div><h2>上传本地文件并调用</h2><p>multipart/form-data，上限 32MB；文件字段名按方法填（sendPhoto=photo、sendDocument=document、createNewStickerSet=png_sticker 等）。</p></div></div>
+      <div class="card-body"><form id="form-upload" class="grid-form">
+        <label class="field"><span>方法名</span><input name="method" value="sendPhoto" placeholder="sendPhoto"></label>
+        <label class="field"><span>文件字段名</span><input name="file_field" value="photo" placeholder="photo"></label>
+        <label class="field" style="grid-column:1/-1"><span>其他参数 JSON</span><textarea name="params" placeholder='{"chat_id":"-1001234567890","caption":"hello"}'>{}</textarea></label>
+        <label class="field" style="grid-column:1/-1"><span>选择文件</span><input type="file" name="file"></label>
+        <div class="form-actions"><button class="btn primary" type="submit">上传并调用</button></div>
+      </form>
+      <pre id="upload-result" style="white-space:pre-wrap;word-break:break-all;font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:50px;margin:14px 0 0">结果会显示在这里</pre></div></div>`;
+  $("#form-botapi").onsubmit=async e=>{
+    e.preventDefault();
+    let params={};
+    const raw=$("#api-params").value.trim();
+    if(raw){
+      try{ params=JSON.parse(raw); }catch(err){ toast("参数不是合法 JSON："+err.message,true); return; }
+    }
+    try{
+      const r=await post("botapi",{method:$("#api-method").value.trim(),params});
+      $("#api-result").textContent=JSON.stringify(r.result,null,2);
+    }catch(err){ $("#api-result").textContent="调用失败："+err.message; toast(err.message,true); }
+  };
+  $$("[data-api]").forEach(btn=>btn.onclick=()=>{
+    $("#api-method").value=btn.dataset.api;
+    $("#api-params").value=btn.dataset.params||"{}";
+  });
+  $("#form-upload").onsubmit=async e=>{
+    e.preventDefault();
+    const fd=new FormData(e.target);
+    try{
+      const res=await fetch(BASE+"/api/upload",{method:"POST",body:fd,credentials:"same-origin"});
+      const j=await res.json().catch(()=>({ok:false,error:"HTTP "+res.status}));
+      if(!j.ok) throw new Error(j.error||"上传失败");
+      $("#upload-result").textContent=JSON.stringify(j.data.result,null,2);
+      toast("上传并调用成功");
+    }catch(err){ $("#upload-result").textContent="调用失败："+err.message; toast(err.message,true); }
+  };
 }
 
 // ---------- 帮助 ----------
@@ -501,7 +583,10 @@ function renderHelp(){
         2. 机器人只能撤回 48 小时内的消息；群成员消息需要机器人有删除权限。<br>
         3. Telegram 不提供普通成员列表，本地名册来自成员发言；按昵称找人前先让对方说句话。<br>
         4. 如果需要机器人看到群里全部消息，请在 @BotFather 关闭 privacy mode（/setprivacy）。<br>
-        5. 网页后台默认只绑 127.0.0.1；远程访问请用 Nginx/Caddy 反代并加 HTTPS。
+        5. 网页后台默认只绑 127.0.0.1；远程访问请用 Nginx/Caddy 反代并加 HTTPS。<br>
+        6. Webhook 模式：设 LIANT_WEBHOOK_URL（公网 HTTPS）与 LIANT_WEBHOOK_SECRET，本地监听 LIANT_WEBHOOK_LISTEN（默认 127.0.0.1:28743）。<br>
+        7. 内联查询：在「设置」里填 inline_results（每行 标题|内容），在任意聊天输入 @机器人 关键词 即可。<br>
+        8. 其他 Bot API 能力（媒体、投票、论坛话题、邀请链接、权限、贴纸、支付等）都能在「Bot API」页直接调用；需要本地文件的方法用下方「上传本地文件并调用」。
       </div></div>`;
 }
 
@@ -625,8 +710,17 @@ document.addEventListener("submit",async e=>{
   if(e.target.id==="form-send"){
     e.preventDefault();
     const o=formObj(e.target);
+    const payload={
+      chat_id:state.selectedChat, kind:o.kind||"text", content:o.content||"",
+      media:o.media||"", caption:o.caption||"", thread_id:Number(o.thread_id||0),
+      parse_mode:o.parse_mode||"", disable_preview:!!o.disable_preview
+    };
+    if(o.buttons && String(o.buttons).trim()){
+      try{ payload.buttons=JSON.parse(o.buttons); }
+      catch(err){ toast("按钮 JSON 不合法："+err.message,true); return; }
+    }
     try{
-      await post("send",{chat_id:state.selectedChat,content:o.content||""});
+      await post("send",payload);
       toast("已发送"); e.target.reset(); await loadMessages();
     }catch(err){ toast(err.message,true); }
   }

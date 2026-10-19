@@ -49,3 +49,24 @@ location /LianT/ {
 | `LIANT_ADMIN_PREFIX` | 空 | 页面挂载前缀，如 `/LianT` |
 | `LIANT_ADMIN_HTML` | 内置 | 自定义页面文件 |
 | `LIANT_ADMIN_ENABLE` | `true` | 设 `false` 完全关掉管理端 |
+
+## Telegram Webhook（可选）
+
+如果不想用长轮询，把 `LIANT_WEBHOOK_URL` 设成公网 HTTPS 地址，并反代到本地监听：
+
+```nginx
+location /telegram/webhook {
+    proxy_pass http://127.0.0.1:28743/telegram/webhook;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+}
+```
+
+```env
+LIANT_WEBHOOK_URL=https://你的域名/telegram/webhook
+LIANT_WEBHOOK_SECRET=随机字符串
+LIANT_WEBHOOK_LISTEN=127.0.0.1:28743
+```
+
+程序启动时会自动 `setWebhook` 并校验 `X-Telegram-Bot-Api-Secret-Token`。
+想切回长轮询：删掉 `LIANT_WEBHOOK_URL` 后 `./LianT restart`（启动时会自动 `deleteWebhook`）。

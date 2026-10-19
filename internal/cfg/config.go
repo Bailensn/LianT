@@ -93,6 +93,31 @@ func Proxy() string {
 	return strings.TrimSpace(EnvOr("LIANT_PROXY", ""))
 }
 
+// ---------------- Webhook（可选） ----------------
+// 默认长轮询；需要公网 HTTPS 回调时设置 LIANT_WEBHOOK_URL。
+func WebhookURL() string {
+	return strings.TrimSpace(EnvOr("LIANT_WEBHOOK_URL", ""))
+}
+
+func WebhookSecret() string {
+	return strings.TrimSpace(EnvOr("LIANT_WEBHOOK_SECRET", ""))
+}
+
+func WebhookListen() string {
+	return EnvOr("LIANT_WEBHOOK_LISTEN", "127.0.0.1:28743")
+}
+
+func WebhookPath() string {
+	p := strings.TrimSpace(EnvOr("LIANT_WEBHOOK_PATH", "/telegram/webhook"))
+	if p == "" {
+		p = "/telegram/webhook"
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return p
+}
+
 // ---------------- 控制端口 ----------------
 
 // ControlHost 控制端口绑定地址，默认只绑回环。

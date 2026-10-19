@@ -1,9 +1,12 @@
 package bot
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -354,13 +357,18 @@ func (b *Bot) run() error {
 	b.mu.Unlock()
 
 	log.Printf("[OK] 已连接 @%s（ID %d，API %s）", me.Username, me.ID, cfg.APIBase())
-	if err := c.DeleteWebhook(false); err != nil {
-		log.Printf("[!] 关闭 webhook 失败（如果设置了 webhook，轮询会 409）: %v", err)
-	}
 	b.registerCommands(c)
 	b.setState("在线")
 	b.setLastErr("")
 	go b.ensureAllGroupsAdmin()
+
+	// 配了公网 webhook 就走回调；否则长轮询。
+	if cfg.WebhookURL() != "" {
+		return b.runWebhook(c)
+	}
+	if err := c.DeleteWebhook(false); err != nil {
+		log.Printf("[!] 关闭 webhook 失败（如果设置了 webhook，轮询会 409）: %v", err)
+	}
 
 	offset := b.loadOffset()
 	savedAt := time.Now()
@@ -416,6 +424,14 @@ func (b *Bot) registerCommands(c *tg.Client) {
 		{"command": "ban", "description": "封禁/踢出（回复某人）"},
 		{"command": "unban", "description": "解除封禁"},
 		{"command": "del", "description": "撤回消息（回复它）"},
+		{"command": "pin", "description": "置顶消息（回复它）"},
+		{"command": "unpin", "description": "取消置顶"},
+		{"command": "invite", "description": "创建群邀请链接"},
+		{"command": "topic", "description": "创建论坛话题"},
+		{"command": "settitle", "description": "修改群名"},
+		{"command": "setdesc", "description": "修改群简介"},
+		{"command": "rules", "description": "查看规则数量"},
+		{"command": "me", "description": "查看机器人信息"},
 	}
 	if err := c.SetMyCommands(cmds); err != nil {
 		log.Printf("[!] 设置命令菜单失败: %v", err)
@@ -443,9 +459,255 @@ func (b *Bot) handleUpdate(c *tg.Client, u tg.Update) {
 	case u.ChatJoinRequest != nil:
 		b.handleJoinRequest(c, u.ChatJoinRequest)
 	case u.CallbackQuery != nil:
-		_ = c.AnswerCallbackQuery(u.CallbackQuery.ID, "")
+		b.handleCallbackQuery(c, u.CallbackQuery)
+	case u.InlineQuery != nil:
+		b.handleInlineQuery(c, u.InlineQuery)
+	case u.ChosenInlineResult != nil:
+		log.Printf("[inline] 用户 %s 选择了结果 %s", u.ChosenInlineResult.From.Display(), u.ChosenInlineResult.ResultID)
+	case u.PollAnswer != nil:
+		log.Printf("[poll] 投票 %s 有新回答", u.PollAnswer.PollID)
+	case u.PreCheckoutQuery != nil:
+		autoPay := b.st != nil && strings.EqualFold(b.st.Setting("payment_auto_approve", "false"), "true")
+		p := map[string]interface{}{
+			"pre_checkout_query_id": u.PreCheckoutQuery.ID,
+			"ok":                    autoPay,
+		}
+		if !autoPay {
+			p["error_message"] = "LianT 未开启自动确认支付（settings.payment_auto_approve）"
+		}
+		_ = c.Call("answerPreCheckoutQuery", p, nil)
+	case u.ShippingQuery != nil:
+		autoPay2 := b.st != nil && strings.EqualFold(b.st.Setting("payment_auto_approve", "false"), "true")
+		sp := map[string]interface{}{
+			"shipping_query_id": u.ShippingQuery.ID,
+			"ok":                autoPay2,
+			"shipping_options":  []interface{}{},
+		}
+		if !autoPay2 {
+			sp["error_message"] = "LianT 未开启自动确认配送"
+		}
+		_ = c.Call("answerShippingQuery", sp, nil)
+	case u.BusinessConnection != nil:
+		log.Printf("[business] 连接 %s 用户 %s enabled=%v", u.BusinessConnection.ID, u.BusinessConnection.User.Display(), u.BusinessConnection.IsEnabled)
+	case u.BusinessMessage != nil:
+		b.handleMessage(c, u.BusinessMessage)
+	case u.DeletedBusinessMessages != nil:
+		log.Printf("[business] 消息被删除 chat=%d count=%d", u.DeletedBusinessMessages.Chat.ID, len(u.DeletedBusinessMessages.MessageIDs))
 	case u.EditedMessage != nil:
 		log.Printf("[edit] 忽略编辑消息 chat=%s msg=%d", chatIDStr(u.EditedMessage.Chat.ID), u.EditedMessage.MessageID)
+	}
+}
+
+// handleCallbackQuery 处理内联按钮回调。约定 data 格式：
+//   noop / ack
+//   del:<message_id>
+//   mute:<user_id>:<seconds>
+//   unmute:<user_id> / ban:<user_id> / unban:<user_id>
+func (b *Bot) handleCallbackQuery(c *tg.Client, q *tg.CallbackQuery) {
+	if q == nil {
+		return
+	}
+	answer := "已收到"
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[X] 处理按钮回调 panic: %v", r)
+			answer = "处理失败"
+		}
+		if len([]rune(answer)) > 180 {
+			answer = string([]rune(answer)[:180])
+		}
+		_ = c.AnswerCallbackQuery(q.ID, answer)
+	}()
+
+	if q.Message == nil {
+		answer = "这个按钮没有绑定会话"
+		return
+	}
+	chatID := chatIDStr(q.Message.Chat.ID)
+	userID := chatIDStr(q.From.ID)
+	data := strings.TrimSpace(q.Data)
+	if data == "" || data == "noop" || data == "ack" {
+		return
+	}
+	parts := strings.Split(data, ":")
+	action := parts[0]
+
+	// 群管理类按钮必须是管理员/后台管理员。
+	role := b.memberRole(c, chatID, userID)
+	_, backendAdmin := b.st.AdminRole(chatID, userID)
+	if !(backendAdmin || role == "admin" || role == "owner") {
+		answer = "只有管理员能操作"
+		return
+	}
+
+	switch action {
+	case "del":
+		if len(parts) < 2 {
+			answer = "缺少消息 ID"
+			return
+		}
+		id, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			answer = "消息 ID 不合法"
+			return
+		}
+		if err := c.DeleteMessage(chatID, id); err != nil {
+			answer = errText(err)
+			return
+		}
+		answer = "已撤回"
+	case "mute":
+		if len(parts) < 3 {
+			answer = "缺少参数"
+			return
+		}
+		sec, _ := strconv.Atoi(parts[2])
+		if sec <= 0 {
+			sec = 600
+		}
+		res := b.MuteMember(ActionCtx{
+			ChatID: chatID, UserID: parts[1], Kind: "callback", Hit: "按钮禁言", Operator: q.From.Display(),
+		}, time.Duration(sec)*time.Second, "按钮禁言")
+		answer = JoinResults(res, "已禁言")
+	case "unmute":
+		if len(parts) < 2 {
+			answer = "缺少用户 ID"
+			return
+		}
+		res := b.UnmuteMember(ActionCtx{
+			ChatID: chatID, UserID: parts[1], Kind: "callback", Hit: "按钮解禁", Operator: q.From.Display(),
+		})
+		answer = JoinResults(res, "已解除禁言")
+	case "ban":
+		if len(parts) < 2 {
+			answer = "缺少用户 ID"
+			return
+		}
+		res := b.BanMember(ActionCtx{
+			ChatID: chatID, UserID: parts[1], Kind: "callback", Hit: "按钮封禁", Operator: q.From.Display(),
+		}, true)
+		answer = JoinResults(res, "已封禁")
+	case "unban":
+		if len(parts) < 2 {
+			answer = "缺少用户 ID"
+			return
+		}
+		_ = b.st.RemoveBlacklist(chatID, parts[1])
+		res := b.UnbanMember(ActionCtx{
+			ChatID: chatID, UserID: parts[1], Kind: "callback", Hit: "按钮解封", Operator: q.From.Display(),
+		})
+		answer = JoinResults(res, "已解封")
+	default:
+		answer = "未知按钮操作"
+	}
+}
+
+// handleInlineQuery 处理 @机器人 的内联查询：把 settings.inline_results 的每行作为一条结果。
+func (b *Bot) handleInlineQuery(c *tg.Client, q *tg.InlineQuery) {
+	if q == nil {
+		return
+	}
+	raw := ""
+	if b.st != nil {
+		raw = b.st.Setting("inline_results", "")
+	}
+	var results []map[string]interface{}
+	for i, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		title, content := line, line
+		if idx := strings.Index(line, "|"); idx > 0 {
+			title = strings.TrimSpace(line[:idx])
+			content = strings.TrimSpace(line[idx+1:])
+		}
+		if len([]rune(title)) > 60 {
+			title = string([]rune(title)[:60])
+		}
+		results = append(results, map[string]interface{}{
+			"type":        "article",
+			"id":          fmt.Sprintf("LianT-%d", i),
+			"title":       title,
+			"description": truncateLog(content, 80),
+			"input_message_content": map[string]interface{}{
+				"message_text": content,
+			},
+		})
+	}
+	if len(results) == 0 {
+		results = append(results, map[string]interface{}{
+			"type":        "article",
+			"id":          "LianT-help",
+			"title":       "LianT · Telegram 群管理机器人",
+			"description": "发送 /help 查看指令",
+			"input_message_content": map[string]interface{}{
+				"message_text": HelpText(),
+			},
+		})
+	}
+	if err := c.AnswerInlineQuery(q.ID, results, 60); err != nil {
+		log.Printf("[X] 回复内联查询失败: %v", err)
+	}
+}
+
+// allowedUpdates 是长轮询/webhook 共用的更新类型。
+func allowedUpdates() []string {
+	return []string{
+		"message", "edited_message", "channel_post",
+		"my_chat_member", "chat_member", "chat_join_request", "callback_query",
+		"inline_query", "chosen_inline_result", "poll_answer",
+		"pre_checkout_query", "shipping_query",
+		"business_connection", "business_message", "edited_business_message",
+		"deleted_business_messages",
+	}
+}
+
+// runWebhook 走 webhook 模式（需要公网 HTTPS），收到更新后交给 handleUpdate。
+func (b *Bot) runWebhook(c *tg.Client) error {
+	if err := c.SetWebhook(cfg.WebhookURL(), cfg.WebhookSecret(), allowedUpdates()); err != nil {
+		return fmt.Errorf("设置 webhook 失败: %w", err)
+	}
+	path := cfg.WebhookPath()
+	secret := cfg.WebhookSecret()
+	mux := http.NewServeMux()
+	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if secret != "" && r.Header.Get("X-Telegram-Bot-Api-Secret-Token") != secret {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		var u tg.Update
+		if err := json.Unmarshal(body, &u); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		go b.handleUpdate(c, u)
+	})
+	srv := &http.Server{Addr: cfg.WebhookListen(), Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.ListenAndServe()
+	}()
+	log.Printf("[OK] Webhook 模式：%s -> %s%s", cfg.WebhookURL(), cfg.WebhookListen(), path)
+	select {
+	case <-b.stopCh:
+		_ = srv.Close()
+		return nil
+	case err := <-errCh:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return fmt.Errorf("webhook 服务退出: %w", err)
 	}
 }
 
@@ -724,6 +986,38 @@ func (b *Bot) SendNow(chatID, text string, replyTo int64) (int64, error) {
 	return out.MessageID, nil
 }
 
+// SendMessageOpt 发文本并支持回复/话题/按钮/解析模式（网页后台用）。
+func (b *Bot) SendMessageOpt(chatID, text string, opt tg.SendOptions) (int64, error) {
+	c := b.clientOrNil()
+	if c == nil {
+		return 0, errors.New("机器人尚未连接")
+	}
+	out, err := c.SendMessage(chatID, text, opt)
+	if err != nil {
+		return 0, err
+	}
+	if out.MessageID > 0 {
+		b.RememberOutgoing(chatID, out.MessageID, text)
+	}
+	return out.MessageID, nil
+}
+
+// SendMediaNow 发媒体消息（网页后台用）。
+func (b *Bot) SendMediaNow(chatID, kind, media, caption string, opt tg.SendOptions) (int64, error) {
+	c := b.clientOrNil()
+	if c == nil {
+		return 0, errors.New("机器人尚未连接")
+	}
+	out, err := c.SendMedia(chatID, kind, media, caption, opt)
+	if err != nil {
+		return 0, err
+	}
+	if out.MessageID > 0 {
+		b.RememberOutgoing(chatID, out.MessageID, caption)
+	}
+	return out.MessageID, nil
+}
+
 // SendText 兼容旧调用：异步发文本。
 func (b *Bot) SendText(scope, chatID, userID string, msgID int64, text string) {
 	c := b.clientOrNil()
@@ -749,6 +1043,10 @@ func (b *Bot) Status() map[string]string {
 	state, lastErr, lastMsg, me := b.state, b.lastErr, b.lastMsgAt, b.me
 	b.mu.RUnlock()
 
+	mode := "long-polling"
+	if cfg.WebhookURL() != "" {
+		mode = "webhook"
+	}
 	d := map[string]string{
 		"bot_state":  state,
 		"messages":   strconv.FormatInt(atomic.LoadInt64(&b.msgCount), 10),
@@ -756,6 +1054,7 @@ func (b *Bot) Status() map[string]string {
 		"uptime":     time.Since(b.startedAt).Round(time.Second).String(),
 		"platform":   "Telegram",
 		"api_base":   cfg.APIBase(),
+		"mode":       mode,
 	}
 	if me.ID > 0 {
 		d["bot_id"] = strconv.FormatInt(me.ID, 10)
