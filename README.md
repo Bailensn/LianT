@@ -3,7 +3,7 @@
 > **这个项目是 AI 写的。** 需求、方向与验收由开发者负责；代码、文档和提交信息由 AI Agent 生成。
 > 请按「AI 辅助产出」对待，上生产前自己审一遍，尤其是鉴权、SQL 和平台接口部分。
 
-**自托管的多 Bot 管理后台 + Telegram / QQ 群管理机器人。**
+**自托管的多平台群管理后台与机器人**（当前接入 Telegram、QQ，其他平台按 adapter 扩展）。
 
 **许可证：AGPL-3.0**（[LICENSE](LICENSE)）——改过的版本对外提供网络服务时，必须公开源码，详见[许可证](#许可证)一节。
 
@@ -441,7 +441,7 @@ LianT 是一个 Telegram 群管理机器人，不是 Telegram 客户端，也不
 本项目以 **GNU Affero General Public License v3.0（AGPL-3.0）** 发布，完整条款见 [LICENSE](LICENSE)。
 
 ```text
-LianT - 自托管的多 Bot 管理后台 + Telegram / QQ 群管理机器人
+LianT - 自托管的多平台群管理后台与机器人
 Copyright (C) 2026  LensnTeam
 ```
 
