@@ -123,11 +123,6 @@ func TokenSource(st *store.Store) (string, string) {
 	return tok, "新生成（已写入数据库）"
 }
 
-func TokenValue(st *store.Store) string {
-	tok, _ := TokenSource(st)
-	return tok
-}
-
 func RandomToken(n int) string {
 	buf := make([]byte, n)
 	if _, err := rand.Read(buf); err != nil {

@@ -49,8 +49,6 @@ func New(reg *store.Store) *Manager {
 	return &Manager{reg: reg, items: map[int64]*Runtime{}}
 }
 
-func (m *Manager) Registry() *store.Store { return m.reg }
-
 // BotDBPath 返回某个 Bot 的业务库路径。
 func BotDBPath(id int64) string {
 	return filepath.Join(config.DataDir, "bots", fmt.Sprintf("%d.db", id))

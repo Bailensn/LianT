@@ -2,7 +2,6 @@ package qq
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 )
@@ -81,11 +80,4 @@ func GroupBlacklistURL(groupOpenID string) string {
 
 func C2cMessageURL(userOpenID string) string {
 	return apiBase() + fmt.Sprintf(envPath("LIANT_QQ_C2C_MESSAGE_PATH", envPath("QBOT_C2C_MESSAGE_PATH", "/v2/users/%s/messages")), userOpenID)
-}
-
-// 供 qqbot 运行时判断是否配置了代理；目前沿用 Telegram 的 HTTP_PROXY 环境变量。
-func HTTPProxy() *http.Transport {
-	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.Proxy = http.ProxyFromEnvironment
-	return tr
 }

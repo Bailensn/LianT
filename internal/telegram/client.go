@@ -719,30 +719,6 @@ func (c *Client) CreateForumTopic(chatID, name string, iconColor int) (int64, er
 	return out.MessageThreadID, err
 }
 
-func (c *Client) EditForumTopic(chatID string, threadID int64, name string) error {
-	p := map[string]interface{}{"chat_id": chatID, "message_thread_id": threadID}
-	if name != "" {
-		p["name"] = name
-	}
-	return c.Call("editForumTopic", p, nil)
-}
-
-func (c *Client) CloseForumTopic(chatID string, threadID int64) error {
-	return c.Call("closeForumTopic", map[string]interface{}{"chat_id": chatID, "message_thread_id": threadID}, nil)
-}
-
-func (c *Client) ReopenForumTopic(chatID string, threadID int64) error {
-	return c.Call("reopenForumTopic", map[string]interface{}{"chat_id": chatID, "message_thread_id": threadID}, nil)
-}
-
-func (c *Client) DeleteForumTopic(chatID string, threadID int64) error {
-	return c.Call("deleteForumTopic", map[string]interface{}{"chat_id": chatID, "message_thread_id": threadID}, nil)
-}
-
-func (c *Client) UnpinAllForumTopicMessages(chatID string, threadID int64) error {
-	return c.Call("unpinAllForumTopicMessages", map[string]interface{}{"chat_id": chatID, "message_thread_id": threadID}, nil)
-}
-
 // AnswerInlineQuery 回复内联查询。results 直接是 Bot API 的 InlineQueryResult 数组。
 func (c *Client) AnswerInlineQuery(id string, results []map[string]interface{}, cacheTime int) error {
 	p := map[string]interface{}{"inline_query_id": id, "results": results}

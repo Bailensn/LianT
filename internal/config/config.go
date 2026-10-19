@@ -26,7 +26,6 @@ const (
 
 	ProtocolVersion = 1
 	AppVersion      = "0.1.0"
-	AppName         = "LianT"
 )
 
 // ---------------- Telegram API ----------------

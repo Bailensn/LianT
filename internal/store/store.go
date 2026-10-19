@@ -1010,17 +1010,6 @@ func (s *Store) RemoveBlacklist(groupChatID, memberChatID string) error {
 	return nil
 }
 
-func (s *Store) MarkBlacklistSynced(groupChatID, memberChatID string, synced bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, err := s.db.Exec(`UPDATE blacklist SET tg_synced = ? WHERE chat_id = ? AND user_id = ?`,
-		BoolInt(synced), groupChatID, memberChatID); err != nil {
-		return err
-	}
-	s.bump()
-	return nil
-}
-
 // ---------------- members（自建群名册） ----------------
 
 // TouchMember 每条群消息都会调用：记下昵称/角色，供"禁言 张三"这类指令解析用。
@@ -1276,17 +1265,6 @@ func (s *Store) DeleteBot(id int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, err := s.db.Exec(`DELETE FROM bots WHERE id = ?`, id); err != nil {
-		return err
-	}
-	s.bump()
-	return nil
-}
-
-func (s *Store) SetBotIdentity(id int64, username string, telegramID int64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, err := s.db.Exec(`UPDATE bots SET username=?, telegram_id=?, updated_at=? WHERE id=?`,
-		username, telegramID, NowStr(), id); err != nil {
 		return err
 	}
 	s.bump()
