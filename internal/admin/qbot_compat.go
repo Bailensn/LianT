@@ -47,7 +47,7 @@ func (c *qctx) status() map[string]string {
 
 func (c *qctx) invalidate() {
 	if c.b != nil {
-		c.invalidate()
+		c.b.InvalidateRules()
 	}
 	if c.q != nil {
 		c.q.InvalidateRules()

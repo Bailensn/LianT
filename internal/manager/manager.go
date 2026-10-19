@@ -447,7 +447,6 @@ func (m *Manager) stop(id int64) {
 	delete(m.items, id)
 }
 
-
 func seedDefaults(st *store.Store) {
 	recs, err := st.Rules()
 	if err != nil || len(recs) > 0 {

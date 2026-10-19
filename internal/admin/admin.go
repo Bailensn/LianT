@@ -327,9 +327,10 @@ func ApiErr(w http.ResponseWriter, code int, msg string) {
 	WriteJSON(w, code, map[string]interface{}{"ok": false, "error": msg})
 }
 
+// DecodeBody 解析 JSON 请求体；限制 16MB，避免超大 body 一次把内存吃满。
 func DecodeBody(r *http.Request, v interface{}) error {
 	defer r.Body.Close()
-	dec := json.NewDecoder(r.Body)
+	dec := json.NewDecoder(io.LimitReader(r.Body, 16<<20))
 	return dec.Decode(v)
 }
 
@@ -381,6 +382,16 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 	if rt == nil && route != "bots" && route != "bots/update" && route != "bots/restart" && route != "platforms" && route != "help" {
 		ApiErr(w, http.StatusConflict, "还没有运行中的 Bot：请先在「机器人」里添加 token 并启用")
 		return
+	}
+
+	// 这些能力只有 Telegram 适配器实现；QQ Bot 上 b 为 nil，直接给明确错误，别让它 panic。
+	if b == nil {
+		switch route {
+		case "chats/sync", "chats/info", "chats/admins", "broadcast",
+			"messages", "send", "recall", "upload", "botapi":
+			ApiErr(w, http.StatusConflict, "这个功能只支持 Telegram Bot（当前 Bot 是 QQ 平台）")
+			return
+		}
 	}
 
 	// qbot 页面兼容层：qbot admin.html 使用 OpenID/MemberOpenID 字段。

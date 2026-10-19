@@ -151,7 +151,7 @@ func FetchAccessToken(id, secret string) (string, time.Duration, error) {
 	}
 	defer resp.Body.Close()
 
-	b, _ := io.ReadAll(resp.Body)
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	var r AccessTokenResp
 	if err := json.Unmarshal(b, &r); err != nil || r.AccessToken == "" {
 		return "", 0, fmt.Errorf("获取token失败(HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(b)))
@@ -172,7 +172,7 @@ func FetchGateway(token string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	b, _ := io.ReadAll(resp.Body)
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	var r GatewayResp
 	if err := json.Unmarshal(b, &r); err != nil || r.URL == "" {
 		return "", fmt.Errorf("获取网关失败(HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(b)))
@@ -208,8 +208,8 @@ func PostMessageResult(token, url string, body map[string]interface{}) SendResul
 		return SendResult{Message: "请求失败: " + err.Error()}
 	}
 	defer resp.Body.Close()
-	rb, _ := io.ReadAll(resp.Body)
-	log.Printf("[API] HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(rb)))
+	rb, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	log.Printf("[API] HTTP %d %s", resp.StatusCode, clip(string(rb), 300))
 	var out struct {
 		ID      string      `json:"id"`
 		Code    json.Number `json:"code"`
@@ -251,8 +251,8 @@ func PostMessage(token, url string, body map[string]interface{}) {
 	}
 	defer resp.Body.Close()
 
-	rb, _ := io.ReadAll(resp.Body)
-	log.Printf("[API] HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(rb)))
+	rb, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	log.Printf("[API] HTTP %d %s", resp.StatusCode, clip(string(rb), 300))
 }
 
 // SendGroupText 发群文本消息，返回完整结果。
@@ -294,4 +294,18 @@ func SendC2CMessage(token, userOpenID, content, msgID string, msgSeq int) string
 		m["msg_seq"] = msgSeq
 	}
 	return PostMessageID(token, C2cMessageURL(userOpenID), m)
+}
+
+// clip 把响应体截断到 n 个字符再写日志：整段响应可能有几百 KB，
+// 也可能带着不该落盘的字段。
+func clip(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if n <= 0 || len(s) <= n {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }

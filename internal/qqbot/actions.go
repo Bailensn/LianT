@@ -146,7 +146,7 @@ func (b *Bot) QqAPI(method, url string, payload interface{}, out interface{}) Qq
 	defer resp.Body.Close()
 
 	r.status = resp.StatusCode
-	r.body, _ = io.ReadAll(resp.Body)
+	r.body, _ = io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 
 	if out != nil && len(r.body) > 0 {
 		_ = json.Unmarshal(r.body, out)
