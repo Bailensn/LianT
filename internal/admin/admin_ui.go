@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"qbot/internal/cfg"
+	"LianT/internal/cfg"
 )
 
 // ============================================================================
@@ -17,7 +17,7 @@ import (
 //   * 真正的 .html 文件：internal/admin/admin.html（编辑器里能高亮/格式化）
 //   * 编译时用 go:embed 打一份进去兜底，磁盘上找不到文件也能用
 //   * 运行时优先读磁盘上的 admin.html（改完刷新即生效，不用重编译）：
-//       QBOT_ADMIN_HTML
+//       LIANT_ADMIN_HTML
 //         > 当前目录/admin.html            > 当前目录/internal/admin/admin.html（在源码目录里跑时）
 //         > 可执行文件旁/admin.html
 // ============================================================================
@@ -37,7 +37,7 @@ var (
 // AdminHTMLCandidates 按优先级列出磁盘上的候选位置（路径全部动态获取，不写死）。
 func AdminHTMLCandidates() []string {
 	var out []string
-	if p := strings.TrimSpace(cfg.EnvOr("QBOT_ADMIN_HTML", "")); p != "" {
+	if p := strings.TrimSpace(cfg.EnvOr("LIANT_ADMIN_HTML", "")); p != "" {
 		out = append(out, p)
 	}
 	if wd, err := os.Getwd(); err == nil && wd != "" {

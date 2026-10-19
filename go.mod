@@ -1,4 +1,4 @@
-module qbot
+module LianT
 
 go 1.27.1
 

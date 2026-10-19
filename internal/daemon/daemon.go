@@ -7,38 +7,37 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"qbot/internal/admin"
-	"qbot/internal/bot"
-	"qbot/internal/cfg"
-	"qbot/internal/ipc"
-	"qbot/internal/logfile"
-	"qbot/internal/proc"
-	"qbot/internal/rules"
-	"qbot/internal/store"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"LianT/internal/admin"
+	"LianT/internal/bot"
+	"LianT/internal/cfg"
+	"LianT/internal/ipc"
+	"LianT/internal/logfile"
+	"LianT/internal/proc"
+	"LianT/internal/rules"
+	"LianT/internal/store"
 )
 
 // ============================================================================
 // 任务进程（daemon / task process）
 //
-//   * 业务代码（go）只在这里运行；
-//   * 全局唯一：靠"只有它能绑定控制端口"实现——第二个进程绑定失败即退出，
-//     所以主进程开多少次、qbot start 敲多少次，任务进程都只会有一个；
-//   * 与主进程解耦：不继承主进程的生命周期，主进程退出/终端关闭都带不走它
-//     （spawn 时 setsid 独立会话 + 忽略 SIGHUP）；
-//   * 输出全部进 .log 文件，不打屏。
+//   * 业务代码（Telegram 长轮询）只在这里运行；
+//   * 全局唯一：靠"只有它能绑定控制端口"实现；
+//   * 与主进程解耦：spawn 时 setsid 独立会话 + 忽略 SIGHUP；
+//   * 输出全部进 .log 文件，不打屏（LianT run 才同时打屏）。
 // ============================================================================
 
 var DaemonStartedAt = time.Now()
 
 // Run 是任务进程主函数，返回进程退出码。
 func Run(args []string) int {
-	console := HasFlag(args, "console") || os.Getenv("QBOT_CONSOLE") == "1"
+	console := HasFlag(args, "console") || os.Getenv("LIANT_CONSOLE") == "1"
 
 	w, err := logfile.Setup(cfg.LogPath, console)
 	if err != nil {
@@ -48,31 +47,29 @@ func Run(args []string) int {
 	defer w.Close()
 
 	DaemonStartedAt = time.Now()
-	log.Printf("============ 任务进程启动 pid=%d ============", os.Getpid())
+	log.Printf("============ LianT 任务进程启动 pid=%d ============", os.Getpid())
 	log.Printf("[i] 数据目录: %s", cfg.DataDir)
 	log.Printf("[i] 日志文件: %s", cfg.LogPath)
 
-	// ---- 配置文件：没有就生成模板，方便直接改 ----
 	if !cfg.FileExists(cfg.EnvPath) && cfg.EnsureDotEnvTemplate(cfg.EnvPath) {
-		log.Printf("[i] 已生成 .env 模板: %s（填好凭据即生效，不用重启）", cfg.EnvPath)
+		log.Printf("[i] 已生成 .env 模板: %s（填好 Bot Token 即生效）", cfg.EnvPath)
 	}
 	log.Printf("[i] 凭据文件(.env): %s", cfg.EnvPath)
 	log.Printf("[i] 数据库: %s", cfg.DBPath)
-	if _, _, src := cfg.CredentialsWithSource(); src == "未配置" {
-		log.Printf("[!] %s", cfg.CredentialsError())
-		log.Printf("[!] 任务进程照常运行：填好 .env 后最长 60 秒自动生效，也可以敲 qbot reload 立即生效")
+	if tok, src := cfg.TokenWithSource(); tok == "" {
+		log.Printf("[!] %s", cfg.TokenError())
+		log.Printf("[!] 任务进程照常运行：填好 .env 后最长 60 秒自动生效，也可以敲 LianT reload 立即生效")
 	} else {
-		log.Printf("[OK] 凭据来源: %s", src)
+		log.Printf("[OK] Bot Token 来源: %s", src)
 	}
 
-	// ---- 数据库（业务数据都在这里：规则/违禁词/管理员/禁言/黑名单/审计）----
 	st, err := store.Open(cfg.DBPath)
 	if err != nil {
 		log.Printf("[X] 打开数据库失败: %v", err)
 		return 1
 	}
 	defer st.Close()
-	ImportReplyJSONOnce(st)
+	seedDefaultRules(st)
 
 	// ---- 单例锁：控制端口 ----
 	addr := cfg.ControlAddr()
@@ -100,26 +97,19 @@ func Run(args []string) int {
 	}
 	_ = os.WriteFile(cfg.PIDPath, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o644)
 
-	// 主进程/终端退出不关联任务进程：忽略挂断。
 	proc.IgnoreHangup()
 	log.Printf("[OK] 控制端口就绪: %s", addr)
-	log.Printf("[i] 网关地址: %s | token 地址: %s", cfg.GatewayURL(), cfg.TokenURL())
+	log.Printf("[i] Telegram API: %s | 代理: %s", cfg.APIBase(), maskProxy(cfg.Proxy()))
 	if !cfg.IsLoopbackHost(cfg.ControlHost()) {
-		log.Printf("[!] 警告：控制端口绑在 %s（非回环），同网段的人可以控制这个机器人；建议改回 QBOT_BIND=127.0.0.1", addr)
+		log.Printf("[!] 警告：控制端口绑在 %s（非回环），同网段的人可以控制这个机器人；建议改回 LIANT_BIND=127.0.0.1", addr)
 	}
 
-	// ---- 业务：只在这里启动 ----
-	// Creds 传函数而不是快照：每次取 token 都会重读 .env，做到改完即生效。
-	b := bot.New(bot.Config{
-		Creds:   cfg.Credentials,
-		Intents: cfg.IntentGroupC2C | cfg.IntentGuildAt,
-		Store:   st,
-	})
+	// ---- 业务 ----
+	b := bot.New(bot.Config{Store: st})
 	b.Start()
-	log.Printf("[OK] 业务协程已启动（断线自动重连、token 自动续期、规则改完即生效 %s）", b.DescribeCounts())
+	log.Printf("[OK] 业务协程已启动（长轮询、断线自动重连、规则改完即生效 %s）", b.DescribeCounts())
 
-	// 已知群刷新一次"机器人是否群管理员"（决定能否禁言/撤回他人消息）
-	go RefreshBotAdminState(b, st)
+	go b.RefreshAllGroups(2 * time.Second)
 
 	// ---- 网页管理端 ----
 	CurrentAdmin = admin.Start(b, st)
@@ -132,7 +122,7 @@ func Run(args []string) int {
 		once.Do(func() {
 			atomic.StoreInt32(&stopping, 1)
 			log.Printf("[i] 开始退出任务进程(%s)…", reason)
-			_ = ln.Close() // 立刻不再接受新指令
+			_ = ln.Close()
 			adm := CurrentAdmin
 			adm.Close()
 			b.Stop(10 * time.Second)
@@ -151,7 +141,6 @@ func Run(args []string) int {
 		shutdown("signal")
 	}()
 
-	// ---- 指令循环 ----
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -180,7 +169,7 @@ func HandleControlConn(conn net.Conn, b *bot.Bot, shutdown func(string)) {
 	if err := json.NewEncoder(conn).Encode(resp); err != nil {
 		log.Printf("[!] 回复指令失败: %v", err)
 	}
-	_ = conn.Close() // 先把回复送达，再考虑退出
+	_ = conn.Close()
 	if bye {
 		shutdown("收到 stop 指令")
 	}
@@ -206,7 +195,10 @@ func DispatchControl(req ipc.Request, b *bot.Bot) (ipc.Response, bool) {
 		for k, v := range b.ReplyInfo() {
 			data[k] = v
 		}
-		_, _, src := cfg.CredentialsWithSource()
+		_, src := cfg.TokenWithSource()
+		if src == "" {
+			src = "未配置"
+		}
 		data["pid"] = strconv.Itoa(os.Getpid())
 		data["port"] = strconv.Itoa(cfg.ControlPort())
 		data["protocol"] = strconv.Itoa(cfg.ProtocolVersion)
@@ -216,35 +208,29 @@ func DispatchControl(req ipc.Request, b *bot.Bot) (ipc.Response, bool) {
 		data["env_file"] = cfg.EnvPath
 		data["db_file"] = cfg.DBPath
 		data["admin_addr"] = admin.ListenAddr()
-		data["admin_prefix"] = admin.NormalizePrefix(cfg.EnvOr("QBOT_ADMIN_PREFIX", ""))
-		data["creds_source"] = src
+		data["admin_prefix"] = admin.NormalizePrefix(cfg.AdminPrefix())
+		data["token_source"] = src
 		data["started_at"] = DaemonStartedAt.Format("2006-01-02 15:04:05")
 		if exe, err := os.Executable(); err == nil {
 			data["exe"] = exe
 		}
 		return ipc.Response{OK: true, Msg: "运行中", Data: data}, false
 
-	case "reconnect":
-		b.Reconnect()
-		return ipc.Response{OK: true, Msg: "已请求重连网关（任务进程不退出）"}, false
-
-	case "reload":
+	case "reconnect", "reload":
 		err := b.ReloadAll()
 		data := b.ReplyInfo()
-		_, _, src := cfg.CredentialsWithSource()
-		data["creds_source"] = src
+		_, src := cfg.TokenWithSource()
+		if src == "" {
+			src = "未配置"
+		}
+		data["token_source"] = src
 		data["env_file"] = cfg.EnvPath
 		if err != nil {
-			return ipc.Response{
-				OK:   false,
-				Msg:  fmt.Sprintf("%s 有问题，已继续用上一版规则: %v", cfg.ReplyPath, err),
-				Data: data,
-			}, false
+			return ipc.Response{OK: false, Msg: "热重载失败: " + err.Error(), Data: data}, false
 		}
 		return ipc.Response{
-			OK: true,
-			Msg: fmt.Sprintf("热重载完成：规则 %s 条（%s），凭据来源 %s",
-				data["reply_rules"], cfg.ReplyPath, src),
+			OK:   true,
+			Msg:  fmt.Sprintf("热重载完成：规则 %s 条，Token 来源 %s；已请求重连 Telegram", data["reply_rules"], src),
 			Data: data,
 		}, false
 
@@ -288,63 +274,14 @@ func HasFlag(args []string, name string) bool {
 // CurrentAdmin 当前管理端实例（退出时关闭用）。
 var CurrentAdmin *admin.Server
 
-// ImportReplyJSONOnce 把老的 Reply.json 一次性导入 SQLite，然后改名留档。
-func ImportReplyJSONOnce(st *store.Store) {
-	if st.Setting("json_imported", "") != "" {
-		return
+func maskProxy(p string) string {
+	if strings.TrimSpace(p) == "" {
+		return "未启用"
 	}
-	if !cfg.FileExists(cfg.ReplyPath) {
-		// 没有老 JSON 文件：全新安装，直接给数据库播种默认规则
-		_ = st.SetSetting("json_imported", "none")
-		seedDefaultRules(st)
-		return
-	}
-	rcfg, err := rules.LoadFile(cfg.ReplyPath)
-	if err != nil {
-		log.Printf("[!] 导入 %s 失败（不导入，改用数据库里的规则）: %v", cfg.ReplyPath, err)
-		_ = st.SetSetting("json_imported", store.NowStr())
-		return
-	}
-	recs := make([]store.RuleRec, 0, len(rcfg.Rules))
-	for i, r := range rcfg.Rules {
-		reply := ""
-		if r.Reply != nil {
-			reply = *r.Reply
-		}
-		recs = append(recs, store.RuleRec{
-			Priority: 100 + i, Match: r.Match, Pattern: r.Pattern, Reply: reply,
-			Fold: r.Fold, Always: r.Always, Enabled: true,
-		})
-	}
-	n, err := st.ImportReplyConfig(rcfg.ReplyAll, rcfg.Default, recs)
-	if err != nil {
-		log.Printf("[!] 导入 Reply.json 失败: %v", err)
-		return
-	}
-	bak := cfg.ReplyPath + ".bak"
-	if err := os.Rename(cfg.ReplyPath, bak); err != nil {
-		log.Printf("[i] 已把 Reply.json 的 %d 条规则导入数据库；改名失败(%v)，原文件保留", n, err)
-	} else {
-		log.Printf("[OK] 已把 Reply.json 的 %d 条规则导入数据库，原文件改名为 %s（以后请用网页后台改）", n, bak)
-	}
+	return p
 }
 
-// RefreshBotAdminState 启动后查一次每个已知群，记录机器人是否群管理员。
-func RefreshBotAdminState(b *bot.Bot, st *store.Store) {
-	groups, err := st.Groups()
-	if err != nil {
-		return
-	}
-	for _, g := range groups {
-		if r := b.QqBotState(g.OpenID, st); !r.Ok() {
-			log.Printf("[i] 查询群 %s 机器人状态失败（不影响使用）: %s", g.OpenID, r.String())
-		}
-		time.Sleep(300 * time.Millisecond) // 别把 QPM 打满
-	}
-}
-
-// seedDefaultRules 数据库里还没有任何规则时播种一份最标准的规则（/ping），
-// 这样彻底不依赖 JSON 文件也能开箱可用；已有规则就不动。
+// seedDefaultRules 数据库里还没有任何规则时播种一份最标准的规则（/ping）。
 func seedDefaultRules(st *store.Store) {
 	recs, err := st.Rules()
 	if err != nil || len(recs) > 0 {

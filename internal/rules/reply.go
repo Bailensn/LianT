@@ -1,22 +1,19 @@
 package rules
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"regexp"
 	"strings"
 	"time"
 
-	"qbot/internal/store"
+	"LianT/internal/store"
 )
 
 // ============================================================================
 // 回复规则引擎 + 违禁词匹配（纯逻辑，不碰文件/网络，方便单测）
 //
 // 规则来源：SQLite（见 internal/store），由 bot 组装成 Config 后调用 Evaluate。
-// 也支持从老的 Reply.json 一次性导入（LoadFile）。
 //
 // 匹配方式：exact(默认) | prefix | contains | regex | any，按顺序第一条命中即停。
 // 模板占位符：
@@ -26,7 +23,7 @@ import (
 //   {scope} 场景(群@/群消息/私聊)   {group} 群ID   {user} 用户ID   {time} 当前时间
 // ============================================================================
 
-// Rule 一条规则（对应 Reply.json 里的一条，或数据库里的一行）。
+// Rule 一条规则（对应数据库 reply_rules 里的一行）。
 type Rule struct {
 	Match   string  `json:"match,omitempty"`
 	Pattern string  `json:"pattern"`
@@ -66,24 +63,6 @@ func DefaultConfig() Config {
 			{Match: "exact", Pattern: "/ping", Reply: StrPtr("pong! 机器人在线 ✅"), Always: true},
 		},
 	}
-}
-
-// LoadFile 只读解析一个 Reply.json（用于一次性导入数据库，不会创建文件）。
-func LoadFile(path string) (Config, error) {
-	var cfg Config
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return cfg, err
-	}
-	dec := json.NewDecoder(strings.NewReader(string(b)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&cfg); err != nil {
-		return cfg, fmt.Errorf("%s 不是合法 JSON: %v", path, err)
-	}
-	if err := cfg.Compile(); err != nil {
-		return cfg, err
-	}
-	return cfg, nil
 }
 
 // Compile 校验并预编译规则。
@@ -325,7 +304,7 @@ func BuildWordEngine(recs []store.WordRec) *WordEngine {
 }
 
 // Match 返回命中的违禁词（scope 为空=所有群）。
-func (e *WordEngine) Match(groupOpenID, text string) (store.WordRec, string, bool) {
+func (e *WordEngine) Match(chatID, text string) (store.WordRec, string, bool) {
 	if e == nil {
 		return store.WordRec{}, "", false
 	}
@@ -335,7 +314,7 @@ func (e *WordEngine) Match(groupOpenID, text string) (store.WordRec, string, boo
 	}
 	var best *store.WordRec
 	for _, r := range e.rules {
-		if r.rec.Scope != "" && r.rec.Scope != groupOpenID {
+		if r.rec.Scope != "" && r.rec.Scope != chatID {
 			continue
 		}
 		if !r.rr.match(t).OK {

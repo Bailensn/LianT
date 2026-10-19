@@ -13,8 +13,8 @@ import (
 
 // ============================================================================
 // 日志：业务输出一律写 .log 文件，不再打屏。
-//   qbot.log      当前日志
-//   qbot.log.1..5 轮转后的历史日志（每个 8MB，共留 5 个）
+//   LianT.log      当前日志
+//   LianT.log.1..5 轮转后的历史日志（每个 8MB，共留 5 个）
 // ============================================================================
 
 const (
@@ -71,7 +71,7 @@ func (w *RotatingWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// rotateLocked 把 qbot.log 挪成 .1，旧的整体后移，然后重新开一个空文件。
+// rotateLocked 把 LianT.log 挪成 .1，旧的整体后移，然后重新开一个空文件。
 func (w *RotatingWriter) rotateLocked() {
 	if w.file != nil {
 		_ = w.file.Close()
@@ -96,7 +96,7 @@ func (w *RotatingWriter) Close() error {
 }
 
 // Setup 把标准库 log 的输出接到 .log 文件。
-// alsoConsole 只用于前台调试（qbot run），正式运行不要开，避免退回终端输出。
+// alsoConsole 只用于前台调试（LianT run），正式运行不要开，避免退回终端输出。
 func Setup(path string, alsoConsole bool) (*RotatingWriter, error) {
 	w, err := NewRotatingWriter(path, LogMaxBytes, LogKeep)
 	if err != nil {

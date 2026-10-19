@@ -1,699 +1,357 @@
 package bot
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
-	"qbot/internal/cfg"
-	"qbot/internal/qq"
-	"qbot/internal/store"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"LianT/internal/store"
 )
 
 // ============================================================================
-// QQ 群管理接口 + 处置动作执行
+// 处置动作：撤回 / 禁言 / 解禁 / 踢出 / 封禁 / 拉黑
 //
-// 官方文档（Bot.q.qq.com/wiki/develop/api-v2/autogen/）：
-//   撤回群消息        DELETE /v2/groups/{gid}/messages/{mid}        公开，管理员可撤他人消息，限 2 分钟
-//   设置/查询禁言      POST|GET /v2/groups/{gid}/restrict_chat_setting 公开，需机器人是群管理员，最长 30 天，单次≤20
-//   群信息/机器人群内状态 GET /v2/groups/{gid}/info、/bot_state       群信息接口需白名单（11253）
-//   群成员批量移除     POST /v2/groups/{gid}/batch_remove_members    ⚠️ 仅白名单机器人，可顺带拉黑
-//   群黑名单增删查     GET|POST /v2/groups/{gid}/member_blacklist    ⚠️ 仅白名单机器人
-//   群成员列表/成员信息 GET /v2/groups/{gid}/members[/{mid}]          ⚠️ 仅白名单机器人
+// 原则：先本地落库（网页后台立刻能看到），再调 Telegram；
+// Telegram 侧失败不 panic，把原因写进日志/审计，并回一句人话给管理员。
 //
-// 拿不到白名单也不影响可用性：本地黑名单/禁言记录会先落库并立刻生效
-// （不回消息、命中违禁词自动撤回+禁言），QQ 侧动作失败时把原因写进审计和回复。
+// Telegram 权限对照：
+//   * deleteMessage      —— 机器人是管理员才能删别人的消息；消息不能超过 48 小时
+//   * restrictChatMember —— 禁言（restricted + can_send_messages=false）
+//   * banChatMember      —— 封禁/踢出；踢出 = 封禁后立刻解封（允许重新加入）
 // ============================================================================
 
-// ---------------- 统一响应 ----------------
-
-type QqResp struct {
-	status int
-	body   []byte
-	code   int    // 业务错误码（如 11253）
-	msg    string // 业务错误描述
-}
-
-func (r QqResp) Ok() bool { return r.status >= 200 && r.status < 300 && r.code == 0 }
-
-// ErrorCode 返回 QQ 业务错误码（0 表示没有业务错误）。
-func (r QqResp) ErrorCode() int { return r.code }
-
-// Hint 给出人话版排查建议。
-func (r QqResp) Hint() string {
-	if r.Ok() {
-		return ""
-	}
-	if h, found := QqErrHints[r.code]; found {
-		return h
-	}
-	switch r.status {
-	case 401, 403:
-		return "鉴权/权限问题：检查凭据与机器人是否被移出群"
-	case 404:
-		return "接口或对象不存在：检查接口路径配置（QBOT_*_PATH）"
-	case 429:
-		return "触发频率限制，稍后重试"
-	}
-	if r.msg != "" {
-		return r.msg
-	}
-	if len(r.body) > 0 {
-		return strings.TrimSpace(string(r.body))
-	}
-	return fmt.Sprintf("HTTP %d", r.status)
-}
-
-func (r QqResp) String() string {
-	if r.Ok() {
-		return "ok"
-	}
-	if r.code != 0 {
-		return fmt.Sprintf("失败(code=%d %s)", r.code, r.Hint())
-	}
-	return fmt.Sprintf("失败(%s)", r.Hint())
-}
-
-// 官方文档里的常见错误码 → 人话
-var QqErrHints = map[int]string{
-	11253:    "该接口仅白名单机器人可用：需联系平台运营申请权限（内邀）",
-	40062003: "无操作权限：机器人需要是群管理员，且目标需是普通成员",
-	40064004: "消息发送已超过 2 分钟，无法撤回",
-	40061001: "请求参数无效",
-	50065001: "消息撤回失败，请稍后重试",
-	40054002: "机器人被禁言，无法发送消息",
-	40054003: "机器人不是群成员",
-	40034100: "触发主动消息频控（每个群每天 1000 条 / 20 条每分钟）",
-	40034105: "主动消息发送失败，无权限",
-	40034006: "消息内容被判定违规",
-	40054007: "消息长度超限",
-	40054010: "不允许发送 URL",
-	40054016: "机器人已下线",
-}
-
-// ---------------- 底层调用 ----------------
-
-// AppID 当前 AppID（凭据可能来自 .env，所以每次现取）。
-func (b *Bot) AppID() string {
-	id, _ := b.Creds()
-	return id
-}
-
-// QqAPI 调一个 QQ 开放平台接口；out 非空时解析响应体。
-func (b *Bot) QqAPI(method, url string, payload interface{}, out interface{}) QqResp {
-	var r QqResp
-
-	token, err := b.EnsureToken(false)
-	if err != nil {
-		r.msg = "取 token 失败: " + err.Error()
-		return r
-	}
-
-	var bodyReader io.Reader
-	if payload != nil {
-		buf, err := json.Marshal(payload)
-		if err != nil {
-			r.msg = "序列化请求失败: " + err.Error()
-			return r
-		}
-		bodyReader = bytes.NewReader(buf)
-	}
-
-	req, err := http.NewRequest(method, url, bodyReader)
-	if err != nil {
-		r.msg = "构造请求失败: " + err.Error()
-		return r
-	}
-	req.Header.Set("Authorization", "QQBot "+token)
-	if payload != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if app := b.AppID(); app != "" {
-		req.Header.Set("X-Union-Appid", app)
-	}
-
-	resp, err := qq.HTTPClient.Do(req)
-	if err != nil {
-		r.msg = "请求失败: " + err.Error()
-		return r
-	}
-	defer resp.Body.Close()
-
-	r.status = resp.StatusCode
-	r.body, _ = io.ReadAll(resp.Body)
-
-	if out != nil && len(r.body) > 0 {
-		_ = json.Unmarshal(r.body, out)
-	}
-	// 业务错误统一形如 {"code":11253,"message":"..."}
-	if len(r.body) > 0 {
-		var e struct {
-			Code    json.Number `json:"code"`
-			Message string      `json:"message"`
-		}
-		if json.Unmarshal(r.body, &e) == nil && e.Code != "" {
-			if n, err := strconv.Atoi(e.Code.String()); err == nil && n != 0 {
-				r.code, r.msg = n, e.Message
-			}
-		}
-	}
-	return r
-}
-
-// ---------------- 具体接口 ----------------
-
-type MuteOp struct {
-	Op           string `json:"op"` // add 增加 | update 更新到期时间 | del 解除
-	MemberOpenID string `json:"member_openid"`
-	MuteExpireAt string `json:"mute_expire_at,omitempty"`
-}
-
-// QqSetMutes 设置/更新/解除群成员禁言（需机器人是群管理员）。
-func (b *Bot) QqSetMutes(groupOpenID string, ops []MuteOp) QqResp {
-	if len(ops) == 0 {
-		return QqResp{status: 200}
-	}
-	if len(ops) > 20 {
-		ops = ops[:20] // 单次上限 20
-	}
-	return b.QqAPI("POST", cfg.GroupMuteURL(groupOpenID), map[string]interface{}{"members": ops}, nil)
-}
-
-// QqRecallMessage 撤回群消息（他人消息需机器人是群管理员，且 2 分钟内）。
-func (b *Bot) QqRecallMessage(groupOpenID, messageID string) QqResp {
-	if groupOpenID == "" || messageID == "" {
-		return QqResp{status: 200}
-	}
-	return b.QqAPI("DELETE", cfg.GroupRecallURL(groupOpenID, messageID), nil, nil)
-}
-
-// QqRemoveMembers 批量移除群成员，可选同时加入群黑名单（仅白名单机器人可用）。
-func (b *Bot) QqRemoveMembers(groupOpenID string, openids []string, addToBlacklist bool) QqResp {
-	body := map[string]interface{}{"member_openids": openids}
-	if addToBlacklist {
-		body["add_to_member_blacklist"] = true
-	}
-	var out struct {
-		Result  string   `json:"remove_members_result"`
-		FailIDs []string `json:"add_to_member_blacklist_fail_openids"`
-	}
-	return b.QqAPI("POST", cfg.GroupRemoveMembersURL(groupOpenID), body, &out)
-}
-
-// QqBlacklistOp 群黑名单增删（op=add/del，目标在群中时无法加入，仅白名单机器人可用）。
-func (b *Bot) QqBlacklistOp(groupOpenID, op string, openids []string) QqResp {
-	var out struct {
-		FailIDs []string `json:"fail_openids"`
-	}
-	return b.QqAPI("POST", cfg.GroupBlacklistURL(groupOpenID),
-		map[string]interface{}{"op": op, "member_openids": openids}, &out)
-}
-
-// QqBlacklist 查询群黑名单（仅白名单机器人可用）。
-func (b *Bot) QqBlacklist(groupOpenID, cursor string, limit int) ([]store.MemberRec, string, QqResp) {
-	if limit <= 0 || limit > 100 {
-		limit = 100
-	}
-	var out struct {
-		Users []struct {
-			UnionOpenID  string `json:"union_openid"`
-			MemberOpenID string `json:"member_openid"`
-			Username     string `json:"username"`
-			BannedAt     string `json:"banned_at"`
-			Bot          bool   `json:"bot"`
-		} `json:"users"`
-		NextCursor string `json:"next_cursor"`
-	}
-	url := cfg.GroupBlacklistURL(groupOpenID) + "?limit=" + store.Itoa(limit)
-	if cursor != "" {
-		url += "&cursor=" + cursor
-	}
-	r := b.QqAPI("GET", url, nil, &out)
-	members := make([]store.MemberRec, 0, len(out.Users))
-	for _, u := range out.Users {
-		members = append(members, store.MemberRec{
-			GroupOpenID: groupOpenID, MemberOpenID: u.MemberOpenID,
-			Username: u.Username, Bot: u.Bot, LastSeen: u.BannedAt,
-		})
-	}
-	return members, out.NextCursor, r
-}
-
-// QqMembers 群成员列表（仅白名单机器人可用），同时回写本地名册。
-func (b *Bot) QqMembers(groupOpenID, cursor string) ([]store.MemberRec, string, QqResp) {
-	var out struct {
-		Members []struct {
-			MemberOpenID string `json:"member_openid"`
-			Username     string `json:"username"`
-			MemberRole   string `json:"member_role"`
-			Bot          bool   `json:"bot"`
-			JoinedAt     string `json:"joined_at"`
-		} `json:"members"`
-		NextCursor string `json:"next_cursor"`
-	}
-	url := cfg.GroupMembersURL(groupOpenID)
-	if cursor != "" {
-		url += "?cursor=" + cursor
-	}
-	r := b.QqAPI("GET", url, nil, &out)
-	members := make([]store.MemberRec, 0, len(out.Members))
-	for _, m := range out.Members {
-		members = append(members, store.MemberRec{
-			GroupOpenID: groupOpenID, MemberOpenID: m.MemberOpenID, Username: m.Username,
-			Role: m.MemberRole, Bot: m.Bot, FirstSeen: m.JoinedAt,
-		})
-	}
-	return members, out.NextCursor, r
-}
-
-type QqGroupInfo struct {
-	OpenID    string   `json:"group_openid"`
-	Name      string   `json:"group_name"`
-	Memo      string   `json:"group_finger_memo"`
-	ClassText string   `json:"group_class_text"`
-	Tags      []string `json:"group_tags"`
-	MemberNum int      `json:"group_member_num"`
-}
-
-// QqGroupInfo 群基本信息（需白名单）。
-func (b *Bot) QqGroupInfo(groupOpenID string) (QqGroupInfo, QqResp) {
-	var out QqGroupInfo
-	r := b.QqAPI("GET", cfg.GroupInfoURL(groupOpenID), nil, &out)
-	return out, r
-}
-
-// QqMuteSetting 查询群禁言状态（需机器人是群管理员）：返回当前被禁言成员。
-func (b *Bot) QqMuteSetting(groupOpenID string) ([]store.MuteRec, string, QqResp) {
-	var out struct {
-		GlobalRule struct {
-			Mode string `json:"mode"`
-		} `json:"global_rule"`
-		Members []struct {
-			MemberOpenID string `json:"member_openid"`
-			MuteExpireAt string `json:"mute_expire_at"`
-			Username     string `json:"username"`
-		} `json:"members"`
-	}
-	r := b.QqAPI("GET", cfg.GroupMuteURL(groupOpenID), nil, &out)
-	list := make([]store.MuteRec, 0, len(out.Members))
-	for _, m := range out.Members {
-		list = append(list, store.MuteRec{
-			GroupOpenID: groupOpenID, MemberOpenID: m.MemberOpenID,
-			Username: m.Username, ExpireAt: m.MuteExpireAt, Status: "active",
-		})
-	}
-	return list, out.GlobalRule.Mode, r
-}
-
-// QqBotState 机器人在群里的状态（是否被禁言等），顺带更新"机器人是否管理员"。
-func (b *Bot) QqBotState(groupOpenID string, st *store.Store) QqResp {
-	var out struct {
-		MemberRole string `json:"member_role"`
-	}
-	r := b.QqAPI("GET", cfg.GroupBotStateURL(groupOpenID), nil, &out)
-	if r.Ok() && st != nil && out.MemberRole != "" {
-		isAdmin := out.MemberRole == "admin" || out.MemberRole == "owner"
-		cur, _ := st.Group(groupOpenID)
-		if cur.BotIsAdmin != isAdmin {
-			_ = st.UpdateGroup(groupOpenID, nil, nil, nil, nil, nil, &isAdmin, nil)
-		}
-	}
-	return r
-}
-
-// JoinReq 一条入群申请。
-type JoinReq struct {
-	JoinRequestID string `json:"join_request_id"`
-	RiskTips      string `json:"risk_tips"`
-	UnionOpenID   string `json:"union_openid"`
-	MemberOpenID  string `json:"member_openid"`
-	Username      string `json:"username"`
-	ApplyAt       string `json:"apply_at"`
-	ApplySource   string `json:"apply_source"`
-	InvitedBy     string `json:"invited_by"`
-	Bot           bool   `json:"bot"`
-	VerifyInfo    struct {
-		Method        string `json:"method"`
-		VerifyMessage string `json:"verify_message"`
-	} `json:"verify_info"`
-}
-
-// QqJoinRequests 拉取入群申请列表（需机器人是群管理员）。
-func (b *Bot) QqJoinRequests(groupOpenID, cursor string) ([]JoinReq, string, QqResp) {
-	var out struct {
-		List       []JoinReq `json:"list"`
-		NextCursor string    `json:"next_cursor"`
-	}
-	url := cfg.GroupJoinListURL(groupOpenID)
-	if cursor != "" {
-		url += "?cursor=" + cursor
-	}
-	r := b.QqAPI("GET", url, nil, &out)
-	return out.List, out.NextCursor, r
-}
-
-// QqApproveJoinRequest 审批入群申请（op=approve/decline；拒绝时可同时拉黑）。
-func (b *Bot) QqApproveJoinRequest(groupOpenID, memberOpenID, joinRequestID string, approve bool, reason string, addToBlacklist bool) QqResp {
-	body := map[string]interface{}{"op": map[bool]string{true: "approve", false: "decline"}[approve]}
-	if joinRequestID != "" {
-		body["join_request_id"] = joinRequestID
-	}
-	if !approve {
-		if reason != "" {
-			body["reject_reason"] = reason
-		}
-		if addToBlacklist {
-			body["add_to_member_blacklist"] = true
-		}
-	}
-	return b.QqAPI("POST", cfg.GroupApproveJoinURL(groupOpenID, memberOpenID), body, nil)
-}
-
-// ---------------- 处置计划执行 ----------------
-
-// ActionCtx 一次处置的上下文。
 type ActionCtx struct {
-	GroupOpenID  string
-	MemberOpenID string
-	Username     string
-	MessageID    string
-	Content      string
-	Kind         string // word | command | manual | blacklist
-	Hit          string
-	Operator     string
+	ChatID    string
+	UserID    string
+	Username  string
+	MessageID int64
+	Content   string
+	Kind      string // word | command | blacklist | manual
+	Hit       string
+	Operator  string
 }
 
-// ActionPlan 一次要做的动作集合（回复/撤回/禁言/踢/拉黑）。
 type ActionPlan struct {
 	Reply       string
 	Recall      bool
-	RecallIDs   []string // 批量撤回（不填就用 ctx.MessageID 那条）
+	RecallIDs   []int64
 	MuteSeconds int
 	Kick        bool
 	Blacklist   bool
 	Reason      string
 }
 
-const MaxMuteSeconds = 30 * 24 * 3600 // QQ 侧上限 30 天
+const MaxMuteSeconds = 30 * 24 * 3600
 
-// ApplyPlan 执行处置：先本地落库（立刻生效），再调 QQ，最后写审计。
-// 返回人话结果列表（可直接拼成给管理员的回复）。
+// ApplyPlan 执行一套处置动作，返回给管理员看的结果列表。
 func (b *Bot) ApplyPlan(ctx ActionCtx, plan ActionPlan) []string {
-	if b.st == nil {
-		return nil
-	}
-	var results []string
-	var actionNames []string
-	okAll := true
+	var out []string
+	var actions []string
+	ok := true
+	detail := ""
 
-	// 1) 撤回（支持一次撤多条：引用的、某人的最后一条、最近 N 条、机器人自己的）
-	if plan.Recall || len(plan.RecallIDs) > 0 {
-		actionNames = append(actionNames, "recall")
+	if plan.Recall {
 		ids := plan.RecallIDs
-		if len(ids) == 0 && ctx.MessageID != "" {
-			ids = []string{ctx.MessageID}
+		if len(ids) == 0 && ctx.MessageID > 0 {
+			ids = []int64{ctx.MessageID}
 		}
-		if len(ids) == 0 {
-			okAll = false
-			results = append(results, "撤回失败：没有可撤回的消息 ID")
-		} else {
-			done, fails := 0, []string{}
-			for _, id := range ids {
-				if strings.TrimSpace(id) == "" {
-					continue
-				}
-				r := b.QqRecallMessage(ctx.GroupOpenID, id)
-				if r.Ok() {
-					done++
-					continue
-				}
-				okAll = false
-				fails = append(fails, r.String())
-			}
-			switch {
-			case done > 0 && len(fails) == 0:
-				if len(ids) == 1 {
-					results = append(results, "已撤回消息")
-				} else {
-					results = append(results, fmt.Sprintf("已撤回 %d 条消息", done))
-				}
-			case done > 0:
-				results = append(results, fmt.Sprintf("撤回 %d/%d 条，失败原因：%s", done, len(ids), strings.Join(dedupeStrings(fails), "；")))
-			default:
-				results = append(results, "撤回失败："+strings.Join(dedupeStrings(fails), "；"))
-			}
+		n, firstErr := b.RecallMessages(ctx.ChatID, ids)
+		if n > 0 {
+			actions = append(actions, "recall")
+			out = append(out, fmt.Sprintf("已撤回 %d 条消息", n))
+		}
+		if firstErr != nil {
+			ok = false
+			detail = appendDetail(detail, "撤回失败: "+errText(firstErr))
+			out = append(out, "撤回失败："+errText(firstErr))
 		}
 	}
 
-	// 2) 禁言（先写本地记录，QQ 侧失败也能在管理页看到）
-	if plan.MuteSeconds > 0 && ctx.MemberOpenID != "" {
-		actionNames = append(actionNames, "mute")
+	if plan.MuteSeconds > 0 {
 		secs := plan.MuteSeconds
 		if secs > MaxMuteSeconds {
 			secs = MaxMuteSeconds
 		}
-		expire := time.Now().Add(time.Duration(secs) * time.Second)
-		op := "add"
-		if HasActiveMute(b.st, ctx.GroupOpenID, ctx.MemberOpenID) {
-			op = "update"
-		}
-		rec := store.MuteRec{
-			GroupOpenID: ctx.GroupOpenID, MemberOpenID: ctx.MemberOpenID, Username: ctx.Username,
-			ExpireAt: expire.Format(time.RFC3339), Reason: plan.Reason, Operator: ctx.Operator,
-			Status: "active",
-		}
-		_, _ = b.st.AddMute(rec)
-		r := b.QqSetMutes(ctx.GroupOpenID, []MuteOp{{
-			Op: op, MemberOpenID: ctx.MemberOpenID, MuteExpireAt: expire.Format(time.RFC3339),
-		}})
-		if r.Ok() {
-			results = append(results, fmt.Sprintf("已禁言 %s %s", DisplayName(ctx), HumanDuration(time.Duration(secs)*time.Second)))
-		} else {
-			okAll = false
-			results = append(results, "禁言失败："+r.String()+"（已记入本地禁言表）")
+		res := b.muteMember(ctx, time.Duration(secs)*time.Second, plan.Reason)
+		actions = append(actions, "mute")
+		out = append(out, res.Message)
+		if !res.OK {
+			ok = false
+			detail = appendDetail(detail, res.Detail)
 		}
 	}
 
-	// 3) 踢出 / 拉黑
-	if plan.Kick && ctx.MemberOpenID != "" {
-		actionNames = append(actionNames, "kick")
-		r := b.QqRemoveMembers(ctx.GroupOpenID, []string{ctx.MemberOpenID}, plan.Blacklist)
-		if r.Ok() {
-			if plan.Blacklist {
-				results = append(results, "已踢出并拉黑 "+DisplayName(ctx))
-			} else {
-				results = append(results, "已踢出 "+DisplayName(ctx))
-			}
-		} else {
-			okAll = false
-			results = append(results, "踢出失败："+r.String())
+	switch {
+	case plan.Kick && plan.Blacklist:
+		res := b.banMember(ctx, true)
+		actions = append(actions, "kick", "blacklist")
+		out = append(out, res.Message)
+		if !res.OK {
+			ok = false
+			detail = appendDetail(detail, res.Detail)
 		}
-	} else if plan.Blacklist && ctx.MemberOpenID != "" {
-		actionNames = append(actionNames, "blacklistQQ")
-		// 目标还在群里时 QQ 侧会拒绝，属于正常现象；本地黑名单照样生效
-		r := b.QqBlacklistOp(ctx.GroupOpenID, "add", []string{ctx.MemberOpenID})
-		if !r.Ok() {
-			results = append(results, "QQ 侧拉黑未生效（"+r.String()+"），本地黑名单已生效")
+	case plan.Kick:
+		res := b.kickMember(ctx)
+		actions = append(actions, "kick")
+		out = append(out, res.Message)
+		if !res.OK {
+			ok = false
+			detail = appendDetail(detail, res.Detail)
 		}
-	}
-
-	if plan.Blacklist && ctx.MemberOpenID != "" {
-		actionNames = append(actionNames, "blacklistLocal")
-		_ = b.st.AddBlacklist(store.BlackRec{
-			GroupOpenID: ctx.GroupOpenID, MemberOpenID: ctx.MemberOpenID, Username: ctx.Username,
-			Reason: plan.Reason, Operator: ctx.Operator, QQSynced: plan.Kick,
-		})
-		if !ContainsStr(results, "本地黑名单") && !plan.Kick {
-			results = append(results, "已加入本地黑名单 "+DisplayName(ctx))
+	case plan.Blacklist:
+		res := b.banMember(ctx, true)
+		actions = append(actions, "blacklist")
+		out = append(out, res.Message)
+		if !res.OK {
+			ok = false
+			detail = appendDetail(detail, res.Detail)
 		}
 	}
 
-	// 4) 回复
-	if strings.TrimSpace(plan.Reply) != "" {
-		actionNames = append(actionNames, "reply")
-		results = append(results, "已回复："+plan.Reply)
-	}
-
-	// 5) 审计
-	result := "ok"
-	if !okAll {
-		result = "fail"
-	}
-	acts, _ := json.Marshal(actionNames)
 	_ = b.st.AddAudit(store.AuditRec{
-		Kind: ctx.Kind, GroupOpenID: ctx.GroupOpenID, MemberOpenID: ctx.MemberOpenID,
-		Username: ctx.Username, Content: Truncate(ctx.Content, 500), Hit: ctx.Hit,
-		Actions: string(acts), Result: result, Detail: strings.Join(results, "；"),
+		Kind: ctx.Kind, ChatID: ctx.ChatID, UserID: ctx.UserID, Username: ctx.Username,
+		Content: truncateLog(ctx.Content, 500), Hit: ctx.Hit,
+		Actions: jsonActions(actions), Result: boolResult(ok), Detail: detail,
 	})
-
-	return results
+	return out
 }
 
-// MuteMember 手动禁言（给群内指令和网页后台共用）。
-func (b *Bot) MuteMember(ctx ActionCtx, seconds int, reason string) []string {
-	return b.ApplyPlan(ctx, ActionPlan{MuteSeconds: seconds, Reason: reason})
+type actionResult struct {
+	OK      bool
+	Message string
+	Detail  string
 }
 
-// UnmuteMember 手动解除禁言。
+// MuteMember 禁言并落库。
+func (b *Bot) MuteMember(ctx ActionCtx, d time.Duration, reason string) []string {
+	res := b.muteMember(ctx, d, reason)
+	_ = b.st.AddAudit(store.AuditRec{
+		Kind: ctx.Kind, ChatID: ctx.ChatID, UserID: ctx.UserID, Username: ctx.Username,
+		Content: truncateLog(ctx.Content, 300), Hit: ctx.Hit,
+		Actions: `["mute"]`, Result: boolResult(res.OK), Detail: res.Detail,
+	})
+	return []string{res.Message}
+}
+
+func (b *Bot) muteMember(ctx ActionCtx, d time.Duration, reason string) actionResult {
+	if b.st == nil {
+		return actionResult{Message: "数据库未就绪", Detail: "store nil"}
+	}
+	if d <= 0 {
+		d = 10 * time.Minute
+	}
+	if d > MaxMuteSeconds*time.Second {
+		d = MaxMuteSeconds * time.Second
+	}
+	until := time.Now().Add(d)
+	expire := until.Format(time.RFC3339)
+	if _, err := b.st.AddMute(store.MuteRec{
+		ChatID: ctx.ChatID, UserID: ctx.UserID, Username: ctx.Username,
+		ExpireAt: expire, Reason: reason, Operator: ctx.Operator, Status: "active",
+	}); err != nil {
+		log.Printf("[!] 写禁言记录失败: %v", err)
+	}
+
+	c := b.clientOrNil()
+	if c == nil {
+		return actionResult{Message: "机器人未连接，已记录本地禁言但 Telegram 未执行", Detail: "not connected"}
+	}
+	if err := c.RestrictChatMember(ctx.ChatID, ctx.UserID, until, false); err != nil {
+		return actionResult{
+			Message: fmt.Sprintf("禁言 %s 失败：%s", displayTarget(ctx.UserID, ctx.Username), errText(err)),
+			Detail:  errText(err),
+		}
+	}
+	return actionResult{Message: fmt.Sprintf("已禁言 %s %s", displayTarget(ctx.UserID, ctx.Username), HumanDuration(d)), OK: true}
+}
+
+// UnmuteMember 解除禁言并结束本地记录。
 func (b *Bot) UnmuteMember(ctx ActionCtx) []string {
-	if b.st == nil || ctx.MemberOpenID == "" {
-		return nil
-	}
-	_ = b.st.EndMuteByMember(ctx.GroupOpenID, ctx.MemberOpenID)
-	r := b.QqSetMutes(ctx.GroupOpenID, []MuteOp{{Op: "del", MemberOpenID: ctx.MemberOpenID, MuteExpireAt: ""}})
-	var results []string
-	if r.Ok() {
-		results = append(results, "已解除禁言 "+DisplayName(ctx))
-	} else {
-		results = append(results, "解除禁言失败："+r.String())
-	}
-	acts, _ := json.Marshal([]string{"unmute"})
+	res := b.unmuteMember(ctx)
 	_ = b.st.AddAudit(store.AuditRec{
-		Kind: "command", GroupOpenID: ctx.GroupOpenID, MemberOpenID: ctx.MemberOpenID,
-		Username: ctx.Username, Hit: ctx.Hit, Actions: string(acts),
-		Result: map[bool]string{true: "ok", false: "fail"}[r.Ok()], Detail: strings.Join(results, "；"),
+		Kind: ctx.Kind, ChatID: ctx.ChatID, UserID: ctx.UserID, Username: ctx.Username,
+		Content: truncateLog(ctx.Content, 300), Hit: ctx.Hit,
+		Actions: `["unmute"]`, Result: boolResult(res.OK), Detail: res.Detail,
 	})
-	return results
+	return []string{res.Message}
 }
 
-// ---------------- 小工具 ----------------
+func (b *Bot) unmuteMember(ctx ActionCtx) actionResult {
+	_ = b.st.EndMuteByMember(ctx.ChatID, ctx.UserID)
+	c := b.clientOrNil()
+	if c == nil {
+		return actionResult{Message: "机器人未连接，已清除本地禁言记录", Detail: "not connected"}
+	}
+	if err := c.RestrictChatMember(ctx.ChatID, ctx.UserID, time.Time{}, true); err != nil {
+		return actionResult{Message: "解除禁言失败：" + errText(err), Detail: errText(err)}
+	}
+	return actionResult{Message: "已解除 " + displayTarget(ctx.UserID, ctx.Username) + " 的禁言", OK: true}
+}
 
-func HasActiveMute(st *store.Store, groupOpenID, memberOpenID string) bool {
-	if st == nil {
-		return false
+// BanMember 封禁并踢出；addBlacklist=true 时同时写入本地黑名单。
+func (b *Bot) BanMember(ctx ActionCtx, addBlacklist bool) []string {
+	res := b.banMember(ctx, addBlacklist)
+	acts := `["ban"]`
+	if addBlacklist {
+		acts = `["ban","blacklist"]`
 	}
-	list, err := st.Mutes(true)
-	if err != nil {
-		return false
-	}
-	for _, m := range list {
-		if m.GroupOpenID == groupOpenID && m.MemberOpenID == memberOpenID && m.Status == "active" {
-			return true
+	_ = b.st.AddAudit(store.AuditRec{
+		Kind: ctx.Kind, ChatID: ctx.ChatID, UserID: ctx.UserID, Username: ctx.Username,
+		Content: truncateLog(ctx.Content, 300), Hit: ctx.Hit,
+		Actions: acts, Result: boolResult(res.OK), Detail: res.Detail,
+	})
+	return []string{res.Message}
+}
+
+func (b *Bot) banMember(ctx ActionCtx, addBlacklist bool) actionResult {
+	if addBlacklist && b.st != nil {
+		if err := b.st.AddBlacklist(store.BlackRec{
+			ChatID: ctx.ChatID, UserID: ctx.UserID, Username: ctx.Username,
+			Reason: ctx.Hit, Operator: ctx.Operator, TGSynced: true,
+		}); err != nil {
+			log.Printf("[!] 写黑名单失败: %v", err)
 		}
 	}
-	return false
+	if strings.TrimSpace(ctx.ChatID) == "" {
+		return actionResult{Message: "已加入全局黑名单（未指定群，未执行 Telegram 封禁）", OK: true}
+	}
+	c := b.clientOrNil()
+	if c == nil {
+		return actionResult{Message: "机器人未连接，已写入本地黑名单但 Telegram 未执行", Detail: "not connected"}
+	}
+	if err := c.BanChatMember(ctx.ChatID, ctx.UserID, true); err != nil {
+		return actionResult{Message: "封禁失败：" + errText(err), Detail: errText(err)}
+	}
+	msg := "已封禁 " + displayTarget(ctx.UserID, ctx.Username)
+	if addBlacklist {
+		msg += " 并加入黑名单"
+	}
+	return actionResult{Message: msg, OK: true}
 }
 
-func DisplayName(ctx ActionCtx) string {
-	if ctx.Username != "" {
-		return ctx.Username
-	}
-	if len(ctx.MemberOpenID) > 8 {
-		return ctx.MemberOpenID[:8] + "…"
-	}
-	return ctx.MemberOpenID
+// KickMember 踢出但允许重新加入（Telegram = 封禁后立刻解封）。
+func (b *Bot) KickMember(ctx ActionCtx) []string {
+	res := b.kickMember(ctx)
+	_ = b.st.AddAudit(store.AuditRec{
+		Kind: ctx.Kind, ChatID: ctx.ChatID, UserID: ctx.UserID, Username: ctx.Username,
+		Content: truncateLog(ctx.Content, 300), Hit: ctx.Hit,
+		Actions: `["kick"]`, Result: boolResult(res.OK), Detail: res.Detail,
+	})
+	return []string{res.Message}
 }
 
-func ContainsStr(list []string, sub string) bool {
-	for _, s := range list {
-		if strings.Contains(s, sub) {
-			return true
-		}
+func (b *Bot) kickMember(ctx ActionCtx) actionResult {
+	c := b.clientOrNil()
+	if c == nil {
+		return actionResult{Message: "机器人未连接", Detail: "not connected"}
 	}
-	return false
+	if err := c.BanChatMember(ctx.ChatID, ctx.UserID, true); err != nil {
+		return actionResult{Message: "踢出失败：" + errText(err), Detail: errText(err)}
+	}
+	// 立刻解封，让对方可以重新加入（这就是 Telegram 的"踢出"）。
+	if err := c.UnbanChatMember(ctx.ChatID, ctx.UserID, true); err != nil {
+		log.Printf("[!] 踢出后解封失败（对方可能仍处于封禁）: %v", err)
+	}
+	return actionResult{Message: "已踢出 " + displayTarget(ctx.UserID, ctx.Username), OK: true}
 }
 
-func Truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "…"
+// UnbanMember 解除封禁（同时清本地黑名单由调用方决定）。
+func (b *Bot) UnbanMember(ctx ActionCtx) []string {
+	res := b.unbanMember(ctx)
+	_ = b.st.AddAudit(store.AuditRec{
+		Kind: ctx.Kind, ChatID: ctx.ChatID, UserID: ctx.UserID, Username: ctx.Username,
+		Content: truncateLog(ctx.Content, 300), Hit: ctx.Hit,
+		Actions: `["unban"]`, Result: boolResult(res.OK), Detail: res.Detail,
+	})
+	return []string{res.Message}
 }
 
-// MuteDurationRe 抓 "1小时30分" 这种片段；没写单位时按分钟算。
-var MuteDurationRe = regexp.MustCompile(`(\d+)\s*(秒钟|秒|分钟|分种|分|小时|时|天|日|周|星期|sec|min|hour|day|week|s|m|h|d|w)?`)
-
-// ParseMuteDuration 解析中文禁言时长：10分钟 / 1小时30分 / 2天 / 1周 / 30天 / 600（纯数字=分钟）。
-// 上限 30 天（QQ 侧限制），无法识别返回 false。
-func ParseMuteDuration(s string) (time.Duration, bool) {
-	str := strings.ToLower(strings.TrimSpace(s))
-	if str == "" {
-		return 0, false
+func (b *Bot) unbanMember(ctx ActionCtx) actionResult {
+	if strings.TrimSpace(ctx.ChatID) == "" {
+		return actionResult{Message: "已移出全局黑名单", OK: true}
 	}
-	total := time.Duration(0)
-	found := false
-	for _, m := range MuteDurationRe.FindAllStringSubmatch(str, -1) {
-		n, err := strconv.Atoi(m[1])
-		if err != nil || n <= 0 {
+	c := b.clientOrNil()
+	if c == nil {
+		return actionResult{Message: "机器人未连接", Detail: "not connected"}
+	}
+	if err := c.UnbanChatMember(ctx.ChatID, ctx.UserID, false); err != nil {
+		return actionResult{Message: "解封失败：" + errText(err), Detail: errText(err)}
+	}
+	return actionResult{Message: "已解封 " + displayTarget(ctx.UserID, ctx.Username), OK: true}
+}
+
+// RecallMessage 撤回单条。
+func (b *Bot) RecallMessage(chatID string, messageID int64) error {
+	c := b.clientOrNil()
+	if c == nil {
+		return fmt.Errorf("机器人未连接")
+	}
+	if messageID <= 0 {
+		return fmt.Errorf("缺少消息 ID")
+	}
+	return c.DeleteMessage(chatID, messageID)
+}
+
+// RecallMessages 批量撤回，返回成功条数和第一个错误。
+func (b *Bot) RecallMessages(chatID string, ids []int64) (int, error) {
+	var firstErr error
+	n := 0
+	for _, id := range ids {
+		if id <= 0 {
 			continue
 		}
-		unit := time.Minute // 纯数字：按分钟
-		switch m[2] {
-		case "秒钟", "秒", "sec", "s":
-			unit = time.Second
-		case "分钟", "分种", "分", "min", "m":
-			unit = time.Minute
-		case "小时", "时", "hour", "h":
-			unit = time.Hour
-		case "天", "日", "day", "d":
-			unit = 24 * time.Hour
-		case "周", "星期", "week", "w":
-			unit = 7 * 24 * time.Hour
+		if err := b.RecallMessage(chatID, id); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
-		total += time.Duration(n) * unit
-		found = true
+		n++
 	}
-	if !found || total <= 0 {
-		return 0, false
-	}
-	if total > MaxMuteSeconds*time.Second {
-		total = MaxMuteSeconds * time.Second
-	}
-	return total, true
+	return n, firstErr
 }
 
-// HumanDuration 把时长写成人话：1小时30分。
-func HumanDuration(d time.Duration) string {
-	secs := int64(d.Seconds())
-	if secs <= 0 {
-		return "0秒"
-	}
-	days := secs / 86400
-	secs %= 86400
-	hours := secs / 3600
-	secs %= 3600
-	mins := secs / 60
-	secs %= 60
-	var sb strings.Builder
-	if days > 0 {
-		fmt.Fprintf(&sb, "%d天", days)
-	}
-	if hours > 0 {
-		fmt.Fprintf(&sb, "%d小时", hours)
-	}
-	if mins > 0 {
-		fmt.Fprintf(&sb, "%d分", mins)
-	}
-	if secs > 0 && days == 0 && hours == 0 {
-		fmt.Fprintf(&sb, "%d秒", secs)
-	}
-	if sb.Len() == 0 {
-		return "0秒"
-	}
-	return sb.String()
-}
+// ---------------- helpers ----------------
 
-// LogAction 记一条日志（同时方便排查）。
-func LogAction(format string, args ...interface{}) {
-	log.Printf(format, args...)
-}
-
-// dedupeStrings 去掉重复的失败原因（批量撤回时同一种错误只报一次）。
-func dedupeStrings(in []string) []string {
+func jsonActions(list []string) string {
+	if len(list) == 0 {
+		return "[]"
+	}
 	seen := map[string]bool{}
 	var out []string
-	for _, s := range in {
-		if s == "" || seen[s] {
+	for _, a := range list {
+		if a == "" || seen[a] {
 			continue
 		}
-		seen[s] = true
-		out = append(out, s)
+		seen[a] = true
+		out = append(out, a)
 	}
-	return out
+	b, _ := json.Marshal(out)
+	return string(b)
+}
+
+func boolResult(ok bool) string {
+	if ok {
+		return "ok"
+	}
+	return "fail"
+}
+
+func appendDetail(old, add string) string {
+	if add == "" {
+		return old
+	}
+	if old == "" {
+		return add
+	}
+	return old + "；" + add
+}
+
+// IsNumericID 判断是不是纯数字 ID。
+func IsNumericID(s string) bool {
+	_, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	return err == nil
 }

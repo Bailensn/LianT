@@ -2,48 +2,59 @@ package bot
 
 import (
 	"fmt"
-	"qbot/internal/qq"
-	"qbot/internal/store"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"LianT/internal/store"
+	"LianT/internal/tg"
 )
 
 // ============================================================================
-// 群内中文指令（给网页后台配置的管理员用）
+// 群内指令（中文 + /斜杠）
 //
 // 目标怎么定位（按优先级）：
-//   1. @提及        —— 事件里的 mentions（官方字段，最准）
-//   2. 引用消息      —— 引用某人的消息发指令，从 msg_elements(type=103).author 取
-//   3. 文本里的 openid（32 位十六进制）
-//   4. 昵称          —— 查机器人自建的群名册（每条消息都会刷新，不依赖白名单接口）
-//   5. "我"          —— 指发送者自己
+//   1. 回复某人的消息（Telegram 的 reply，最准）
+//   2. @提及（text_mention 带用户对象；普通 @username 查本地名册）
+//   3. 文本里的数字用户 ID
+//   4. 本地名册里的昵称
+//   5. "我/自己"
 //
-// 谁能用：网页后台配的管理员（全局/群级）∪ 群内 admin/owner（可在网页按群关掉）。
-// 怎么触发：以动作词开头，或者短句里同时出现"动作词 + 能定位到的人"。
-//           （普通成员的消息永远不会被当成指令，所以不会误伤正常聊天）
+// 谁能用：网页后台配的管理员（全局/群级）∪ Telegram 群管理员（可在网页按群关掉）。
+// 触发：整条消息本身就是指令（动作词开头，或"把张三踢了"这种目标前置），
+//      普通聊天里出现"禁言"不会被当成指令。
 // ============================================================================
 
+type Mention struct {
+	UserID   string
+	Username string
+	Bot      bool
+}
+
+type Quote struct {
+	UserID   string
+	Username string
+}
+
 type CmdTarget struct {
-	MemberOpenID string
-	Username     string
-	Source       string // mention | quote | openid | name | self
+	UserID   string
+	Username string
+	Source   string // reply | mention | id | name | self
 }
 
 type CmdIntent struct {
 	Action   string // mute | unmute | kick | kickban | unban | recall | addword | delword | addadmin | deladmin | status | help
 	Duration time.Duration
 	Target   CmdTarget
-	Arg      string // 违禁词/备注等附加参数
-	Keyword  string // 命中的动作词（回显用）
+	Arg      string
+	Keyword  string
 }
 
 var (
-	HexOpenIDRe = regexp.MustCompile(`\b[0-9A-Fa-f]{32}\b`)
-	CmdPrefixes = []string{"请", "帮我", "麻烦", "给我"}
-	// 把字结构（把/将/给/对 + 目标 + 动作）在 CommandishHead 里处理：
-	// 它们不是客套话，而是"目标在前"的正常语序。
+	// Telegram 用户 ID 是 5-15 位数字（且不会和"10分钟"这类时长混淆）。
+	UserIDRe         = regexp.MustCompile(`\b\d{5,15}\b`)
+	CmdPrefixes      = []string{"请", "帮我", "麻烦", "给我"}
 	CmdObjectMarkers = []string{"把", "将", "给", "对"}
 )
 
@@ -51,13 +62,13 @@ var (
 var CmdKeywords = []struct {
 	Action  string
 	Words   []string
-	NeedArg bool // 是否需要目标
+	NeedArg bool
 }{
-	{"kickban", []string{"踢黑", "踢出拉黑", "踢了拉黑", "飞黑"}, true},
-	{"unban", []string{"解黑", "移出黑名单", "取消拉黑", "解除拉黑"}, true},
-	{"unmute", []string{"解禁", "解除禁言", "取消禁言", "撤销禁言", "解封"}, true},
+	{"kickban", []string{"踢黑", "踢出拉黑", "踢了拉黑", "飞黑", "封禁"}, true},
+	{"unban", []string{"解黑", "移出黑名单", "取消拉黑", "解除拉黑", "解封"}, true},
+	{"unmute", []string{"解禁", "解除禁言", "取消禁言", "撤销禁言"}, true},
 	{"mute", []string{"禁言", "闭嘴", "静音", "封口", "口球"}, true},
-	{"kick", []string{"踢出群", "踢出去", "踢", "移出群", "飞了", "t了", "T了", "送走"}, true},
+	{"kick", []string{"踢出群", "踢出去", "踢", "移出群", "飞了", "送走"}, true},
 	{"recall", []string{"撤回", "撤了", "删掉这条", "删除这条", "删了这条"}, false},
 	{"addword", []string{"加违禁词", "添加违禁词", "新增违禁词"}, true},
 	{"delword", []string{"删违禁词", "删除违禁词", "移除违禁词"}, true},
@@ -67,38 +78,33 @@ var CmdKeywords = []struct {
 	{"help", []string{"帮助", "help", "菜单", "指令"}, false},
 }
 
-// ChatterMarkers 出现这些词说明这是"一句话"，不是一条指令。
+// ChatterMarkers 句首出现这些词说明是在"说话"而不是下指令。
 var ChatterMarkers = []string{
-	// 口语代词/动词：句首出现这些基本就说明是在"说话"而不是在下指令
 	"我", "你", "他", "她", "它", "咱", "俺", "想", "要", "看", "说", "问", "聊", "听", "知道", "记", "忘",
 	"了", "过", "吗", "吧", "呢", "啊", "呀", "哦", "嘛", "都", "也", "还", "就", "才", "刚",
 	"已经", "正在", "现在", "今天", "明天", "昨天", "怎么", "为什么", "是不是", "能不能", "可以吗",
 	"天气", "时候", "觉得", "以为", "听说", "据说", "不要", "别", "顺便", "其实", "好像",
 }
 
-// MentionTokenRe 匹配开头的 @某人 / <@!openid> 这类提及。
-var MentionTokenRe = regexp.MustCompile(`^\s*(?:<@!?[0-9A-Za-z]+>|@[^\s@，。！？,]{1,32})\s*`)
+// MentionTokenRe 匹配开头的 @某人 这类提及。
+var MentionTokenRe = regexp.MustCompile(`^\s*@[^\s@，。！？,]{1,32}\s*`)
 
-// StripLeadingMentions 去掉消息开头的 @提及（@机器人 或 @别人），可重复。
 func StripLeadingMentions(s string) string {
 	for {
 		m := MentionTokenRe.FindString(s)
-		if m == "" || strings.TrimSpace(m) == "" {
+		if strings.TrimSpace(m) == "" {
 			return s
 		}
 		s = strings.TrimPrefix(s, m)
 	}
 }
 
-// CommandishHead 判断动作词前面那一小段是不是"指令的一部分"（而不是闲聊）。
-// 允许：空 / @某人 / 把|将|给|对 + 目标 / 我|自己 / 简短昵称；其余一律算闲聊。
+// CommandishHead 判断动作词前面那一小段是不是指令的一部分（而不是闲聊）。
 func CommandishHead(head string, maxRunes int) bool {
-	// @提及只是"条件词"：把它们删掉，剩下的整句仍然是指令就算数
 	h := strings.TrimSpace(StripLeadingMentions(head))
 	if h == "" {
 		return true
 	}
-	// 把字结构：把/将/给/对 + 目标（"把张三踢了"、"把我禁言"、"给他禁言"）
 	objectForm := false
 	for _, m := range CmdObjectMarkers {
 		if strings.HasPrefix(h, m) {
@@ -111,7 +117,6 @@ func CommandishHead(head string, maxRunes int) bool {
 	if h == "" {
 		return true
 	}
-	// 代词目标只有在把字结构里才算（"把他踢了"✓、"他踢了"✗）
 	if objectForm && (h == "我" || h == "自己" || h == "他" || h == "她" || h == "它" || h == "你" || h == "大家") {
 		return true
 	}
@@ -158,14 +163,12 @@ func NormalizeCommandText(s string) string {
 }
 
 // ParseGroupCommand 解析一条群消息里的管理指令（纯函数，方便测试）。
-// nicknames 是本地名册（用于按昵称找人）。
-func ParseGroupCommand(content string, mentions []qq.MentionedUser, quoted *qq.Author, nicknames []store.MemberRec, selfOpenID, selfName string) (CmdIntent, bool) {
+func ParseGroupCommand(content string, mentions []Mention, quoted *Quote, nicknames []store.MemberRec, selfID, selfName string) (CmdIntent, bool) {
 	raw := NormalizeCommandText(content)
 	if raw == "" {
 		return CmdIntent{}, false
 	}
 
-	// 1) 找动作词
 	var intent CmdIntent
 	matchedAt := -1
 	for _, kw := range CmdKeywords {
@@ -186,8 +189,7 @@ func ParseGroupCommand(content string, mentions []qq.MentionedUser, quoted *qq.A
 	if intent.Action == "" {
 		return CmdIntent{}, false
 	}
-	// 只有"这条消息本身就是指令"才生效：动作词必须在句首，
-	// 或前面只有 目标/把字结构（如"把张三踢了"）；像"我刚把他踢了"这种闲聊一律不算。
+
 	needsTarget := false
 	for _, kw := range CmdKeywords {
 		if kw.Action == intent.Action {
@@ -199,21 +201,16 @@ func ParseGroupCommand(content string, mentions []qq.MentionedUser, quoted *qq.A
 		maxHead = 16
 	}
 	if matchedAt != 0 && !CommandishHead(raw[:matchedAt], maxHead) {
-		// 动作词出现在一句话中间（"我刚把他踢了"、"今天天气不错，禁言他"）→ 不是指令
 		return CmdIntent{}, false
 	}
 
-	// 2) 时长（禁言类；只按位置删，避免把 openid/违禁词里的数字删掉）
 	body := raw
 	if d, ds, de, ok := FindDuration(raw, intent.Action == "mute"); ok {
 		intent.Duration = d
 		body = RemoveSpan(raw, ds, de)
 	}
 
-	// 3) 目标
-	// 3a) 句首显式写的名字优先（"@张三 把李四踢了" → 目标是李四）
 	head := strings.TrimSpace(StripLeadingMentions(raw[:matchedAt]))
-	head = strings.TrimSpace(strings.TrimPrefix(head, ""))
 	for _, om := range CmdObjectMarkers {
 		head = strings.TrimSpace(strings.TrimPrefix(head, om))
 	}
@@ -221,65 +218,56 @@ func ParseGroupCommand(content string, mentions []qq.MentionedUser, quoted *qq.A
 	if head != "" {
 		for _, n := range nicknames {
 			if n.Username != "" && strings.Contains(head, n.Username) {
-				intent.Target = CmdTarget{MemberOpenID: n.MemberOpenID, Username: n.Username, Source: "name-head"}
+				intent.Target = CmdTarget{UserID: n.UserID, Username: n.Username, Source: "name-head"}
 				break
 			}
 		}
 	}
-	if intent.Target.MemberOpenID == "" && len(mentions) > 0 {
+	if intent.Target.UserID == "" && len(mentions) > 0 {
 		for _, m := range mentions {
 			if m.Bot {
 				continue
 			}
-			intent.Target = CmdTarget{MemberOpenID: m.MemberOpenID, Username: m.Username, Source: "mention"}
+			if m.UserID == "" && m.Username == "" {
+				continue
+			}
+			intent.Target = CmdTarget{UserID: m.UserID, Username: m.Username, Source: "mention"}
 			break
 		}
 	}
-	if intent.Target.MemberOpenID == "" && quoted != nil {
-		if quoted.MemberOpenID != "" || quoted.UserOpenID != "" {
-			intent.Target = CmdTarget{MemberOpenID: quoted.MemberOpenID, Username: quoted.Username, Source: "quote"}
+	if intent.Target.UserID == "" && quoted != nil && quoted.UserID != "" {
+		intent.Target = CmdTarget{UserID: quoted.UserID, Username: quoted.Username, Source: "reply"}
+	}
+	if intent.Target.UserID == "" {
+		if m := UserIDRe.FindString(body); m != "" {
+			intent.Target = CmdTarget{UserID: m, Source: "id"}
 		}
 	}
-	if intent.Target.MemberOpenID == "" {
-		if m := HexOpenIDRe.FindString(raw); m != "" {
-			intent.Target = CmdTarget{MemberOpenID: strings.ToUpper(m), Source: "openid"}
-		}
-	}
-	if intent.Target.MemberOpenID == "" && len(nicknames) > 0 {
+	if intent.Target.UserID == "" && len(nicknames) > 0 {
 		for _, n := range nicknames {
 			if n.Username == "" {
 				continue
 			}
 			if strings.Contains(body, n.Username) {
-				intent.Target = CmdTarget{MemberOpenID: n.MemberOpenID, Username: n.Username, Source: "name"}
+				intent.Target = CmdTarget{UserID: n.UserID, Username: n.Username, Source: "name"}
 				break
 			}
 		}
 	}
-	// "我/自己"只有在紧贴动作词时才算目标（"解禁我"✓、"把我禁言"✓、"我刚把他踢了"✗）
-	if intent.Target.MemberOpenID == "" && selfOpenID != "" {
+	if intent.Target.UserID == "" && selfID != "" {
 		kw := regexp.QuoteMeta(intent.Keyword)
 		if regexp.MustCompile(kw+`\s*(?:我|自己)`).MatchString(raw) ||
 			regexp.MustCompile(`(?:把|将)\s*(?:我|自己)\s*`+kw).MatchString(raw) {
-			intent.Target = CmdTarget{MemberOpenID: selfOpenID, Username: selfName, Source: "self"}
+			intent.Target = CmdTarget{UserID: selfID, Username: selfName, Source: "self"}
 		}
 	}
 
-	// 走到这里说明消息本身就是一条指令；目标定位不到时下面照常返回，
-	// 由调用方回一句"怎么用"的提示（而不是静默失败）。
 	intent.Arg = ExtractArg(intent.Action, body, intent.Keyword, intent.Target.Username)
-
-	if intent.Action == "recall" {
-		// 撤回：优先撤回引用的消息（message_id 由调用方从事件里取）
-		return intent, true
-	}
 	return intent, true
 }
 
-// RecallMaxBatch 一次最多撤几条（太多了又慢又容易触发限频）。
 const RecallMaxBatch = 20
 
-// RecallCountRe 匹配"3条/3 个/3"这样的条数。
 var RecallCountRe = regexp.MustCompile(`(\d+)\s*(?:条|个|次)?`)
 
 // ParseRecallCount 解析要撤几条："撤回 3条"→3，"撤回全部"→上限，缺省→1。
@@ -305,13 +293,10 @@ func ParseRecallCount(content string) int {
 	return 1
 }
 
-// 时长必须带单位才算数（避免把"违禁词123"里的数字当时长）。
 var MuteDurationUnitRe = regexp.MustCompile(`(\d+)\s*(?:秒钟|秒|分钟|分种|分|小时|时|天|日|周|星期|sec|min|hour|day|week|h|d|w|s|m)`)
 
-// BareNumberRe 裸数字（只给禁言类指令用，按分钟）。\b 保证不会命中 openid 里的数字。
 var BareNumberRe = regexp.MustCompile(`\b\d{1,4}\b`)
 
-// FindDuration 找时长，并返回它在原串里的起止位置（精确删除，避免误删别处的数字）。
 func FindDuration(s string, allowBare bool) (time.Duration, int, int, bool) {
 	if loc := MuteDurationUnitRe.FindStringIndex(s); loc != nil {
 		if d, ok := ParseMuteDuration(s[loc[0]:loc[1]]); ok {
@@ -328,7 +313,43 @@ func FindDuration(s string, allowBare bool) (time.Duration, int, int, bool) {
 	return 0, 0, 0, false
 }
 
-// RemoveSpan 删掉 [start,end) 这段（换成空格）。
+func ParseMuteDuration(s string) (time.Duration, bool) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	re := regexp.MustCompile(`^(\d+)\s*(秒钟|秒|分钟|分种|分|小时|时|天|日|周|星期|sec|min|hour|day|week|h|d|w|s|m)$`)
+	m := re.FindStringSubmatch(s)
+	if m == nil {
+		// 裸数字：按分钟
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			return time.Duration(n) * time.Minute, true
+		}
+		return 0, false
+	}
+	n, _ := strconv.Atoi(m[1])
+	unit := m[2]
+	var d time.Duration
+	switch unit {
+	case "秒", "秒钟", "s", "sec":
+		d = time.Duration(n) * time.Second
+	case "分", "分钟", "分种", "m", "min":
+		d = time.Duration(n) * time.Minute
+	case "时", "小时", "h", "hour":
+		d = time.Duration(n) * time.Hour
+	case "天", "日", "d", "day":
+		d = time.Duration(n) * 24 * time.Hour
+	case "周", "星期", "w", "week":
+		d = time.Duration(n) * 7 * 24 * time.Hour
+	default:
+		return 0, false
+	}
+	if d <= 0 {
+		return 0, false
+	}
+	if d > 30*24*time.Hour {
+		d = 30 * 24 * time.Hour
+	}
+	return d, true
+}
+
 func RemoveSpan(s string, start, end int) string {
 	if start < 0 || end > len(s) || start >= end {
 		return s
@@ -336,12 +357,11 @@ func RemoveSpan(s string, start, end int) string {
 	return strings.TrimSpace(s[:start] + " " + s[end:])
 }
 
-// ExtractArg 取附加参数：违禁词、备注等（去掉动作词、目标、时长之后的剩余内容）。
-func ExtractArg(action, body, keyword, TargetName string) string {
+func ExtractArg(action, body, keyword, targetName string) string {
 	out := body
 	out = strings.Replace(out, keyword, " ", 1)
-	if TargetName != "" {
-		out = strings.Replace(out, TargetName, " ", 1)
+	if targetName != "" {
+		out = strings.Replace(out, targetName, " ", 1)
 	}
 	out = strings.TrimSpace(out)
 	out = strings.Trim(out, "，。,.、:：!！~ 　")
@@ -351,21 +371,19 @@ func ExtractArg(action, body, keyword, TargetName string) string {
 	return out
 }
 
-// ---------------- 执行 ----------------
+// ---------------- 上下文与执行 ----------------
 
-// CommandContext 执行一条指令所需的上下文。
 type CommandContext struct {
-	GroupOpenID  string
-	MemberOpenID string
-	Username     string
-	MsgID        string
-	Content      string
-	Role         string // 发送者的群内角色：member/admin/owner
-	IsAdmin      bool   // 网页后台配的管理员
-	AdminRole    string // super/admin
+	ChatID    string
+	UserID    string
+	Username  string
+	MessageID int64
+	Content   string
+	Role      string // member/admin/owner
+	IsAdmin   bool
+	AdminRole string
 }
 
-// CommandAllowed 判断发送者能不能用指令。
 func (b *Bot) CommandAllowed(ctx CommandContext) bool {
 	if b.st == nil {
 		return false
@@ -373,190 +391,176 @@ func (b *Bot) CommandAllowed(ctx CommandContext) bool {
 	if ctx.IsAdmin {
 		return true
 	}
-	g, ok := b.st.Group(ctx.GroupOpenID)
+	g, ok := b.st.Group(ctx.ChatID)
 	if !ok || !g.GroupAdminCanCmd {
 		return false
 	}
 	return ctx.Role == "admin" || ctx.Role == "owner"
 }
 
-// HandleGroupCommand 尝试把消息当指令执行；返回 (是否已处理, 给发送者的回复)。
-func (b *Bot) HandleGroupCommand(d qq.MessageData) (bool, string) {
+// handleCommand 尝试把消息当指令执行；返回 (是否已处理, 回复)。
+func (b *Bot) handleCommand(c *tg.Client, m *tg.Message, chatID, userID, role string) (bool, string) {
 	if b.st == nil {
 		return false, ""
 	}
-	g, _ := b.st.Group(d.GroupOpenID)
-	if !g.CommandsEnabled && g.OpenID != "" {
+	g, _ := b.st.Group(chatID)
+	if g.ChatID != "" && !g.CommandsEnabled {
 		return false, ""
 	}
-	adminRole, isAdmin := b.st.AdminRole(d.GroupOpenID, d.Author.MemberOpenID)
+	adminRole, isAdmin := b.st.AdminRole(chatID, userID)
 	cctx := CommandContext{
-		GroupOpenID: d.GroupOpenID, MemberOpenID: d.Author.MemberOpenID, Username: d.Author.Username,
-		MsgID: d.ID, Content: d.Content, Role: d.Author.MemberRole, IsAdmin: isAdmin, AdminRole: adminRole,
+		ChatID: chatID, UserID: userID, Username: m.From.Display(),
+		MessageID: m.MessageID, Content: m.Content(), Role: role,
+		IsAdmin: isAdmin, AdminRole: adminRole,
 	}
+
+	text := strings.TrimSpace(m.Content())
+	if strings.HasPrefix(text, "/") {
+		return b.handleSlashCommand(c, m, cctx)
+	}
+
 	if !b.CommandAllowed(cctx) {
 		return false, ""
 	}
-
-	var quoted *qq.Author
-	if a, ok := d.QuotedAuthor(); ok {
-		quoted = &a
-	}
-	nicknames, _ := b.st.Members(d.GroupOpenID, 200)
-	intent, ok := ParseGroupCommand(d.Content, d.Mentions, quoted, nicknames, d.Author.MemberOpenID, d.Author.Username)
+	quoted := quoteFrom(m)
+	mentions, _ := b.mentionsFrom(m, chatID)
+	nicknames, _ := b.st.Members(chatID, 200)
+	intent, ok := ParseGroupCommand(text, mentions, quoted, nicknames, userID, m.From.Display())
 	if !ok {
 		return false, ""
 	}
-	reply := b.RunGroupCommand(cctx, intent, d, quoted)
+	reply := b.RunGroupCommand(cctx, intent, m, quoted)
 	return true, reply
 }
 
-// RunGroupCommand 执行解析出来的指令，返回人话结果。
-func (b *Bot) RunGroupCommand(cctx CommandContext, intent CmdIntent, d qq.MessageData, quoted *qq.Author) string {
-	actor := DisplayName(ActionCtx{Username: cctx.Username, MemberOpenID: cctx.MemberOpenID})
+// handleSlashCommand 处理 /mute /ban 等 Telegram 风格命令。
+func (b *Bot) handleSlashCommand(c *tg.Client, m *tg.Message, cctx CommandContext) (bool, string) {
+	cmd, rest := splitSlash(m.Content())
+	cmd = strings.ToLower(cmd)
+	switch cmd {
+	case "start":
+		return true, "LianT 在线 ✅\n把机器人设为群管理员后可用：/help 查看指令。"
+	case "help":
+		return true, HelpText()
+	case "id":
+		return true, fmt.Sprintf("会话 ID：%s\n你的 ID：%s", cctx.ChatID, cctx.UserID)
+	}
+	if !b.CommandAllowed(cctx) {
+		return true, ""
+	}
+
+	quoted := quoteFrom(m)
+	mentions, _ := b.mentionsFrom(m, cctx.ChatID)
+	target, targetName := resolveTarget(rest, mentions, quoted, cctx)
+	switch cmd {
+	case "status":
+		return true, b.groupStatus(cctx.ChatID)
+	case "mute", "禁言":
+		if target == "" {
+			return true, "用法：回复某人的消息发 /mute 10m，或 /mute 10m @某人"
+		}
+		d, _ := commandDuration(rest, true)
+		if d <= 0 {
+			d = 10 * time.Minute
+		}
+		return true, JoinResults(b.MuteMember(ActionCtx{
+			ChatID: cctx.ChatID, UserID: target, Username: targetName,
+			Kind: "command", Hit: "禁言", Operator: cctx.Username,
+		}, d, "管理员禁言"), "已禁言 "+displayTarget(target, targetName)+" "+HumanDuration(d))
+	case "unmute", "解禁":
+		if target == "" {
+			return true, "用法：回复某人的消息发 /unmute"
+		}
+		return true, JoinResults(b.UnmuteMember(ActionCtx{
+			ChatID: cctx.ChatID, UserID: target, Username: targetName,
+			Kind: "command", Hit: "解禁", Operator: cctx.Username,
+		}), "已解除 "+displayTarget(target, targetName)+" 的禁言")
+	case "ban", "kickban":
+		if target == "" {
+			return true, "用法：回复某人的消息发 /ban（封禁并踢出）"
+		}
+		return true, JoinResults(b.BanMember(ActionCtx{
+			ChatID: cctx.ChatID, UserID: target, Username: targetName,
+			Kind: "command", Hit: "封禁", Operator: cctx.Username,
+		}, true), "已封禁 "+displayTarget(target, targetName))
+	case "kick":
+		if target == "" {
+			return true, "用法：回复某人的消息发 /kick（踢出但允许重新加入）"
+		}
+		return true, JoinResults(b.KickMember(ActionCtx{
+			ChatID: cctx.ChatID, UserID: target, Username: targetName,
+			Kind: "command", Hit: "踢出", Operator: cctx.Username,
+		}), "已踢出 "+displayTarget(target, targetName))
+	case "unban":
+		if target == "" {
+			return true, "用法：/unban 用户ID"
+		}
+		_ = b.st.RemoveBlacklist(cctx.ChatID, target)
+		return true, JoinResults(b.UnbanMember(ActionCtx{
+			ChatID: cctx.ChatID, UserID: target, Username: targetName,
+			Kind: "command", Hit: "解封", Operator: cctx.Username,
+		}), "已解除 "+displayTarget(target, targetName)+" 的封禁")
+	case "del", "delete", "recall":
+		return true, b.recallByReply(cctx, m, rest)
+	}
+	return false, ""
+}
+
+// RunGroupCommand 执行中文指令。
+func (b *Bot) RunGroupCommand(cctx CommandContext, intent CmdIntent, m *tg.Message, quoted *Quote) string {
+	actor := cctx.Username
 	switch intent.Action {
 	case "help":
 		return HelpText()
-
 	case "status":
-		lines := []string{"【群状态】"}
-		if g, ok := b.st.Group(cctx.GroupOpenID); ok {
-			lines = append(lines, fmt.Sprintf("机器人管理员：%v；指令开关：%v；回复全部：%v",
-				g.BotIsAdmin, g.CommandsEnabled, g.ReplyAll))
-		}
-		Rules, _ := b.st.Rules()
-		words, _ := b.st.Words()
-		mutes, _ := b.st.Mutes(true)
-		bl, _ := b.st.Blacklists(cctx.GroupOpenID)
-		lines = append(lines, fmt.Sprintf("回复规则 %d 条；违禁词 %d 条；禁言中 %d 人；本群黑名单 %d 人",
-			len(Rules), len(words), len(mutes), len(bl)))
-		return strings.Join(lines, "\n")
-
+		return b.groupStatus(cctx.ChatID)
 	case "recall":
-		// 撤回和消息类型无关（文字/图片/语音/视频/文件/卡片都能撤），
-		// 唯一的限制是：机器人得"见过"那条消息（撤回接口要消息 ID，而引用事件只给 ref_msg_idx），
-		// 以及群成员的消息要在 2 分钟内（机器人自己发的不受这条限制）。
-		const recallWin = 2 * time.Minute
-		raw := strings.ToLower(strings.TrimSpace(d.Content))
-		refIdx := d.MessageScene.Get("ref_msg_idx")
-		count := ParseRecallCount(d.Content)
-
-		wantBot := strings.Contains(raw, "机器人") || strings.Contains(raw, "你自己") ||
-			strings.HasSuffix(raw, "撤回你") || strings.Contains(raw, "撤回自己")
-		wantAll := count > 1
-
-		var ids []string
-		desc := ""
-
-		switch {
-		// 1) 撤回机器人自己发的（"撤回机器人" / "撤回你"）
-		case wantBot:
-			if rm, ok := b.LookupBotRecent(cctx.GroupOpenID, 0); ok {
-				ids = []string{rm.ID}
-				desc = "机器人自己的消息"
-			}
-
-		// 2) 一次撤最近 N 条 / 全部
-		case wantAll:
-			for _, rm := range b.RecentList(cctx.GroupOpenID, count, recallWin) {
-				if rm.ID == d.ID {
-					continue // 别把这条指令本身算进去
-				}
-				ids = append(ids, rm.ID)
-			}
-			if len(ids) > 0 {
-				desc = fmt.Sprintf("最近 %d 条", len(ids))
-			}
-
-		// 3) 引用的那条（任何类型）
-		case refIdx != "":
-			if rm, ok := b.LookupRecent(cctx.GroupOpenID, refIdx, ""); ok {
-				ids = []string{rm.ID}
-				desc = "引用的那条" + KindLabel(rm.Kind)
-			}
-
-		// 4) 指定的人最近一条（"撤回 @张三" / "撤回 张三"）
-		case intent.Target.MemberOpenID != "":
-			if rm, ok := b.LookupRecentByMember(cctx.GroupOpenID, intent.Target.MemberOpenID); ok {
-				ids = []string{rm.ID}
-				desc = fmt.Sprintf("%s 的最后一条%s", rm.Username, KindLabel(rm.Kind))
-			}
-
-		// 5) 光说"撤回"：撤上一条（不算这条指令）
-		default:
-			for _, rm := range b.RecentList(cctx.GroupOpenID, 2, recallWin) {
-				if rm.ID == d.ID {
-					continue
-				}
-				ids = append(ids, rm.ID)
-				desc = "上一条" + KindLabel(rm.Kind)
-				break
-			}
-		}
-
-		if len(ids) == 0 {
-			hint := "找不到要撤回的消息：引用它再说「撤回」，或者「撤回 @某人」「撤回 3条」。"
-			if refIdx != "" || intent.Target.MemberOpenID != "" {
-				hint += "（这条我没收到过，或已超过 2 分钟；群成员的消息 QQ 只允许撤回 2 分钟内的）"
-			}
-			return hint
-		}
-
-		results := b.ApplyPlan(ActionCtx{
-			GroupOpenID: cctx.GroupOpenID, MemberOpenID: cctx.MemberOpenID, Username: cctx.Username,
-			MessageID: ids[0], Kind: "command", Hit: "撤回", Operator: actor,
-		}, ActionPlan{Recall: true, RecallIDs: ids, Reason: "管理员撤回(" + desc + ")"})
-		return JoinResults(results, "撤回指令已执行")
-
+		return b.recallByReply(cctx, m, "")
 	case "mute":
-		if intent.Target.MemberOpenID == "" {
-			return "要禁言谁？@他一下，或者引用他的消息，也可以直接写昵称"
+		if intent.Target.UserID == "" {
+			return "要禁言谁？回复他的消息，或 @他一下（对方说过话才能按昵称找到）"
 		}
-		secs := int(intent.Duration.Seconds())
-		if secs <= 0 {
-			secs = 600 // 默认 10 分钟
+		d := intent.Duration
+		if d <= 0 {
+			d = 10 * time.Minute
 		}
 		results := b.MuteMember(ActionCtx{
-			GroupOpenID: cctx.GroupOpenID, MemberOpenID: intent.Target.MemberOpenID,
-			Username: intent.Target.Username, Kind: "command", Hit: "禁言", Operator: actor,
-		}, secs, "管理员禁言")
-		return JoinResults(results, fmt.Sprintf("已禁言 %s %s", TargetName(intent), HumanDuration(time.Duration(secs)*time.Second)))
-
+			ChatID: cctx.ChatID, UserID: intent.Target.UserID, Username: intent.Target.Username,
+			Kind: "command", Hit: "禁言", Operator: actor,
+		}, d, "管理员禁言")
+		return JoinResults(results, fmt.Sprintf("已禁言 %s %s", TargetName(intent), HumanDuration(d)))
 	case "unmute":
-		if intent.Target.MemberOpenID == "" {
-			return "要解禁谁？@他一下或写昵称"
+		if intent.Target.UserID == "" {
+			return "要解禁谁？回复他的消息或写昵称"
 		}
-		results := b.UnmuteMember(ActionCtx{
-			GroupOpenID: cctx.GroupOpenID, MemberOpenID: intent.Target.MemberOpenID,
-			Username: intent.Target.Username, Kind: "command", Hit: "解禁", Operator: actor,
-		})
-		return JoinResults(results, "已解除 "+TargetName(intent)+" 的禁言")
-
+		return JoinResults(b.UnmuteMember(ActionCtx{
+			ChatID: cctx.ChatID, UserID: intent.Target.UserID, Username: intent.Target.Username,
+			Kind: "command", Hit: "解禁", Operator: actor,
+		}), "已解除 "+TargetName(intent)+" 的禁言")
 	case "kick", "kickban":
-		if intent.Target.MemberOpenID == "" {
-			return "要踢谁？@他一下或写昵称"
+		if intent.Target.UserID == "" {
+			return "要踢谁？回复他的消息或 @他"
 		}
-		ban := intent.Action == "kickban"
-		results := b.ApplyPlan(ActionCtx{
-			GroupOpenID: cctx.GroupOpenID, MemberOpenID: intent.Target.MemberOpenID,
-			Username: intent.Target.Username, Kind: "command", Hit: intent.Keyword, Operator: actor,
-		}, ActionPlan{Kick: true, Blacklist: ban, Reason: "管理员" + intent.Keyword})
-		return JoinResults(results, "已执行 "+intent.Keyword)
-
+		ctx := ActionCtx{
+			ChatID: cctx.ChatID, UserID: intent.Target.UserID, Username: intent.Target.Username,
+			Kind: "command", Hit: intent.Keyword, Operator: actor,
+		}
+		if intent.Action == "kickban" {
+			return JoinResults(b.BanMember(ctx, true), "已封禁 "+TargetName(intent))
+		}
+		return JoinResults(b.KickMember(ctx), "已踢出 "+TargetName(intent))
 	case "unban":
-		if intent.Target.MemberOpenID == "" {
-			return "要解除谁的黑名单？@他一下或写昵称"
+		if intent.Target.UserID == "" {
+			return "要解除谁？回复他的消息或写用户 ID"
 		}
-		_ = b.st.RemoveBlacklist(cctx.GroupOpenID, intent.Target.MemberOpenID)
-		r := b.QqBlacklistOp(cctx.GroupOpenID, "del", []string{intent.Target.MemberOpenID})
-		if r.Ok() {
-			return "已移出黑名单（本地+QQ）"
-		}
-		return "已移出本地黑名单；QQ 侧未同步：" + r.String()
-
+		_ = b.st.RemoveBlacklist(cctx.ChatID, intent.Target.UserID)
+		return JoinResults(b.UnbanMember(ActionCtx{
+			ChatID: cctx.ChatID, UserID: intent.Target.UserID, Username: intent.Target.Username,
+			Kind: "command", Hit: "解封", Operator: actor,
+		}), "已解除 "+TargetName(intent))
 	case "addword":
 		if strings.TrimSpace(intent.Arg) == "" {
-			return "用法：加违禁词 词  [时长]（默认命中自动撤回）"
+			return "用法：加违禁词 词 [时长]（默认命中自动撤回）"
 		}
 		secs := int(intent.Duration.Seconds())
 		id, err := b.st.SaveWord(store.WordRec{
@@ -571,7 +575,6 @@ func (b *Bot) RunGroupCommand(cctx CommandContext, intent CmdIntent, d qq.Messag
 			msg += "并禁言 " + HumanDuration(time.Duration(secs)*time.Second)
 		}
 		return msg
-
 	case "delword":
 		if strings.TrimSpace(intent.Arg) == "" {
 			return "用法：删违禁词 词"
@@ -589,18 +592,17 @@ func (b *Bot) RunGroupCommand(cctx CommandContext, intent CmdIntent, d qq.Messag
 			return "没找到违禁词「" + intent.Arg + "」"
 		}
 		return fmt.Sprintf("已删除违禁词「%s」(%d 条)", intent.Arg, n)
-
 	case "addadmin", "deladmin":
 		if cctx.AdminRole != "super" && !cctx.IsAdmin {
 			return "只有管理员能改管理员"
 		}
-		if intent.Target.MemberOpenID == "" {
-			return "用法：加管理 @某人"
+		if intent.Target.UserID == "" {
+			return "用法：加管理 @某人（或回复他的消息）"
 		}
 		if intent.Action == "addadmin" {
 			_, err := b.st.AddAdmin(store.AdminRec{
-				MemberOpenID: intent.Target.MemberOpenID, Username: intent.Target.Username,
-				Role: "admin", GroupOpenID: cctx.GroupOpenID, Enabled: true,
+				UserID: intent.Target.UserID, Username: intent.Target.Username,
+				Role: "admin", ChatID: cctx.ChatID, Enabled: true,
 			})
 			if err != nil {
 				return "添加失败：" + err.Error()
@@ -609,7 +611,7 @@ func (b *Bot) RunGroupCommand(cctx CommandContext, intent CmdIntent, d qq.Messag
 		}
 		admins, _ := b.st.Admins()
 		for _, a := range admins {
-			if a.MemberOpenID == intent.Target.MemberOpenID && a.GroupOpenID == cctx.GroupOpenID {
+			if a.UserID == intent.Target.UserID && a.ChatID == cctx.ChatID {
 				_ = b.st.DeleteAdmin(a.ID)
 			}
 		}
@@ -618,14 +620,166 @@ func (b *Bot) RunGroupCommand(cctx CommandContext, intent CmdIntent, d qq.Messag
 	return ""
 }
 
+// recallByReply 处理"撤回"：优先回复的那条，其次目标最后一条，最后上一条。
+func (b *Bot) recallByReply(cctx CommandContext, m *tg.Message, rest string) string {
+	count := ParseRecallCount(m.Content())
+	raw := strings.ToLower(m.Content())
+	wantBot := strings.Contains(raw, "机器人") || strings.Contains(raw, "你")
+
+	var ids []int64
+	desc := ""
+	switch {
+	case wantBot:
+		if rm, ok := b.LookupBotRecent(cctx.ChatID, 0); ok {
+			ids, desc = []int64{rm.MessageID}, "机器人自己的消息"
+		}
+	case count > 1:
+		for _, rm := range b.RecentList(cctx.ChatID, count, 48*time.Hour) {
+			if rm.MessageID == m.MessageID {
+				continue
+			}
+			ids = append(ids, rm.MessageID)
+		}
+		if len(ids) > 0 {
+			desc = fmt.Sprintf("最近 %d 条", len(ids))
+		}
+	case m.ReplyToMessage != nil:
+		ids, desc = []int64{m.ReplyToMessage.MessageID}, "回复的那条"+KindLabel(Classify(m.ReplyToMessage))
+	case rest != "":
+		// /del <message_id>
+		if n, err := strconv.ParseInt(strings.Fields(rest)[0], 10, 64); err == nil && n > 0 {
+			ids, desc = []int64{n}, "指定的消息"
+		}
+	default:
+		for _, rm := range b.RecentList(cctx.ChatID, 2, 48*time.Hour) {
+			if rm.MessageID == m.MessageID {
+				continue
+			}
+			ids, desc = []int64{rm.MessageID}, "上一条"+KindLabel(rm.Kind)
+			break
+		}
+	}
+	if len(ids) == 0 {
+		return "找不到要撤回的消息：回复它再说「撤回」，或「撤回 3条」。"
+	}
+	results := b.ApplyPlan(ActionCtx{
+		ChatID: cctx.ChatID, UserID: cctx.UserID, Username: cctx.Username,
+		MessageID: ids[0], Kind: "command", Hit: "撤回", Operator: cctx.Username,
+	}, ActionPlan{Recall: true, RecallIDs: ids, Reason: "管理员撤回(" + desc + ")"})
+	return JoinResults(results, "撤回指令已执行")
+}
+
+func (b *Bot) groupStatus(chatID string) string {
+	lines := []string{"【群状态】"}
+	if g, ok := b.st.Group(chatID); ok {
+		lines = append(lines, fmt.Sprintf("机器人管理员：%v；指令开关：%v；回复全部：%v",
+			g.BotIsAdmin, g.CommandsEnabled, g.ReplyAll))
+	}
+	ruleList, _ := b.st.Rules()
+	words, _ := b.st.Words()
+	mutes, _ := b.st.Mutes(true)
+	bl, _ := b.st.Blacklists(chatID)
+	lines = append(lines, fmt.Sprintf("回复规则 %d 条；违禁词 %d 条；禁言中 %d 人；本群黑名单 %d 人",
+		len(ruleList), len(words), len(mutes), len(bl)))
+	return strings.Join(lines, "\n")
+}
+
+// ---------------- 解析辅助 ----------------
+
+func splitSlash(text string) (string, string) {
+	s := strings.TrimSpace(text)
+	s = strings.TrimPrefix(s, "/")
+	parts := strings.SplitN(s, " ", 2)
+	cmd := parts[0]
+	if i := strings.Index(cmd, "@"); i >= 0 {
+		cmd = cmd[:i]
+	}
+	rest := ""
+	if len(parts) > 1 {
+		rest = strings.TrimSpace(parts[1])
+	}
+	return cmd, rest
+}
+
+func quoteFrom(m *tg.Message) *Quote {
+	if m == nil || m.ReplyToMessage == nil || m.ReplyToMessage.From == nil {
+		return nil
+	}
+	u := m.ReplyToMessage.From
+	return &Quote{UserID: chatIDStr(u.ID), Username: u.Display()}
+}
+
+func (b *Bot) mentionsFrom(m *tg.Message, chatID string) ([]Mention, string) {
+	var out []Mention
+	var firstUsername string
+	for _, e := range m.Entities {
+		switch e.Type {
+		case "text_mention":
+			if e.User == nil {
+				continue
+			}
+			out = append(out, Mention{UserID: chatIDStr(e.User.ID), Username: e.User.Display(), Bot: e.User.IsBot})
+			if firstUsername == "" {
+				firstUsername = e.User.Username
+			}
+		case "mention":
+			name := strings.TrimPrefix(m.EntityText(e), "@")
+			if name == "" {
+				continue
+			}
+			uid := ""
+			if b.st != nil {
+				if list, err := b.st.FindMembersByName(chatID, name); err == nil {
+					for _, mm := range list {
+						if strings.EqualFold(mm.Username, name) || strings.EqualFold(strings.TrimPrefix(mm.Username, "@"), name) {
+							uid = mm.UserID
+							break
+						}
+					}
+				}
+			}
+			out = append(out, Mention{UserID: uid, Username: name, Bot: strings.EqualFold(name, b.me.Username)})
+			if firstUsername == "" {
+				firstUsername = name
+			}
+		}
+	}
+	return out, firstUsername
+}
+
+func resolveTarget(rest string, mentions []Mention, quoted *Quote, cctx CommandContext) (string, string) {
+	if quoted != nil && quoted.UserID != "" {
+		return quoted.UserID, quoted.Username
+	}
+	for _, m := range mentions {
+		if m.Bot || m.UserID == "" {
+			continue
+		}
+		return m.UserID, m.Username
+	}
+	if m := UserIDRe.FindString(rest); m != "" {
+		return m, ""
+	}
+	return "", ""
+}
+
+func commandDuration(s string, allowBare bool) (time.Duration, bool) {
+	d, _, _, ok := FindDuration(s, allowBare)
+	return d, ok
+}
+
+func displayTarget(id, name string) string {
+	if name != "" {
+		return name
+	}
+	if len(id) > 8 {
+		return id[:6] + "…"
+	}
+	return id
+}
+
 func TargetName(intent CmdIntent) string {
-	if intent.Target.Username != "" {
-		return intent.Target.Username
-	}
-	if len(intent.Target.MemberOpenID) > 8 {
-		return intent.Target.MemberOpenID[:8] + "…"
-	}
-	return intent.Target.MemberOpenID
+	return displayTarget(intent.Target.UserID, intent.Target.Username)
 }
 
 func JoinResults(results []string, fallback string) string {
@@ -635,16 +789,37 @@ func JoinResults(results []string, fallback string) string {
 	return strings.Join(results, "；")
 }
 
+// HumanDuration 把秒数写成中文。
+func HumanDuration(d time.Duration) string {
+	if d <= 0 {
+		return "永久"
+	}
+	sec := int(d.Seconds())
+	switch {
+	case sec%86400 == 0:
+		return fmt.Sprintf("%d 天", sec/86400)
+	case sec%3600 == 0:
+		return fmt.Sprintf("%d 小时", sec/3600)
+	case sec%60 == 0:
+		return fmt.Sprintf("%d 分钟", sec/60)
+	default:
+		return fmt.Sprintf("%d 秒", sec)
+	}
+}
+
 func HelpText() string {
 	return strings.Join([]string{
-		"【可用指令】@机器人 或直接发（需管理员身份）",
-		"禁言 @某人 10分钟     —— 不写时长默认 10 分钟，最长 30 天",
-		"解禁 @某人",
-		"踢 @某人 / 踢黑 @某人  —— 踢黑＝踢出并拉黑（QQ 侧需白名单权限）",
-		"解黑 @某人",
-		"引用某人的消息再发「撤回」",
-		"加违禁词 词 [时长] / 删违禁词 词",
-		"加管理 @某人 / 删管理 @某人",
-		"状态 / 帮助",
+		"【LianT 可用指令】",
+		"回复某人的消息，然后：",
+		"  /mute 10m     禁言（不写时长默认 10 分钟，最长 30 天）",
+		"  /unmute       解除禁言",
+		"  /kick         踢出（允许重新加入）",
+		"  /ban          封禁并踢出",
+		"  /unban        解除封禁",
+		"  /del          撤回这条消息（48 小时内）",
+		"中文也可以：禁言 @某人 10分钟 / 解禁 @某人 / 踢 @某人 / 撤回 / 状态 / 帮助",
+		"改违禁词：加违禁词 词 [时长] / 删违禁词 词",
+		"管理员：加管理 @某人 / 删管理 @某人",
+		"（以上管理指令仅群管理员或后台配置的管理员可用）",
 	}, "\n")
 }

@@ -35,7 +35,7 @@ var SchemaStatements = []string{
 		updated_at TEXT NOT NULL DEFAULT ''
 	)`,
 	`CREATE TABLE IF NOT EXISTS groups (
-		group_openid            TEXT PRIMARY KEY,
+		chat_id            TEXT PRIMARY KEY,
 		name                    TEXT NOT NULL DEFAULT '',
 		enabled                 INTEGER NOT NULL DEFAULT 1,
 		reply_all               INTEGER NOT NULL DEFAULT 1,
@@ -48,13 +48,13 @@ var SchemaStatements = []string{
 	)`,
 	`CREATE TABLE IF NOT EXISTS admins (
 		id            INTEGER PRIMARY KEY AUTOINCREMENT,
-		member_openid TEXT NOT NULL,
+		user_id TEXT NOT NULL,
 		username      TEXT NOT NULL DEFAULT '',
 		role          TEXT NOT NULL DEFAULT 'admin',
-		group_openid  TEXT NOT NULL DEFAULT '',
+		chat_id  TEXT NOT NULL DEFAULT '',
 		enabled       INTEGER NOT NULL DEFAULT 1,
 		created_at    TEXT NOT NULL DEFAULT '',
-		UNIQUE(member_openid, group_openid)
+		UNIQUE(user_id, chat_id)
 	)`,
 	`CREATE TABLE IF NOT EXISTS reply_rules (
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,8 +89,8 @@ var SchemaStatements = []string{
 	)`,
 	`CREATE TABLE IF NOT EXISTS mutes (
 		id            INTEGER PRIMARY KEY AUTOINCREMENT,
-		group_openid  TEXT NOT NULL,
-		member_openid TEXT NOT NULL,
+		chat_id  TEXT NOT NULL,
+		user_id TEXT NOT NULL,
 		username      TEXT NOT NULL DEFAULT '',
 		expire_at     TEXT NOT NULL DEFAULT '',
 		reason        TEXT NOT NULL DEFAULT '',
@@ -100,32 +100,32 @@ var SchemaStatements = []string{
 	)`,
 	`CREATE TABLE IF NOT EXISTS blacklist (
 		id            INTEGER PRIMARY KEY AUTOINCREMENT,
-		group_openid  TEXT NOT NULL,
-		member_openid TEXT NOT NULL,
+		chat_id  TEXT NOT NULL,
+		user_id TEXT NOT NULL,
 		username      TEXT NOT NULL DEFAULT '',
 		reason        TEXT NOT NULL DEFAULT '',
 		operator      TEXT NOT NULL DEFAULT '',
-		qq_synced     INTEGER NOT NULL DEFAULT 0,
+		tg_synced     INTEGER NOT NULL DEFAULT 0,
 		created_at    TEXT NOT NULL DEFAULT '',
-		UNIQUE(group_openid, member_openid)
+		UNIQUE(chat_id, user_id)
 	)`,
 	`CREATE TABLE IF NOT EXISTS members (
-		group_openid  TEXT NOT NULL,
-		member_openid TEXT NOT NULL,
+		chat_id  TEXT NOT NULL,
+		user_id TEXT NOT NULL,
 		username      TEXT NOT NULL DEFAULT '',
 		role          TEXT NOT NULL DEFAULT '',
 		Bot INTEGER NOT NULL DEFAULT 0,
 		msgs          INTEGER NOT NULL DEFAULT 0,
 		first_seen    TEXT NOT NULL DEFAULT '',
 		last_seen     TEXT NOT NULL DEFAULT '',
-		PRIMARY KEY (group_openid, member_openid)
+		PRIMARY KEY (chat_id, user_id)
 	)`,
 	`CREATE TABLE IF NOT EXISTS audit (
 		id            INTEGER PRIMARY KEY AUTOINCREMENT,
 		ts            TEXT NOT NULL DEFAULT '',
 		kind          TEXT NOT NULL DEFAULT '',
-		group_openid  TEXT NOT NULL DEFAULT '',
-		member_openid TEXT NOT NULL DEFAULT '',
+		chat_id  TEXT NOT NULL DEFAULT '',
+		user_id TEXT NOT NULL DEFAULT '',
 		username      TEXT NOT NULL DEFAULT '',
 		content       TEXT NOT NULL DEFAULT '',
 		hit           TEXT NOT NULL DEFAULT '',
@@ -137,113 +137,113 @@ var SchemaStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_rules_enabled ON reply_rules(enabled, priority)`,
 	`CREATE INDEX IF NOT EXISTS idx_words_enabled ON banned_words(enabled)`,
 	`CREATE INDEX IF NOT EXISTS idx_mutes_active ON mutes(status, expire_at)`,
-	`CREATE INDEX IF NOT EXISTS idx_blacklist_group ON blacklist(group_openid)`,
+	`CREATE INDEX IF NOT EXISTS idx_blacklist_group ON blacklist(chat_id)`,
 }
 
 // ---------------- 记录类型 ----------------
 
 type GroupRec struct {
-	OpenID           string
-	Name             string
-	Enabled          bool
-	ReplyAll         bool
-	CommandsEnabled  bool
-	GroupAdminCanCmd bool
-	BotIsAdmin       bool
-	Note             string
-	JoinedAt         string
-	UpdatedAt        string
+	ChatID           string `json:"chat_id"`
+	Name             string `json:"name"`
+	Enabled          bool   `json:"enabled"`
+	ReplyAll         bool   `json:"reply_all"`
+	CommandsEnabled  bool   `json:"commands_enabled"`
+	GroupAdminCanCmd bool   `json:"group_admin_can_command"`
+	BotIsAdmin       bool   `json:"bot_is_admin"`
+	Note             string `json:"note"`
+	JoinedAt         string `json:"joined_at"`
+	UpdatedAt        string `json:"updated_at"`
 }
 
 type AdminRec struct {
-	ID           int64
-	MemberOpenID string
-	Username     string
-	Role         string // super | admin
-	GroupOpenID  string // 空 = 全局管理员
-	Enabled      bool
-	CreatedAt    string
+	ID        int64  `json:"id"`
+	UserID    string `json:"user_id"`
+	Username  string `json:"username"`
+	Role      string `json:"role"`    // super | admin
+	ChatID    string `json:"chat_id"` // 空 = 全局管理员
+	Enabled   bool   `json:"enabled"`
+	CreatedAt string `json:"created_at"`
 }
 
 type RuleRec struct {
-	ID        int64
-	Priority  int
-	Match     string
-	Pattern   string
-	Reply     string
-	Fold      bool
-	Always    bool
-	Scope     string
-	Enabled   bool
-	Note      string
-	CreatedAt string
-	UpdatedAt string
+	ID        int64  `json:"id"`
+	Priority  int    `json:"priority"`
+	Match     string `json:"match"`
+	Pattern   string `json:"pattern"`
+	Reply     string `json:"reply"`
+	Fold      bool   `json:"fold"`
+	Always    bool   `json:"always"`
+	Scope     string `json:"scope"`
+	Enabled   bool   `json:"enabled"`
+	Note      string `json:"note"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 type WordRec struct {
-	ID          int64
-	Word        string
-	Match       string
-	Fold        bool
-	Scope       string
-	Reply       string
-	Recall      bool
-	MuteSeconds int
-	Kick        bool
-	Blacklist   bool
-	Severity    int
-	Enabled     bool
-	Note        string
-	CreatedAt   string
-	UpdatedAt   string
+	ID          int64  `json:"id"`
+	Word        string `json:"word"`
+	Match       string `json:"match"`
+	Fold        bool   `json:"fold"`
+	Scope       string `json:"scope"`
+	Reply       string `json:"reply"`
+	Recall      bool   `json:"recall"`
+	MuteSeconds int    `json:"mute_seconds"`
+	Kick        bool   `json:"kick"`
+	Blacklist   bool   `json:"blacklist"`
+	Severity    int    `json:"severity"`
+	Enabled     bool   `json:"enabled"`
+	Note        string `json:"note"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 type MuteRec struct {
-	ID           int64
-	GroupOpenID  string
-	MemberOpenID string
-	Username     string
-	ExpireAt     string
-	Reason       string
-	Operator     string
-	Status       string
-	CreatedAt    string
+	ID        int64  `json:"id"`
+	ChatID    string `json:"chat_id"`
+	UserID    string `json:"user_id"`
+	Username  string `json:"username"`
+	ExpireAt  string `json:"expire_at"`
+	Reason    string `json:"reason"`
+	Operator  string `json:"operator"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"created_at"`
 }
 
 type BlackRec struct {
-	ID           int64
-	GroupOpenID  string
-	MemberOpenID string
-	Username     string
-	Reason       string
-	Operator     string
-	QQSynced     bool
-	CreatedAt    string
+	ID        int64  `json:"id"`
+	ChatID    string `json:"chat_id"`
+	UserID    string `json:"user_id"`
+	Username  string `json:"username"`
+	Reason    string `json:"reason"`
+	Operator  string `json:"operator"`
+	TGSynced  bool   `json:"tg_synced"`
+	CreatedAt string `json:"created_at"`
 }
 
 type MemberRec struct {
-	GroupOpenID  string
-	MemberOpenID string
-	Username     string
-	Role         string
-	Bot          bool
-	Msgs         int64
-	FirstSeen    string
-	LastSeen     string
+	ChatID    string `json:"chat_id"`
+	UserID    string `json:"user_id"`
+	Username  string `json:"username"`
+	Role      string `json:"role"`
+	Bot       bool   `json:"bot"`
+	Msgs      int64  `json:"msgs"`
+	FirstSeen string `json:"first_seen"`
+	LastSeen  string `json:"last_seen"`
 }
 
 type AuditRec struct {
-	ID           int64
-	Ts           string
-	Kind         string
-	GroupOpenID  string
-	MemberOpenID string
-	Username     string
-	Content      string
-	Hit          string
-	Actions      string
-	Result       string
-	Detail       string
+	ID       int64  `json:"id"`
+	Ts       string `json:"ts"`
+	Kind     string `json:"kind"`
+	ChatID   string `json:"chat_id"`
+	UserID   string `json:"user_id"`
+	Username string `json:"username"`
+	Content  string `json:"content"`
+	Hit      string `json:"hit"`
+	Actions  string `json:"actions"`
+	Result   string `json:"result"`
+	Detail   string `json:"detail"`
 }
 
 // ---------------- 打开 / 迁移 ----------------
@@ -264,7 +264,7 @@ func Open(path string) (*Store, error) {
 		}
 	}
 	if strings.TrimSpace(path) == "" {
-		return nil, fmt.Errorf("数据库路径为空（路径初始化失败，先跑 qbot path 看看）")
+		return nil, fmt.Errorf("数据库路径为空（路径初始化失败，先跑 LianT path 看看）")
 	}
 	db, err := sql.Open(SqliteDriverName, path)
 	if err != nil {
@@ -384,13 +384,13 @@ func (s *Store) Settings() map[string]string {
 
 // ---------------- groups ----------------
 
-const GroupCols = `group_openid, name, enabled, reply_all, commands_enabled,
+const GroupCols = `chat_id, name, enabled, reply_all, commands_enabled,
 	group_admin_can_command, bot_is_admin, note, joined_at, updated_at`
 
 func ScanGroup(sc interface{ Scan(...interface{}) error }) (GroupRec, error) {
 	var g GroupRec
 	var enabled, replyAll, cmds, adminsCan, botAdmin int
-	err := sc.Scan(&g.OpenID, &g.Name, &enabled, &replyAll, &cmds, &adminsCan, &botAdmin,
+	err := sc.Scan(&g.ChatID, &g.Name, &enabled, &replyAll, &cmds, &adminsCan, &botAdmin,
 		&g.Note, &g.JoinedAt, &g.UpdatedAt)
 	g.Enabled = enabled != 0
 	g.ReplyAll = replyAll != 0
@@ -417,8 +417,8 @@ func (s *Store) Groups() ([]GroupRec, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) Group(openid string) (GroupRec, bool) {
-	row := s.db.QueryRow(`SELECT `+GroupCols+` FROM groups WHERE group_openid = ?`, openid)
+func (s *Store) Group(chatID string) (GroupRec, bool) {
+	row := s.db.QueryRow(`SELECT `+GroupCols+` FROM groups WHERE chat_id = ?`, chatID)
 	g, err := ScanGroup(row)
 	if err != nil {
 		return GroupRec{}, false
@@ -427,16 +427,16 @@ func (s *Store) Group(openid string) (GroupRec, bool) {
 }
 
 // EnsureGroup 机器人入群/首次见到消息时登记群（默认开启，且不清空已有设置）。
-func (s *Store) EnsureGroup(openid, name string) error {
+func (s *Store) EnsureGroup(chatID, name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := NowStr()
-	_, err := s.db.Exec(`INSERT INTO groups(group_openid, name, joined_at, updated_at)
+	_, err := s.db.Exec(`INSERT INTO groups(chat_id, name, joined_at, updated_at)
 		VALUES(?,?,?,?)
-		ON CONFLICT(group_openid) DO UPDATE SET
+		ON CONFLICT(chat_id) DO UPDATE SET
 			name = CASE WHEN excluded.Name <> '' THEN excluded.Name ELSE groups.Name END,
 			updated_at = excluded.updated_at`,
-		openid, name, now, now)
+		chatID, name, now, now)
 	if err == nil {
 		s.bump()
 	}
@@ -444,7 +444,7 @@ func (s *Store) EnsureGroup(openid, name string) error {
 }
 
 // UpdateGroup 只更新显式给出的字段（用指针区分"没传"和"设为空/false"）。
-func (s *Store) UpdateGroup(openid string, name *string, enabled, replyAll, cmds, groupAdminsCanCmd, botIsAdmin *bool, note *string) error {
+func (s *Store) UpdateGroup(chatID string, name *string, enabled, replyAll, cmds, groupAdminsCanCmd, botIsAdmin *bool, note *string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sets := []string{"updated_at = ?"}
@@ -474,8 +474,8 @@ func (s *Store) UpdateGroup(openid string, name *string, enabled, replyAll, cmds
 	if note != nil {
 		add("note = ?", *note)
 	}
-	args = append(args, openid)
-	if _, err := s.db.Exec(`UPDATE groups SET `+strings.Join(sets, ", ")+` WHERE group_openid = ?`, args...); err != nil {
+	args = append(args, chatID)
+	if _, err := s.db.Exec(`UPDATE groups SET `+strings.Join(sets, ", ")+` WHERE chat_id = ?`, args...); err != nil {
 		return err
 	}
 	s.bump()
@@ -483,16 +483,16 @@ func (s *Store) UpdateGroup(openid string, name *string, enabled, replyAll, cmds
 }
 
 // DeleteGroup 删除群记录（会连带清掉该群的禁言/黑名单记录）。
-func (s *Store) DeleteGroup(openid string) error {
+func (s *Store) DeleteGroup(chatID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, q := range []string{
-		`DELETE FROM groups WHERE group_openid = ?`,
-		`DELETE FROM mutes WHERE group_openid = ?`,
-		`DELETE FROM blacklist WHERE group_openid = ?`,
-		`DELETE FROM members WHERE group_openid = ?`,
+		`DELETE FROM groups WHERE chat_id = ?`,
+		`DELETE FROM mutes WHERE chat_id = ?`,
+		`DELETE FROM blacklist WHERE chat_id = ?`,
+		`DELETE FROM members WHERE chat_id = ?`,
 	} {
-		if _, err := s.db.Exec(q, openid); err != nil {
+		if _, err := s.db.Exec(q, chatID); err != nil {
 			return err
 		}
 	}
@@ -503,7 +503,7 @@ func (s *Store) DeleteGroup(openid string) error {
 // ---------------- admins ----------------
 
 func (s *Store) Admins() ([]AdminRec, error) {
-	rows, err := s.db.Query(`SELECT id, member_openid, username, role, group_openid, enabled, created_at
+	rows, err := s.db.Query(`SELECT id, user_id, username, role, chat_id, enabled, created_at
 		FROM admins ORDER BY role, id`)
 	if err != nil {
 		return nil, err
@@ -513,7 +513,7 @@ func (s *Store) Admins() ([]AdminRec, error) {
 	for rows.Next() {
 		var a AdminRec
 		var en int
-		if err := rows.Scan(&a.ID, &a.MemberOpenID, &a.Username, &a.Role, &a.GroupOpenID, &en, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.UserID, &a.Username, &a.Role, &a.ChatID, &en, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		a.Enabled = en != 0
@@ -528,11 +528,11 @@ func (s *Store) AddAdmin(a AdminRec) (int64, error) {
 	if a.Role == "" {
 		a.Role = "admin"
 	}
-	res, err := s.db.Exec(`INSERT INTO admins(member_openid, username, role, group_openid, enabled, created_at)
+	res, err := s.db.Exec(`INSERT INTO admins(user_id, username, role, chat_id, enabled, created_at)
 		VALUES(?,?,?,?,?,?)
-		ON CONFLICT(member_openid, group_openid) DO UPDATE SET
+		ON CONFLICT(user_id, chat_id) DO UPDATE SET
 			username=excluded.Username, role=excluded.Role, enabled=excluded.Enabled`,
-		a.MemberOpenID, a.Username, a.Role, a.GroupOpenID, BoolInt(a.Enabled || a.ID == 0), NowStr())
+		a.UserID, a.Username, a.Role, a.ChatID, BoolInt(a.Enabled || a.ID == 0), NowStr())
 	if err != nil {
 		return 0, err
 	}
@@ -551,14 +551,14 @@ func (s *Store) DeleteAdmin(id int64) error {
 }
 
 // AdminRole 判断某人是不是管理员：返回角色（super/admin）和是否命中。
-// scope 为群 openid：全局管理员（group_openid=”)与群级管理员都算。
-func (s *Store) AdminRole(groupOpenID, memberOpenID string) (string, bool) {
-	if memberOpenID == "" {
+// scope 为群 chatID：全局管理员（chat_id=”)与群级管理员都算。
+func (s *Store) AdminRole(groupChatID, memberChatID string) (string, bool) {
+	if memberChatID == "" {
 		return "", false
 	}
 	rows, err := s.db.Query(`SELECT role FROM admins
-		WHERE member_openid = ? AND enabled = 1 AND (group_openid = '' OR group_openid = ?)
-		ORDER BY CASE role WHEN 'super' THEN 0 ELSE 1 END LIMIT 1`, memberOpenID, groupOpenID)
+		WHERE user_id = ? AND enabled = 1 AND (chat_id = '' OR chat_id = ?)
+		ORDER BY CASE role WHEN 'super' THEN 0 ELSE 1 END LIMIT 1`, memberChatID, groupChatID)
 	if err != nil {
 		return "", false
 	}
@@ -722,9 +722,9 @@ func (s *Store) AddMute(m MuteRec) (int64, error) {
 	if m.Status == "" {
 		m.Status = "active"
 	}
-	res, err := s.db.Exec(`INSERT INTO mutes(group_openid, member_openid, username, expire_at, reason, operator, status, created_at)
+	res, err := s.db.Exec(`INSERT INTO mutes(chat_id, user_id, username, expire_at, reason, operator, status, created_at)
 		VALUES(?,?,?,?,?,?,?,?)`,
-		m.GroupOpenID, m.MemberOpenID, m.Username, m.ExpireAt, m.Reason, m.Operator, m.Status, NowStr())
+		m.ChatID, m.UserID, m.Username, m.ExpireAt, m.Reason, m.Operator, m.Status, NowStr())
 	if err != nil {
 		return 0, err
 	}
@@ -733,7 +733,7 @@ func (s *Store) AddMute(m MuteRec) (int64, error) {
 }
 
 func (s *Store) Mutes(activeOnly bool) ([]MuteRec, error) {
-	q := `SELECT id, group_openid, member_openid, username, expire_at, reason, operator, status, created_at FROM mutes`
+	q := `SELECT id, chat_id, user_id, username, expire_at, reason, operator, status, created_at FROM mutes`
 	if activeOnly {
 		q += ` WHERE status = 'active' ORDER BY id DESC LIMIT 500`
 	} else {
@@ -747,7 +747,7 @@ func (s *Store) Mutes(activeOnly bool) ([]MuteRec, error) {
 	var out []MuteRec
 	for rows.Next() {
 		var m MuteRec
-		if err := rows.Scan(&m.ID, &m.GroupOpenID, &m.MemberOpenID, &m.Username, &m.ExpireAt,
+		if err := rows.Scan(&m.ID, &m.ChatID, &m.UserID, &m.Username, &m.ExpireAt,
 			&m.Reason, &m.Operator, &m.Status, &m.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -768,11 +768,11 @@ func (s *Store) EndMute(id int64) error {
 }
 
 // EndMuteByMember 按人解除（用于群内/网页解除禁言）。
-func (s *Store) EndMuteByMember(groupOpenID, memberOpenID string) error {
+func (s *Store) EndMuteByMember(groupChatID, memberChatID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, err := s.db.Exec(`UPDATE mutes SET status = 'ended'
-		WHERE group_openid = ? AND member_openid = ? AND status = 'active'`, groupOpenID, memberOpenID); err != nil {
+		WHERE chat_id = ? AND user_id = ? AND status = 'active'`, groupChatID, memberChatID); err != nil {
 		return err
 	}
 	s.bump()
@@ -784,23 +784,23 @@ func (s *Store) EndMuteByMember(groupOpenID, memberOpenID string) error {
 func (s *Store) AddBlacklist(b BlackRec) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := s.db.Exec(`INSERT INTO blacklist(group_openid, member_openid, username, reason, operator, qq_synced, created_at)
+	_, err := s.db.Exec(`INSERT INTO blacklist(chat_id, user_id, username, reason, operator, tg_synced, created_at)
 		VALUES(?,?,?,?,?,?,?)
-		ON CONFLICT(group_openid, member_openid) DO UPDATE SET
+		ON CONFLICT(chat_id, user_id) DO UPDATE SET
 			username=excluded.Username, reason=excluded.Reason, operator=excluded.Operator`,
-		b.GroupOpenID, b.MemberOpenID, b.Username, b.Reason, b.Operator, BoolInt(b.QQSynced), NowStr())
+		b.ChatID, b.UserID, b.Username, b.Reason, b.Operator, BoolInt(b.TGSynced), NowStr())
 	if err == nil {
 		s.bump()
 	}
 	return err
 }
 
-func (s *Store) Blacklists(groupOpenID string) ([]BlackRec, error) {
-	q := `SELECT id, group_openid, member_openid, username, reason, operator, qq_synced, created_at FROM blacklist`
+func (s *Store) Blacklists(groupChatID string) ([]BlackRec, error) {
+	q := `SELECT id, chat_id, user_id, username, reason, operator, tg_synced, created_at FROM blacklist`
 	args := []interface{}{}
-	if groupOpenID != "" {
-		q += ` WHERE group_openid = ?`
-		args = append(args, groupOpenID)
+	if groupChatID != "" {
+		q += ` WHERE chat_id = ?`
+		args = append(args, groupChatID)
 	}
 	q += ` ORDER BY id DESC LIMIT 500`
 	rows, err := s.db.Query(q, args...)
@@ -812,43 +812,43 @@ func (s *Store) Blacklists(groupOpenID string) ([]BlackRec, error) {
 	for rows.Next() {
 		var b BlackRec
 		var synced int
-		if err := rows.Scan(&b.ID, &b.GroupOpenID, &b.MemberOpenID, &b.Username, &b.Reason,
+		if err := rows.Scan(&b.ID, &b.ChatID, &b.UserID, &b.Username, &b.Reason,
 			&b.Operator, &synced, &b.CreatedAt); err != nil {
 			return nil, err
 		}
-		b.QQSynced = synced != 0
+		b.TGSynced = synced != 0
 		out = append(out, b)
 	}
 	return out, rows.Err()
 }
 
 // IsBlacklisted 命中本地黑名单（全局空群号的黑名单对所有群生效）。
-func (s *Store) IsBlacklisted(groupOpenID, memberOpenID string) bool {
-	if memberOpenID == "" {
+func (s *Store) IsBlacklisted(groupChatID, memberChatID string) bool {
+	if memberChatID == "" {
 		return false
 	}
 	var n int
 	err := s.db.QueryRow(`SELECT COUNT(1) FROM blacklist
-		WHERE member_openid = ? AND (group_openid = '' OR group_openid = ?)`, memberOpenID, groupOpenID).Scan(&n)
+		WHERE user_id = ? AND (chat_id = '' OR chat_id = ?)`, memberChatID, groupChatID).Scan(&n)
 	return err == nil && n > 0
 }
 
-func (s *Store) RemoveBlacklist(groupOpenID, memberOpenID string) error {
+func (s *Store) RemoveBlacklist(groupChatID, memberChatID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := s.db.Exec(`DELETE FROM blacklist WHERE group_openid = ? AND member_openid = ?`,
-		groupOpenID, memberOpenID); err != nil {
+	if _, err := s.db.Exec(`DELETE FROM blacklist WHERE chat_id = ? AND user_id = ?`,
+		groupChatID, memberChatID); err != nil {
 		return err
 	}
 	s.bump()
 	return nil
 }
 
-func (s *Store) MarkBlacklistSynced(groupOpenID, memberOpenID string, synced bool) error {
+func (s *Store) MarkBlacklistSynced(groupChatID, memberChatID string, synced bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := s.db.Exec(`UPDATE blacklist SET qq_synced = ? WHERE group_openid = ? AND member_openid = ?`,
-		BoolInt(synced), groupOpenID, memberOpenID); err != nil {
+	if _, err := s.db.Exec(`UPDATE blacklist SET tg_synced = ? WHERE chat_id = ? AND user_id = ?`,
+		BoolInt(synced), groupChatID, memberChatID); err != nil {
 		return err
 	}
 	s.bump()
@@ -858,46 +858,46 @@ func (s *Store) MarkBlacklistSynced(groupOpenID, memberOpenID string, synced boo
 // ---------------- members（自建群名册） ----------------
 
 // TouchMember 每条群消息都会调用：记下昵称/角色，供"禁言 张三"这类指令解析用。
-func (s *Store) TouchMember(groupOpenID, memberOpenID, username, role string, isBot bool) error {
-	if groupOpenID == "" || memberOpenID == "" {
+func (s *Store) TouchMember(groupChatID, memberChatID, username, role string, isBot bool) error {
+	if groupChatID == "" || memberChatID == "" {
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := NowStr()
-	_, err := s.db.Exec(`INSERT INTO members(group_openid, member_openid, username, role, bot, msgs, first_seen, last_seen)
+	_, err := s.db.Exec(`INSERT INTO members(chat_id, user_id, username, role, bot, msgs, first_seen, last_seen)
 		VALUES(?,?,?,?,?,1,?,?)
-		ON CONFLICT(group_openid, member_openid) DO UPDATE SET
+		ON CONFLICT(chat_id, user_id) DO UPDATE SET
 			username = CASE WHEN excluded.Username <> '' THEN excluded.Username ELSE members.Username END,
 			role     = CASE WHEN excluded.Role <> '' THEN excluded.Role ELSE members.Role END,
 			msgs     = members.Msgs + 1,
 			last_seen = excluded.last_seen`,
-		groupOpenID, memberOpenID, username, role, BoolInt(isBot), now, now)
+		groupChatID, memberChatID, username, role, BoolInt(isBot), now, now)
 	if err == nil {
 		s.bump()
 	}
 	return err
 }
 
-func (s *Store) Members(groupOpenID string, limit int) ([]MemberRec, error) {
+func (s *Store) Members(groupChatID string, limit int) ([]MemberRec, error) {
 	if limit <= 0 {
 		limit = 200
 	}
 	if limit > 5000 {
 		limit = 5000
 	}
-	gid := strings.TrimSpace(groupOpenID)
+	gid := strings.TrimSpace(groupChatID)
 	var (
 		rows *sql.Rows
 		err  error
 	)
 	if gid == "" {
 		// 空群号 = 跨群名册（网页端按昵称选人用）。
-		rows, err = s.db.Query(`SELECT group_openid, member_openid, username, role, bot, msgs, first_seen, last_seen
+		rows, err = s.db.Query(`SELECT chat_id, user_id, username, role, bot, msgs, first_seen, last_seen
 			FROM members ORDER BY last_seen DESC LIMIT ?`, limit)
 	} else {
-		rows, err = s.db.Query(`SELECT group_openid, member_openid, username, role, bot, msgs, first_seen, last_seen
-			FROM members WHERE group_openid = ? ORDER BY last_seen DESC LIMIT ?`, gid, limit)
+		rows, err = s.db.Query(`SELECT chat_id, user_id, username, role, bot, msgs, first_seen, last_seen
+			FROM members WHERE chat_id = ? ORDER BY last_seen DESC LIMIT ?`, gid, limit)
 	}
 	if err != nil {
 		return nil, err
@@ -907,7 +907,7 @@ func (s *Store) Members(groupOpenID string, limit int) ([]MemberRec, error) {
 	for rows.Next() {
 		var m MemberRec
 		var isBot int
-		if err := rows.Scan(&m.GroupOpenID, &m.MemberOpenID, &m.Username, &m.Role, &isBot, &m.Msgs, &m.FirstSeen, &m.LastSeen); err != nil {
+		if err := rows.Scan(&m.ChatID, &m.UserID, &m.Username, &m.Role, &isBot, &m.Msgs, &m.FirstSeen, &m.LastSeen); err != nil {
 			return nil, err
 		}
 		m.Bot = isBot != 0
@@ -917,14 +917,14 @@ func (s *Store) Members(groupOpenID string, limit int) ([]MemberRec, error) {
 }
 
 // FindMembersByName 按昵称模糊找人（本地名册，不需要白名单接口）。
-func (s *Store) FindMembersByName(groupOpenID, name string) ([]MemberRec, error) {
+func (s *Store) FindMembersByName(groupChatID, name string) ([]MemberRec, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, nil
 	}
-	rows, err := s.db.Query(`SELECT group_openid, member_openid, username, role, bot, msgs, first_seen, last_seen
-		FROM members WHERE group_openid = ? AND (username = ? OR username LIKE ?) ORDER BY last_seen DESC LIMIT 10`,
-		groupOpenID, name, "%"+name+"%")
+	rows, err := s.db.Query(`SELECT chat_id, user_id, username, role, bot, msgs, first_seen, last_seen
+		FROM members WHERE chat_id = ? AND (username = ? OR username LIKE ?) ORDER BY last_seen DESC LIMIT 10`,
+		groupChatID, name, "%"+name+"%")
 	if err != nil {
 		return nil, err
 	}
@@ -933,7 +933,7 @@ func (s *Store) FindMembersByName(groupOpenID, name string) ([]MemberRec, error)
 	for rows.Next() {
 		var m MemberRec
 		var isBot int
-		if err := rows.Scan(&m.GroupOpenID, &m.MemberOpenID, &m.Username, &m.Role, &isBot, &m.Msgs, &m.FirstSeen, &m.LastSeen); err != nil {
+		if err := rows.Scan(&m.ChatID, &m.UserID, &m.Username, &m.Role, &isBot, &m.Msgs, &m.FirstSeen, &m.LastSeen); err != nil {
 			return nil, err
 		}
 		m.Bot = isBot != 0
@@ -950,27 +950,27 @@ func (s *Store) AddAudit(a AuditRec) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := s.db.Exec(`INSERT INTO audit(ts, kind, group_openid, member_openid, username, content, hit, actions, result, detail)
+	_, err := s.db.Exec(`INSERT INTO audit(ts, kind, chat_id, user_id, username, content, hit, actions, result, detail)
 		VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		a.Ts, a.Kind, a.GroupOpenID, a.MemberOpenID, a.Username, a.Content, a.Hit, a.Actions, a.Result, a.Detail)
+		a.Ts, a.Kind, a.ChatID, a.UserID, a.Username, a.Content, a.Hit, a.Actions, a.Result, a.Detail)
 	if err == nil {
 		s.bump()
 	}
 	return err
 }
 
-func (s *Store) Audit(limit int, groupOpenID, kind string) ([]AuditRec, error) {
+func (s *Store) Audit(limit int, groupChatID, kind string) ([]AuditRec, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	if limit > 1000 {
 		limit = 1000
 	}
-	q := `SELECT id, ts, kind, group_openid, member_openid, username, content, hit, actions, result, detail FROM audit WHERE 1=1`
+	q := `SELECT id, ts, kind, chat_id, user_id, username, content, hit, actions, result, detail FROM audit WHERE 1=1`
 	args := []interface{}{}
-	if groupOpenID != "" {
-		q += ` AND group_openid = ?`
-		args = append(args, groupOpenID)
+	if groupChatID != "" {
+		q += ` AND chat_id = ?`
+		args = append(args, groupChatID)
 	}
 	if kind != "" {
 		q += ` AND kind = ?`
@@ -986,7 +986,7 @@ func (s *Store) Audit(limit int, groupOpenID, kind string) ([]AuditRec, error) {
 	var out []AuditRec
 	for rows.Next() {
 		var a AuditRec
-		if err := rows.Scan(&a.ID, &a.Ts, &a.Kind, &a.GroupOpenID, &a.MemberOpenID, &a.Username,
+		if err := rows.Scan(&a.ID, &a.Ts, &a.Kind, &a.ChatID, &a.UserID, &a.Username,
 			&a.Content, &a.Hit, &a.Actions, &a.Result, &a.Detail); err != nil {
 			return nil, err
 		}
@@ -1006,40 +1006,12 @@ func (s *Store) PruneAudit(keep int) error {
 	return err
 }
 
-// ---------------- JSON 导入（Reply.json → SQLite，一次性） ----------------
-
-// ImportReplyConfig 把老的 Reply.json 规则导入数据库（只在没有导入过时执行）。
-// 只收纯数据，避免 store 依赖上层类型。
-func (s *Store) ImportReplyConfig(replyAll *bool, def *string, rules []RuleRec) (int, error) {
-	if s.Setting("json_imported", "") != "" {
-		return 0, nil
-	}
-	n := 0
-	if replyAll != nil {
-		if err := s.SetSetting("reply_all", BoolStr(*replyAll)); err != nil {
-			return n, err
-		}
-	}
-	if def != nil {
-		if err := s.SetSetting("reply_default", *def); err != nil {
-			return n, err
-		}
-	}
-	for i := range rules {
-		r := rules[i]
-		r.ID = 0
-		r.Note = "从 Reply.json 导入"
-		r.Enabled = true
-		r.CreatedAt = NowStr()
-		if _, err := s.SaveRule(r); err != nil {
-			return n, err
-		}
-		n++
-	}
-	if err := s.SetSetting("json_imported", NowStr()); err != nil {
-		return n, err
-	}
-	return n, nil
+// PublicSettings 返回可以展示/导出的设置（去掉管理端 token 与长轮询 offset）。
+func (s *Store) PublicSettings() map[string]string {
+	m := s.Settings()
+	delete(m, "admin_token")
+	delete(m, "tg_offset")
+	return m
 }
 
 // ExportJSON 把全部配置导出成一份 JSON（备份/迁移用）。
@@ -1052,7 +1024,7 @@ func (s *Store) ExportJSON() ([]byte, error) {
 	mutes, _ := s.Mutes(true)
 	payload := map[string]interface{}{
 		"exported_at": NowStr(),
-		"settings":    s.Settings(),
+		"settings":    s.PublicSettings(),
 		"groups":      groups,
 		"admins":      admins,
 		"rules":       rules,

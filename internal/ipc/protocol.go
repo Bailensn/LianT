@@ -1,10 +1,10 @@
 package ipc
 
 import (
+	"LianT/internal/cfg"
 	"encoding/json"
 	"fmt"
 	"net"
-	"qbot/internal/cfg"
 	"time"
 )
 
@@ -48,7 +48,7 @@ func CallAt(addr, cmd string, args map[string]string, timeout time.Duration) (*R
 
 // FindDaemonAddr 找到任务进程的控制地址。
 // 先用当前配置的端口探测，失败再看 runtime 文件里记录的端口（主进程与任务进程
-// 的 QBOT_PORT 不一致时也能找到）。
+// 的 LIANT_PORT 不一致时也能找到）。
 func FindDaemonAddr() (string, bool) {
 	if resp, err := CallAt(cfg.ControlAddr(), "ping", nil, 1200*time.Millisecond); err == nil && resp.OK {
 		return cfg.ControlAddr(), true

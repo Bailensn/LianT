@@ -13,14 +13,13 @@ import (
 // .env 读取
 //
 // 优先级：进程环境变量 > .env 文件 > config.go 里的常量
-// 热生效：每次取凭据都会先 stat 一下 .env，变了就重读，所以改完保存即生效
-//        （凭据类改动的生效时机 = 下一次取 token 时，最长 60 秒，或敲一次 qbot reload）
+// 热生效：每次取 Token 都会先 stat 一下 .env，变了就重读，所以改完保存即生效
+//        （Token 改动的生效时机 = 下一次取 token 时，最长 60 秒，或敲一次 LianT reload）
 //
 // 文件格式：
 //   # 整行注释（也支持行尾 " # 注释"，但值里有 # 时请用引号包起来）
-//   QBOT_APP_ID=你的AppID
-//   QBOT_APP_SECRET="你的 AppSecret"
-//   export QBOT_APP_ID=xxx      # export 前缀可有可无
+//   LIANT_BOT_TOKEN=123456:AA...   # BotFather 给的 token
+//   export LIANT_BOT_TOKEN=xxx    # export 前缀可有可无
 // ============================================================================
 
 type DotEnv struct {
@@ -157,29 +156,25 @@ func EnsureDotEnvTemplate(path string) bool {
 	if FileExists(path) {
 		return false
 	}
-	content := "# qbot 配置（本文件会被自动读取，改完保存即生效，不用重新编译）\n" +
+	content := "# LianT 配置（本文件会被自动读取，改完保存即生效，不用重新编译）\n" +
 		"# 也支持行尾注释；值里含 # 请用引号包起来。\n" +
 		"\n" +
-		"# QQ 机器人凭据（必填）\n" +
-		"QBOT_APP_ID=\n" +
-		"QBOT_APP_SECRET=\n" +
+		"# Telegram Bot Token（必填，找 @BotFather 获取）\n" +
+		"LIANT_BOT_TOKEN=\n" +
 		"\n" +
-		"# ---- 可选：下面这些只在任务进程启动时读一次，改完要 qbot restart ----\n" +
-		"# 端口/绑定地址/目录与文件名（默认都在当前目录或可执行文件旁，源码不写死路径）\n" +
-		"# QBOT_PORT=28731\n" +
-		"# QBOT_BIND=127.0.0.1\n" +
-		"# QBOT_DATA_DIR=\n" +
-		"# QBOT_LOG_FILE=\n" +
-		"# QBOT_PID_FILE=\n" +
-		"# QBOT_RUNTIME_FILE=\n" +
-		"# QBOT_REPLY_FILE=\n" +
-		"# QBOT_ENV_FILE=\n" +
-		"# 接口地址（沙盒环境改这个）\n" +
-		"# QBOT_API_BASE=https://api.bot.qq.com\n" +
-		"# QBOT_TOKEN_URL=https://bots.qq.com/app/getAppAccessToken\n" +
-		"# QBOT_GATEWAY_PATH=/gateway\n" +
-		"# QBOT_GROUP_MESSAGE_PATH=/v2/groups/%s/messages\n" +
-		"# QBOT_C2C_MESSAGE_PATH=/v2/users/%s/messages\n"
+		"# ---- 可选：下面这些只在任务进程启动时读一次，改完要 ./LianT restart ----\n" +
+		"# LIANT_API_BASE=https://api.telegram.org\n" +
+		"# LIANT_PROXY=\n" +
+		"# LIANT_PORT=28741\n" +
+		"# LIANT_BIND=127.0.0.1\n" +
+		"# LIANT_DATA_DIR=\n" +
+		"# LIANT_LOG_FILE=\n" +
+		"# LIANT_PID_FILE=\n" +
+		"# LIANT_RUNTIME_FILE=\n" +
+		"# LIANT_ENV_FILE=\n" +
+		"# LIANT_ADMIN_ADDR=127.0.0.1:28742\n" +
+		"# LIANT_ADMIN_TOKEN=\n" +
+		"# LIANT_ADMIN_PREFIX=\n"
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		log.Printf("[!] 生成 .env 模板失败 %s: %v", path, err)
 		return false
@@ -187,10 +182,10 @@ func EnsureDotEnvTemplate(path string) bool {
 	return true
 }
 
-// ResolveEnvFilePath 依次找 .env：QBOT_ENV_FILE > 已存在的（当前目录 → 可执行文件旁 → 数据目录）
+// ResolveEnvFilePath 依次找 .env：LIANT_ENV_FILE > 已存在的（当前目录 → 可执行文件旁 → 数据目录）
 // > 在第一个可写目录里新建。go run 时不会落到临时构建目录里。
 func ResolveEnvFilePath() string {
-	if p := strings.TrimSpace(os.Getenv("QBOT_ENV_FILE")); p != "" {
+	if p := strings.TrimSpace(os.Getenv("LIANT_ENV_FILE")); p != "" {
 		return p
 	}
 	dirs := ConfigSearchDirs()

@@ -1,15 +1,12 @@
 # compiled binary / build output
-/qbot
 /LianT
-qbot.exe
-LianT.exe
+/LianT.exe
 *.test
 *.out
 
 # runtime data (generated next to the executable / cwd)
-.qbot/
-qbot-data/
-LianT-data/
+/LianT-data/
+/.LianT/
 *.db
 *.db-wal
 *.db-shm
@@ -22,10 +19,6 @@ LianT-data/
 .env
 .env.*
 !.env.example
-
-# old-version config
-Reply.json
-Reply.json.bak
 
 # editor / OS noise
 .DS_Store

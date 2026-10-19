@@ -1,34 +1,34 @@
-// qbot —— 两层进程模型
+// LianT —— 两层进程模型
 //
 //	主进程（本文件）：只负责输入指令、转发给任务进程；随时开关都不影响任务进程。
-//	任务进程（go + go）：真正跑机器人业务，全局唯一，输出写 .log 文件。
+//	任务进程（LianT __run）：真正跑机器人业务，全局唯一，输出写 .log 文件。
 //
 // 常用指令：
 //
-//	qbot                  进入交互控制台（输入 start/status/logs/...）
-//	qbot start            拉起任务进程（已在运行则什么都不做）
-//	qbot stop             停止任务进程
-//	qbot restart          重启任务进程
-//	qbot status           查看任务进程与机器人状态
-//	qbot logs [n] [-f]    看任务进程日志（-f 持续跟随）
-//	qbot reconnect        让任务进程重连网关
-//	qbot run              前台运行任务进程（调试用；平时用 start）
+//	LianT                  进入交互控制台（输入 start/status/logs/...）
+//	LianT start            拉起任务进程（已在运行则什么都不做）
+//	LianT stop             停止任务进程
+//	LianT restart          重启任务进程
+//	LianT status           查看任务进程与机器人状态
+//	LianT logs [n] [-f]    看任务进程日志（-f 持续跟随）
+//	LianT reconnect        让任务进程重连 Telegram
+//	LianT run              前台运行任务进程（调试用；平时用 start）
 package main
 
 import (
+	"LianT/internal/admin"
+	"LianT/internal/cfg"
+	"LianT/internal/daemon"
+	"LianT/internal/ipc"
+	"LianT/internal/logfile"
+	"LianT/internal/proc"
+	"LianT/internal/rules"
+	"LianT/internal/store"
 	"bufio"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"qbot/internal/admin"
-	"qbot/internal/cfg"
-	"qbot/internal/daemon"
-	"qbot/internal/ipc"
-	"qbot/internal/logfile"
-	"qbot/internal/proc"
-	"qbot/internal/rules"
-	"qbot/internal/store"
 	"strconv"
 	"strings"
 	"syscall"
@@ -65,13 +65,13 @@ func runController(args []string) int {
 		printUsage()
 		return 0
 	case "version", "-v", "--version":
-		fmt.Printf("qbot %s (protocol %d)\n", cfg.AppVersion, cfg.ProtocolVersion)
+		fmt.Printf("LianT %s (protocol %d)\n", cfg.AppVersion, cfg.ProtocolVersion)
 		fmt.Printf("  数据目录: %s\n  日志文件: %s\n  控制端口: %d\n", cfg.DataDir, cfg.LogPath, cfg.ControlPort())
 		return 0
 	case "path", "where":
-		fmt.Printf("可执行文件: %s\n数据目录: %s\n日志文件: %s\n凭据文件(.env): %s\n回复规则文件: %s\npid 文件: %s\nruntime : %s\n控制端口: %s\n网关地址: %s\ntoken 地址: %s\n",
-			selfPath(), cfg.DataDir, cfg.LogPath, cfg.EnvPath, cfg.ReplyPath, cfg.PIDPath, cfg.RuntimePath, cfg.ControlAddr(), cfg.GatewayURL(), cfg.TokenURL())
-		fmt.Println("（以上全部可用 QBOT_* 环境变量单独覆盖；源码里没有写死的绝对路径）")
+		fmt.Printf("可执行文件: %s\n数据目录: %s\n日志文件: %s\n凭据文件(.env): %s\n数据库: %s\npid 文件: %s\nruntime : %s\n控制端口: %s\nTelegram API: %s\n管理端: %s\n",
+			selfPath(), cfg.DataDir, cfg.LogPath, cfg.EnvPath, cfg.DBPath, cfg.PIDPath, cfg.RuntimePath, cfg.ControlAddr(), cfg.APIBase(), cfg.AdminAddr())
+		fmt.Println("（以上全部可用 LIANT_* 环境变量单独覆盖；源码里没有写死的绝对路径）")
 		return 0
 
 	case "init":
@@ -94,7 +94,7 @@ func runController(args []string) int {
 		return cmdReply(rest)
 	case "reload":
 		return cmdReload()
-	case "reconnect", "reload-gateway":
+	case "reconnect", "reload-tg":
 		return cmdSimple("reconnect")
 	case "ping":
 		return cmdSimple("ping")
@@ -114,31 +114,32 @@ func cmdStart() int {
 		fmt.Printf("任务进程已经在运行，本次不启动（全局只会有一个）。\n")
 		fmt.Printf("  PID=%s  启动时间=%s  运行时长=%s\n",
 			get(data, "pid", "?"), get(data, "started_at", "?"), get(data, "uptime", "?"))
-		fmt.Printf("  凭据来源=%s\n", get(data, "creds_source", "?"))
+		fmt.Printf("  Token 来源=%s\n", get(data, "token_source", "?"))
 		fmt.Printf("  数据目录=%s\n", get(data, "data_dir", cfg.DataDir))
 		fmt.Printf("  日志文件=%s\n", get(data, "log_path", cfg.LogPath))
 		fmt.Printf("  控制端口=%s\n", addr)
 		if msg := otherInstanceWarning(data); msg != "" {
 			fmt.Printf("\n[!] %s\n", msg)
-			fmt.Println("    要用新构建的那个：先 qbot stop（在任何目录都能停掉它），再在本目录 qbot start。")
-			fmt.Println("    想同时跑两个（各用一份配置）：给其中一个加 QBOT_PORT=28732。")
+			fmt.Println("    要用新构建的那个：先 LianT stop（在任何目录都能停掉它），再在本目录 LianT start。")
+			fmt.Println("    想同时跑两个（各用一份配置）：给其中一个加 LIANT_PORT=28732。")
 		}
 		return 0
 	}
 	cleanStale()
 
-	if msg := cfg.CredentialsError(); msg != "" {
-		// 不拦着启动：任务进程会照常跑，等你在 .env 里填好凭据后自动生效
+	if msg := cfg.TokenError(); msg != "" {
+		// 不拦着启动：任务进程会照常跑，等你在 .env 里填好 Token 后自动生效
 		fmt.Fprintf(os.Stderr, "[!] %s\n", msg)
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[X] 找不到自己的可执行文件: %v\n", err)
+	// 注意：Android 上 os.Executable() 有时返回 linker64，必须用 selfPath()。
+	exe := selfPath()
+	if exe == "" || !FileExists(exe) {
+		fmt.Fprintln(os.Stderr, "[X] 找不到自己的可执行文件，无法拉起任务进程")
 		return 1
 	}
 	if cfg.LooksLikeGoRunTempDir(filepath.Dir(exe)) {
 		fmt.Fprintf(os.Stderr, "[!] 当前是 go run 的临时二进制（%s，go run 退出后会被清掉）。\n"+
-			"    建议先 `go build -trimpath -ldflags \"-s -w\" -o qbot .`，再用 ./qbot start，配置和日志才会落在当前目录。\n", exe)
+			"    建议先 `go build -trimpath -ldflags \"-s -w\" -o LianT .`，再用 ./LianT start，配置和日志才会落在当前目录。\n", exe)
 	}
 	pid, err := proc.SpawnDetached(exe, []string{"__run"}, cfg.LogPath)
 	if err != nil {
@@ -188,7 +189,7 @@ func cmdStop() int {
 		}
 		time.Sleep(300 * time.Millisecond)
 	}
-	fmt.Fprintln(os.Stderr, "[!] 等待超时：任务进程可能还在收尾，稍后用 qbot status 确认。")
+	fmt.Fprintln(os.Stderr, "[!] 等待超时：任务进程可能还在收尾，稍后用 LianT status 确认。")
 	return 1
 }
 
@@ -208,28 +209,27 @@ func cmdStatus() int {
 		fmt.Printf("  控制端口  : %s\n", addr)
 		fmt.Printf("  启动时间  : %s\n", get(data, "started_at", "?"))
 		fmt.Printf("  运行时长  : %s\n", get(data, "uptime", "?"))
-		fmt.Printf("  机器人    : %s\n", get(data, "bot_state", "?"))
+		fmt.Printf("  状态      : %s\n", get(data, "bot_state", "?"))
 		fmt.Printf("  已收消息  : %s 条\n", get(data, "messages", "0"))
 		fmt.Printf("  重连次数  : %s\n", get(data, "reconnects", "0"))
 		if v := data["last_message_at"]; v != "" {
 			fmt.Printf("  最近消息  : %s\n", v)
 		}
-		if v := data["token_expires_at"]; v != "" {
-			fmt.Printf("  token 到期: %s\n", v)
+		if v := data["bot_username"]; v != "" {
+			fmt.Printf("  Bot       : %s（ID %s）\n", v, get(data, "bot_id", "?"))
 		}
-		if v := data["gateway"]; v != "" {
-			fmt.Printf("  网关      : %s\n", v)
+		if v := data["api_base"]; v != "" {
+			fmt.Printf("  API       : %s\n", v)
 		}
 		if v := data["last_error"]; v != "" {
 			fmt.Printf("  最近错误  : %s\n", v)
 		}
-		fmt.Printf("  回复规则  : %s （%s 条, 版本 v%s, reply_all=%s）\n",
-			get(data, "reply_file", cfg.ReplyPath), get(data, "reply_rules", "?"),
-			get(data, "reply_ver", "?"), get(data, "reply_all", "?"))
+		fmt.Printf("  回复规则  : %s 条（版本 v%s, reply_all=%s）\n",
+			get(data, "reply_rules", "?"), get(data, "reply_ver", "?"), get(data, "reply_all", "?"))
 		if v := data["reply_error"]; v != "" {
 			fmt.Printf("  规则错误  : %s（已继续用上一版）\n", v)
 		}
-		fmt.Printf("  凭据来源  : %s（%s）\n", get(data, "creds_source", "?"), get(data, "env_file", cfg.EnvPath))
+		fmt.Printf("  Token 来源: %s（%s）\n", get(data, "token_source", "?"), get(data, "env_file", cfg.EnvPath))
 		fmt.Printf("  数据库    : %s（规则 %s / 违禁词 %s）\n", get(data, "db_file", cfg.DBPath),
 			get(data, "reply_rules", "?"), get(data, "words", "?"))
 		fmt.Printf("  管理端    : http://%s%s/\n", get(data, "admin_addr", admin.ListenAddr()), get(data, "admin_prefix", ""))
@@ -239,19 +239,19 @@ func cmdStatus() int {
 		}
 		if msg := otherInstanceWarning(data); msg != "" {
 			fmt.Printf("\n[!] %s\n", msg)
-			fmt.Println("    （换目录/重新构建后想生效：qbot stop → 再 qbot start）")
+			fmt.Println("    （换目录/重新构建后想生效：LianT stop → 再 LianT start）")
 		}
 		return 0
 	}
 	fmt.Println("任务进程: 未运行")
-	fmt.Printf("  （qbot start 启动；日志文件 %s）\n", cfg.LogPath)
+	fmt.Printf("  （LianT start 启动；日志文件 %s）\n", cfg.LogPath)
 	return 1
 }
 
 // cmdAdmin 打印网页管理端地址与 token（以及反代提示）。
 func cmdAdmin() int {
 	addr := admin.ListenAddr()
-	prefix := admin.NormalizePrefix(cfg.EnvOr("QBOT_ADMIN_PREFIX", ""))
+	prefix := admin.NormalizePrefix(cfg.EnvOr("LIANT_ADMIN_PREFIX", ""))
 	// token 可能存在数据库里，所以这里自己开一次库（只读为主，没有就生成并落库），
 	// 不然主进程读不到、只会显示"未生成"。
 	var st *store.Store
@@ -272,12 +272,12 @@ func cmdAdmin() int {
 	fmt.Println()
 	fmt.Println("直连（本机/同设备浏览器）：直接打开上面的地址，token 填进去即可。")
 	fmt.Println("反代（推荐，nginx 示例）：")
-	fmt.Printf("  location %s/ {\n      proxy_pass http://%s/;\n      proxy_set_header Host $host;\n      proxy_set_header X-Forwarded-Prefix %s;\n  }\n", admin.OrDefault(prefix, "/qbot"), addr, admin.OrDefault(prefix, "/qbot"))
-	fmt.Println("Caddy 示例： reverse_proxy /qbot/* 127.0.0.1:" + portOf(addr))
+	fmt.Printf("  location %s/ {\n      proxy_pass http://%s/;\n      proxy_set_header Host $host;\n      proxy_set_header X-Forwarded-Prefix %s;\n  }\n", admin.OrDefault(prefix, "/LianT"), addr, admin.OrDefault(prefix, "/LianT"))
+	fmt.Println("Caddy 示例： reverse_proxy /LianT/* 127.0.0.1:" + portOf(addr))
 	if ok, _, data := ipc.DaemonStatus(); ok {
 		fmt.Printf("\n任务进程: 运行中，数据库 %s\n", get(data, "db_file", cfg.DBPath))
 	} else {
-		fmt.Println("\n任务进程: 未运行（qbot start 后再访问）")
+		fmt.Println("\n任务进程: 未运行（LianT start 后再访问）")
 	}
 	return 0
 }
@@ -308,7 +308,7 @@ func cmdDB() int {
 	fmt.Printf("数据库: %s\n", cfg.DBPath)
 	fmt.Printf("  回复规则 %d 条 / 违禁词 %d 条 / 群 %d 个 / 管理员 %d 人 / 禁言中 %d 人 / 黑名单 %d 人 / 审计 %d 条\n",
 		len(Rules), len(words), len(groups), len(admins), len(mutes), len(bl), len(recent))
-	fmt.Println("  改这些请用网页后台（qbot admin 看地址），或直接在群里用中文指令。")
+	fmt.Println("  改这些请用网页后台（LianT admin 看地址），或直接在群里用中文指令。")
 	return 0
 }
 
@@ -330,11 +330,11 @@ func localRuleCheck(text string) (rules.Result, error) {
 	return rcfg.Evaluate(text, "群@(本地测试)", "测试群ID", "测试用户ID"), nil
 }
 
-// cmdReload 让任务进程重载规则缓存与 .env 凭据（不用重启、不影响机器人）。
+// cmdReload 让任务进程重载规则缓存与 .env Token（不用重启、不影响机器人）。
 func cmdReload() int {
 	addr, ok := ipc.FindDaemonAddr()
 	if !ok {
-		fmt.Fprintln(os.Stderr, "任务进程没有在运行（qbot start 启动）。")
+		fmt.Fprintln(os.Stderr, "任务进程没有在运行（LianT start 启动）。")
 		return 1
 	}
 	resp, err := ipc.CallAt(addr, "reload", nil, 10*time.Second)
@@ -346,14 +346,14 @@ func cmdReload() int {
 	// 端口/绑定地址/数据目录这类是"进程启动时"才生效的，改了要重启才能用上
 	if info, ok := cfg.ReadRuntimeInfo(); ok {
 		if info.Port != cfg.ControlPort() {
-			fmt.Printf("  [!] .env 里端口是 %d，运行中的任务进程在 %d —— 改端口要 qbot restart 才生效\n", cfg.ControlPort(), info.Port)
+			fmt.Printf("  [!] .env 里端口是 %d，运行中的任务进程在 %d —— 改端口要 LianT restart 才生效\n", cfg.ControlPort(), info.Port)
 		}
 		if info.DataDir != "" && info.DataDir != cfg.DataDir {
-			fmt.Printf("  [!] .env 里数据目录是 %s，运行中的是 %s —— 改目录要 qbot restart 才生效\n", cfg.DataDir, info.DataDir)
+			fmt.Printf("  [!] .env 里数据目录是 %s，运行中的是 %s —— 改目录要 LianT restart 才生效\n", cfg.DataDir, info.DataDir)
 		}
 	}
 	if resp.OK {
-		fmt.Printf("  规则文件: %s\n", get(resp.Data, "reply_file", cfg.ReplyPath))
+		fmt.Printf("  数据库: %s\n", get(resp.Data, "db_file", cfg.DBPath))
 		fmt.Printf("  规则条数: %s   版本: v%s   reply_all: %s\n",
 			get(resp.Data, "reply_rules", "?"), get(resp.Data, "reply_ver", "?"), get(resp.Data, "reply_all", "?"))
 		return 0
@@ -363,8 +363,8 @@ func cmdReload() int {
 
 // cmdReply 干跑回复规则：
 //
-//	qbot reply            打印当前生效的规则
-//	qbot reply /ping      看看这条消息会回什么（不会真的发消息）
+//	LianT reply            打印当前生效的规则
+//	LianT reply /ping      看看这条消息会回什么（不会真的发消息）
 func cmdReply(args []string) int {
 	text := strings.TrimSpace(strings.Join(args, " "))
 
@@ -391,7 +391,7 @@ func cmdReply(args []string) int {
 			fmt.Printf("  #%d %s(%q) 撤回=%v 禁言=%ds 踢=%v 拉黑=%v 回复=%q\n",
 				w.ID, w.Match, w.Word, w.Recall, w.MuteSeconds, w.Kick, w.Blacklist, w.Reply)
 		}
-		fmt.Println("改这些：网页后台（qbot admin 看地址）或群内中文指令；试跑：qbot reply /ping")
+		fmt.Println("改这些：网页后台（LianT admin 看地址）或群内中文指令；试跑：LianT reply /ping")
 		return 0
 	}
 
@@ -454,7 +454,7 @@ func cmdInit() int {
 		}
 		madeRule = true
 	}
-	fmt.Printf("凭据模板: %s%s\n", cfg.EnvPath, mark(madeEnv))
+	fmt.Printf("配置模板: %s%s\n", cfg.EnvPath, mark(madeEnv))
 	fmt.Printf("数据库  : %s（回复规则 %d 条%s）\n", cfg.DBPath, len(existing), map[bool]string{true: "，已播种默认规则", false: ""}[madeRule])
 	fmt.Println("配置文件改完保存即生效；规则/违禁词也可以直接在群里用中文指令改。")
 	return 0
@@ -493,7 +493,7 @@ func otherInstanceWarning(data map[string]string) string {
 func cmdSimple(cmd string) int {
 	addr, ok := ipc.FindDaemonAddr()
 	if !ok {
-		fmt.Fprintln(os.Stderr, "任务进程没有在运行（用 qbot start 启动）。")
+		fmt.Fprintln(os.Stderr, "任务进程没有在运行（用 LianT start 启动）。")
 		return 1
 	}
 	resp, err := ipc.CallAt(addr, cmd, nil, 15*time.Second)
@@ -523,7 +523,7 @@ func cmdLogs(args []string) int {
 		default:
 			v, err := strconv.Atoi(a)
 			if err != nil || v <= 0 {
-				fmt.Fprintf(os.Stderr, "无法识别的日志参数: %s（用法: qbot logs [行数] [-f]）\n", a)
+				fmt.Fprintf(os.Stderr, "无法识别的日志参数: %s（用法: LianT logs [行数] [-f]）\n", a)
 				return 2
 			}
 			n = v
@@ -572,7 +572,7 @@ func cmdLogs(args []string) int {
 // ---------------- 交互控制台 ----------------
 
 func interactive() int {
-	fmt.Printf("qbot %s 控制台（主进程：只发指令；本进程退出不影响任务进程）\n", cfg.AppVersion)
+	fmt.Printf("LianT %s 控制台（主进程：只发指令；本进程退出不影响任务进程）\n", cfg.AppVersion)
 	if ok, addr, data := ipc.DaemonStatus(); ok {
 		fmt.Printf("任务进程: 运行中  pid=%s  端口=%s  机器人=%s\n",
 			get(data, "pid", "?"), addr, get(data, "bot_state", "?"))
@@ -584,11 +584,11 @@ func interactive() int {
 
 	sc := bufio.NewScanner(os.Stdin)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	fmt.Print("qbot> ")
+	fmt.Print("LianT> ")
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" {
-			fmt.Print("qbot> ")
+			fmt.Print("LianT> ")
 			continue
 		}
 		fields := strings.Fields(line)
@@ -597,7 +597,7 @@ func interactive() int {
 
 		switch cmd {
 		case "exit", "quit", "q", "bye":
-			fmt.Println("控制台退出；任务进程继续运行（qbot status 可查看）。")
+			fmt.Println("控制台退出；任务进程继续运行（LianT status 可查看）。")
 			return 0
 		case "help", "?", "h":
 			printUsage()
@@ -626,7 +626,7 @@ func interactive() int {
 		default:
 			fmt.Printf("未知指令: %s（输入 help 看用法）\n", cmd)
 		}
-		fmt.Print("qbot> ")
+		fmt.Print("LianT> ")
 	}
 	fmt.Println("\n(stdin 已关闭，控制台退出；任务进程继续在后台运行)")
 	return 0
@@ -635,37 +635,38 @@ func interactive() int {
 // ---------------- 小工具 ----------------
 
 func printUsage() {
-	fmt.Printf(`qbot %s —— 主进程/任务进程两层结构
+	fmt.Printf(`LianT %s —— 主进程/任务进程两层结构
 
-主进程(qbot)只发指令；任务进程(qbot __run)常驻跑业务，全局唯一。
+主进程(LianT)只发指令；任务进程(LianT __run)常驻跑业务，全局唯一。
 主进程开多少次、退出多少次，都不会影响任务进程；业务输出全部写日志文件。
 
 用法:
-  qbot                    进入交互控制台
-  qbot start              拉起任务进程（已在运行则什么都不做）
-  qbot stop               停止任务进程
-  qbot restart            重启任务进程（先 stop 再 start）
-  qbot status             查看任务进程、机器人、回复规则状态
-  qbot logs [行数] [-f]    查看日志，默认 50 行，-f 持续跟随
-  qbot admin              网页管理端地址 + token（以及反代示例）
-  qbot db                 看数据库统计（规则/违禁词/群/管理员…）
-  qbot reload             重载规则缓存 + .env 凭据（不重启、不断线）
-  qbot reply [文本]        不带文本=打印当前规则；带文本=干跑看会回什么
-  qbot reconnect          让任务进程重连网关（进程不退出）
-  qbot run                前台运行任务进程（调试用，日志同时打屏）
-  qbot init               生成 .env 模板并给数据库播种默认规则
-  qbot path               打印数据目录/日志/配置文件等路径
-  qbot help               本帮助
+  LianT                    进入交互控制台
+  LianT start              拉起任务进程（已在运行则什么都不做）
+  LianT stop               停止任务进程
+  LianT restart            重启任务进程（先 stop 再 start）
+  LianT status             查看任务进程、机器人、回复规则状态
+  LianT logs [行数] [-f]    查看日志，默认 50 行，-f 持续跟随
+  LianT admin              网页管理端地址 + token（以及反代示例）
+  LianT db                 看数据库统计（规则/违禁词/群/管理员…）
+  LianT reload             重载规则缓存 + .env Token（不重启、不断线）
+  LianT reply [文本]        不带文本=打印当前规则；带文本=干跑看会回什么
+  LianT reconnect          让任务进程尽快重连 Telegram（进程不退出）
+  LianT run                前台运行任务进程（调试用，日志同时打屏）
+  LianT init               生成 .env 模板并给数据库播种默认规则
+  LianT path               打印数据目录/日志/配置文件等路径
+  LianT help               本帮助
 
-配置文件（改完保存即生效，不用重新编译、不用重启）:
-  凭据      %s         QBOT_APP_ID / QBOT_APP_SECRET
-  回复规则  %s         每条消息都会重新检查
-环境变量优先级: 进程环境变量 > .env > config.go 常量
-日志文件  %s         （单文件 8MB 自动轮转，留 .1 ~ .5）
-数据目录  %s
-控制端口  %d          （QBOT_PORT，只在启动时读）
+配置（改完保存即生效，不用重新编译）:
+  Bot Token %s         LIANT_BOT_TOKEN（@BotFather 获取）
+  API / 代理                    LIANT_API_BASE / LIANT_PROXY
+  环境变量优先级: 进程环境变量 > .env > config.go 常量
+  日志文件  %s         （单文件 8MB 自动轮转，留 .1 ~ .5）
+  数据目录  %s
+  数据库    %s
+  控制端口  %d          （LIANT_PORT，只在启动时读）
 `,
-		cfg.AppVersion, cfg.EnvPath, cfg.ReplyPath, cfg.LogPath, cfg.DataDir, cfg.ControlPort())
+		cfg.AppVersion, cfg.EnvPath, cfg.LogPath, cfg.DataDir, cfg.DBPath, cfg.ControlPort())
 }
 
 func get(m map[string]string, key, def string) string {
@@ -699,6 +700,9 @@ func selfPath() string {
 		}
 	}
 	if len(os.Args) > 0 {
+		if abs, err := filepath.Abs(os.Args[0]); err == nil {
+			return abs
+		}
 		return os.Args[0]
 	}
 	return ""
@@ -720,16 +724,32 @@ func normalizeArgs() {
 	if len(os.Args) < 2 {
 		return
 	}
-	if !strings.Contains(filepath.Base(os.Args[0]), "linker") {
+	// Android 的 linker64 在 exec 时会把程序路径再塞进 argv[1]（argv[0] 可能是
+	// linker64，也可能已经是程序自己）。Termux/手机环境常见，这里统一剥掉，
+	// 否则 `LianT start` 会被当成 `LianT /path/to/LianT start`。
+	// 情况一：argv[0] 和 argv[1] 指向同一个可执行文件（ld/linker 多塞了一份）。
+	if samePath(os.Args[0], os.Args[1]) {
+		os.Args = append(os.Args[:1], os.Args[2:]...)
 		return
 	}
+	// 情况二：os.Executable() 返回 linker64，argv[1] 才是真正的程序路径。
 	exe, err := os.Executable()
-	if err != nil || exe == "" {
-		return
+	if err == nil && strings.Contains(strings.ToLower(filepath.Base(exe)), "linker") {
+		if abs, aerr := filepath.Abs(os.Args[1]); aerr == nil && FileExists(abs) {
+			os.Args = append(os.Args[:1], os.Args[2:]...)
+			return
+		}
 	}
-	if samePath(os.Args[1], exe) {
+	// 情况三：argv[1] 就是 os.Executable() 指向的文件。
+	if err == nil && exe != "" && samePath(os.Args[1], exe) {
 		os.Args = append(os.Args[:1], os.Args[2:]...)
 	}
+}
+
+// FileExists 判断路径是不是存在的普通文件。
+func FileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
 }
 
 func samePath(a, b string) bool {

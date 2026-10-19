@@ -36,8 +36,8 @@ func SpawnDetached(exe string, args []string, logFile string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	pid := pid
-	_ = release()
+	pid := proc.Pid
+	_ = proc.Release()
 	return pid, nil
 }
 
