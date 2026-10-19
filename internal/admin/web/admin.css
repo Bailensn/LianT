@@ -1,91 +1,89 @@
 /* ==========================================================================
    LianT admin — design tokens
-   Palette: warm-neutral surfaces + iris accent. Motion: strong ease-out,
-   short durations, press feedback on every control. Light + dark.
+
+   一套变量同时服务浅色与深色：表面用冷灰白（去掉了原先的纸黄），
+   主色只保留一个靛蓝，成功/警告/危险各一个语义色，不再混用第二套主题。
    ========================================================================== */
 :root{
-  color-scheme: light;
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui,
-          "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Noto Sans SC", "Microsoft YaHei", sans-serif;
-  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "Noto Sans Mono", monospace;
+  color-scheme:light;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,"PingFang SC","HarmonyOS Sans SC","MiSans","Noto Sans SC",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Noto Sans Mono",monospace;
 
-  --bg: #f6f6f8;
-  --surface-solid: #ffffff;
-  --surface-2: #f1f1f4;
-  --input-bg: #ffffff;
-  --chat-bg: #fbfbfc;
-  --sidebar-bg: rgba(250,250,251,.84);
-  --topbar-bg: rgba(246,246,248,.78);
-  --border: rgba(17,18,24,.08);
-  --border-strong: rgba(17,18,24,.16);
-  --text: #16171c;
-  --text-2: #5c5f69;
-  --text-3: #74777f;
-  --accent: #5b5bd6;
-  --accent-strong: #4646c6;
-  --accent-soft: rgba(91,91,214,.10);
-  --accent-soft-strong: rgba(91,91,214,.18);
-  --on-accent: #ffffff;
-  --ok: #147d4c;
-  --ok-soft: rgba(20,125,76,.10);
-  --warn: #925600;
-  --warn-soft: rgba(146,86,0,.10);
-  --danger: #bd3030;
-  --danger-soft: rgba(189,48,48,.09);
-  --toast-bg: rgba(255,255,255,.97);
-  --code-bg: #f7f7f9;
-  --row-hover: rgba(17,18,24,.025);
-  --sk-base: #ececef;
-  --shadow-sm: 0 1px 2px rgba(16,17,24,.04), 0 1px 1px rgba(16,17,24,.03);
-  --shadow-md: 0 10px 28px -18px rgba(16,17,24,.28), 0 2px 8px rgba(16,17,24,.04);
-  --shadow-lg: 0 24px 60px -24px rgba(16,17,24,.35), 0 4px 16px rgba(16,17,24,.06);
-  --glow-a: rgba(91,91,214,.07);
-  --glow-b: rgba(0,140,255,.045);
+  --bg:#f6f7f9;
+  --surface-solid:#ffffff;
+  --surface-2:#eef0f4;
+  --input-bg:#ffffff;
+  --chat-bg:#fafbfc;
+  --sidebar-bg:rgba(252,253,255,.86);
+  --topbar-bg:rgba(246,247,249,.80);
+  --border:rgba(15,23,42,.08);
+  --border-strong:rgba(15,23,42,.16);
+  --text:#0f172a;
+  --text-2:#4b5563;
+  --text-3:#6b7280;
+  --accent:#4f46e5;
+  --accent-strong:#4338ca;
+  --accent-soft:rgba(79,70,229,.09);
+  --accent-soft-strong:rgba(79,70,229,.16);
+  --on-accent:#ffffff;
+  --ok:#047857;
+  --ok-soft:rgba(4,120,87,.10);
+  --warn:#b45309;
+  --warn-soft:rgba(180,83,9,.10);
+  --danger:#dc2626;
+  --danger-soft:rgba(220,38,38,.08);
+  --toast-bg:rgba(255,255,255,.97);
+  --code-bg:#f7f8fa;
+  --row-hover:rgba(15,23,42,.025);
+  --sk-base:#e9ebef;
+  --shadow-sm:0 1px 2px rgba(15,23,42,.04),0 1px 1px rgba(15,23,42,.03);
+  --shadow-md:0 12px 32px -22px rgba(15,23,42,.26),0 2px 8px rgba(15,23,42,.04);
+  --shadow-lg:0 28px 70px -30px rgba(15,23,42,.32),0 4px 18px rgba(15,23,42,.06);
+  --glow-a:rgba(79,70,229,.05);
+  --glow-b:rgba(56,189,248,.04);
 
-  --ease-out: cubic-bezier(.23,1,.32,1);
-  --ease-in-out: cubic-bezier(.77,0,.175,1);
-  --ease-drawer: cubic-bezier(.32,.72,0,1);
-  --sidebar-w: 248px;
+  --ease-out:cubic-bezier(.23,1,.32,1);
+  --ease-in-out:cubic-bezier(.77,0,.175,1);
+  --ease-drawer:cubic-bezier(.32,.72,0,1);
+  --sidebar-w:264px;
 }
-
-@media (prefers-color-scheme: dark){
+@media (prefers-color-scheme:dark){
   :root{
-    color-scheme: dark;
-    --bg: #0a0a0c;
-    --surface-solid: #141417;
-    --surface-2: #1d1d22;
-    --input-bg: #101013;
-    --chat-bg: #101013;
-    --sidebar-bg: rgba(12,12,14,.84);
-    --topbar-bg: rgba(10,10,12,.74);
-    --border: rgba(255,255,255,.075);
-    --border-strong: rgba(255,255,255,.15);
-    --text: #f2f2f5;
-    --text-2: #a4a6af;
-    --text-3: #8e919b;
-    --accent: #8b8bf7;
-    --accent-strong: #a5a5ff;
-    --accent-soft: rgba(139,139,247,.14);
-    --accent-soft-strong: rgba(139,139,247,.24);
-    --on-accent: #0b0b10;
-    --ok: #3ecf8e;
-    --ok-soft: rgba(62,207,142,.12);
-    --warn: #f5b34a;
-    --warn-soft: rgba(245,179,74,.12);
-    --danger: #ff6b6b;
-    --danger-soft: rgba(255,107,107,.12);
-    --toast-bg: rgba(28,28,33,.97);
-    --code-bg: #0e0e11;
-    --row-hover: rgba(255,255,255,.03);
-    --sk-base: #1b1b20;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,.35);
-    --shadow-md: 0 12px 32px -18px rgba(0,0,0,.7);
-    --shadow-lg: 0 30px 70px -26px rgba(0,0,0,.85), 0 4px 16px rgba(0,0,0,.35);
-    --glow-a: rgba(122,122,255,.10);
-    --glow-b: rgba(0,150,255,.05);
+    color-scheme:dark;
+    --bg:#0b0d12;
+    --surface-solid:#13161d;
+    --surface-2:#1b1f28;
+    --input-bg:#0f1218;
+    --chat-bg:#0f1218;
+    --sidebar-bg:rgba(11,13,18,.86);
+    --topbar-bg:rgba(11,13,18,.78);
+    --border:rgba(226,232,240,.08);
+    --border-strong:rgba(226,232,240,.16);
+    --text:#e8ecf3;
+    --text-2:#9aa4b2;
+    --text-3:#7b8696;
+    --accent:#818cf8;
+    --accent-strong:#a5b4fc;
+    --accent-soft:rgba(129,140,248,.13);
+    --accent-soft-strong:rgba(129,140,248,.22);
+    --on-accent:#0b0d12;
+    --ok:#34d399;
+    --ok-soft:rgba(52,211,153,.12);
+    --warn:#fbbf24;
+    --warn-soft:rgba(251,191,36,.12);
+    --danger:#f87171;
+    --danger-soft:rgba(248,113,113,.12);
+    --toast-bg:rgba(19,22,29,.97);
+    --code-bg:#0d1016;
+    --row-hover:rgba(255,255,255,.035);
+    --sk-base:#1d232d;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.35);
+    --shadow-md:0 16px 44px -24px rgba(0,0,0,.70);
+    --shadow-lg:0 34px 80px -34px rgba(0,0,0,.80);
+    --glow-a:rgba(129,140,248,.06);
+    --glow-b:rgba(56,189,248,.04);
   }
 }
-
 /* ---------------- reset / base ---------------- */
 *,*::before,*::after{ box-sizing:border-box; }
 [hidden]{ display:none !important; }
@@ -169,8 +167,8 @@ button,a,[role="button"],summary,.seg,.switch-label{ user-select:none; -webkit-u
 .brand-mark{
   width:34px; height:34px; border-radius:10px; flex:0 0 auto;
   display:grid; place-items:center; color:#fff;
-  background:linear-gradient(145deg,#7777f2 0%,#5b5bd6 55%,#4646c6 100%);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.35), 0 5px 14px -5px rgba(70,70,198,.6);
+  background:linear-gradient(145deg,var(--accent) 0%,var(--accent-strong) 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.30), 0 5px 14px -6px var(--accent-soft-strong);
 }
 .brand-mark .i{ width:18px; height:18px; stroke-width:2; }
 .brand-text{ min-width:0; }
@@ -821,94 +819,6 @@ details[open] > summary .chev{ transform:rotate(90deg); }
   .view{ max-width:none; }
 }
 
-/* ==========================================================================
-   LianT UI v3 — bots-first workspace
-   Restrained paper/ink palette, one accent, strong ease-out, press feedback.
-   ========================================================================== */
-:root{
-  color-scheme:light;
-  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,"PingFang SC","HarmonyOS Sans SC","MiSans","Noto Sans SC",sans-serif;
-  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Noto Sans Mono",monospace;
-
-  --bg:#f2f1ec;
-  --surface-solid:#fbfaf6;
-  --surface-2:#e9e7df;
-  --input-bg:#fffefa;
-  --chat-bg:#f6f5ef;
-  --sidebar-bg:rgba(249,248,243,.86);
-  --topbar-bg:rgba(242,241,236,.80);
-  --border:rgba(21,24,20,.10);
-  --border-strong:rgba(21,24,20,.18);
-  --text:#151814;
-  --text-2:#595f58;
-  --text-3:#81877e;
-  --accent:#1c5c4a;
-  --accent-strong:#124536;
-  --accent-soft:rgba(28,92,74,.10);
-  --accent-soft-strong:rgba(28,92,74,.18);
-  --on-accent:#ffffff;
-  --ok:#1b6b45;
-  --ok-soft:rgba(27,107,69,.11);
-  --warn:#8a5a00;
-  --warn-soft:rgba(138,90,0,.11);
-  --danger:#b23a2f;
-  --danger-soft:rgba(178,58,47,.09);
-  --toast-bg:rgba(251,250,246,.97);
-  --code-bg:#f1f0e9;
-  --row-hover:rgba(21,24,20,.028);
-  --sk-base:#e6e4dc;
-  --shadow-sm:0 1px 2px rgba(20,22,18,.04),0 1px 1px rgba(20,22,18,.03);
-  --shadow-md:0 12px 32px -22px rgba(20,22,18,.30),0 2px 8px rgba(20,22,18,.04);
-  --shadow-lg:0 28px 70px -30px rgba(20,22,18,.38),0 4px 18px rgba(20,22,18,.06);
-  --glow-a:rgba(28,92,74,.055);
-  --glow-b:rgba(140,160,80,.035);
-  --ease-out:cubic-bezier(.23,1,.32,1);
-  --ease-in-out:cubic-bezier(.77,0,.175,1);
-  --ease-drawer:cubic-bezier(.32,.72,0,1);
-  --sidebar-w:264px;
-}
-@media (prefers-color-scheme:dark){
-  :root{
-    color-scheme:dark;
-    --bg:#0c0f0d;
-    --surface-solid:#141815;
-    --surface-2:#1c211d;
-    --input-bg:#101411;
-    --chat-bg:#101411;
-    --sidebar-bg:rgba(12,15,13,.86);
-    --topbar-bg:rgba(12,15,13,.78);
-    --border:rgba(235,242,234,.09);
-    --border-strong:rgba(235,242,234,.18);
-    --text:#f0f4ed;
-    --text-2:#a7afa4;
-    --text-3:#7d857b;
-    --accent:#6fd6b4;
-    --accent-strong:#8ce7c7;
-    --accent-soft:rgba(111,214,180,.11);
-    --accent-soft-strong:rgba(111,214,180,.19);
-    --on-accent:#062018;
-    --ok:#67d3a1;
-    --ok-soft:rgba(103,211,161,.12);
-    --warn:#e1b45f;
-    --warn-soft:rgba(225,180,95,.12);
-    --danger:#ef8b7c;
-    --danger-soft:rgba(239,139,124,.10);
-    --toast-bg:rgba(20,24,21,.97);
-    --code-bg:#0f1310;
-    --row-hover:rgba(255,255,255,.035);
-    --sk-base:#20251f;
-    --shadow-sm:0 1px 2px rgba(0,0,0,.30);
-    --shadow-md:0 18px 40px -24px rgba(0,0,0,.65);
-    --shadow-lg:0 34px 80px -34px rgba(0,0,0,.75);
-    --glow-a:rgba(111,214,180,.05);
-    --glow-b:rgba(180,220,120,.03);
-  }
-}
-body{
-  background:var(--bg);
-  -webkit-font-smoothing:antialiased;
-  text-rendering:optimizeLegibility;
-}
 body::before{ background:radial-gradient(45% 70% at 84% -10%,var(--glow-a),transparent 70%),radial-gradient(40% 60% at 8% 110%,var(--glow-b),transparent 72%); }
 
 .app.is-home{ display:block; min-height:100dvh; }
