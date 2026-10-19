@@ -833,6 +833,236 @@ details[open] > summary .chev{ transform:rotate(90deg); }
   .app{ display:block; }
   .view{ max-width:none; }
 }
+
+/* ==========================================================================
+   LianT UI v3 — bots-first workspace
+   Restrained paper/ink palette, one accent, strong ease-out, press feedback.
+   ========================================================================== */
+:root{
+  color-scheme:light;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,"PingFang SC","HarmonyOS Sans SC","MiSans","Noto Sans SC",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Noto Sans Mono",monospace;
+
+  --bg:#f2f1ec;
+  --surface-solid:#fbfaf6;
+  --surface-2:#e9e7df;
+  --input-bg:#fffefa;
+  --chat-bg:#f6f5ef;
+  --sidebar-bg:rgba(249,248,243,.86);
+  --topbar-bg:rgba(242,241,236,.80);
+  --border:rgba(21,24,20,.10);
+  --border-strong:rgba(21,24,20,.18);
+  --text:#151814;
+  --text-2:#595f58;
+  --text-3:#81877e;
+  --accent:#1c5c4a;
+  --accent-strong:#124536;
+  --accent-soft:rgba(28,92,74,.10);
+  --accent-soft-strong:rgba(28,92,74,.18);
+  --on-accent:#ffffff;
+  --ok:#1b6b45;
+  --ok-soft:rgba(27,107,69,.11);
+  --warn:#8a5a00;
+  --warn-soft:rgba(138,90,0,.11);
+  --danger:#b23a2f;
+  --danger-soft:rgba(178,58,47,.09);
+  --toast-bg:rgba(251,250,246,.97);
+  --code-bg:#f1f0e9;
+  --row-hover:rgba(21,24,20,.028);
+  --sk-base:#e6e4dc;
+  --shadow-sm:0 1px 2px rgba(20,22,18,.04),0 1px 1px rgba(20,22,18,.03);
+  --shadow-md:0 12px 32px -22px rgba(20,22,18,.30),0 2px 8px rgba(20,22,18,.04);
+  --shadow-lg:0 28px 70px -30px rgba(20,22,18,.38),0 4px 18px rgba(20,22,18,.06);
+  --glow-a:rgba(28,92,74,.055);
+  --glow-b:rgba(140,160,80,.035);
+  --ease-out:cubic-bezier(.23,1,.32,1);
+  --ease-in-out:cubic-bezier(.77,0,.175,1);
+  --ease-drawer:cubic-bezier(.32,.72,0,1);
+  --sidebar-w:264px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    color-scheme:dark;
+    --bg:#0c0f0d;
+    --surface-solid:#141815;
+    --surface-2:#1c211d;
+    --input-bg:#101411;
+    --chat-bg:#101411;
+    --sidebar-bg:rgba(12,15,13,.86);
+    --topbar-bg:rgba(12,15,13,.78);
+    --border:rgba(235,242,234,.09);
+    --border-strong:rgba(235,242,234,.18);
+    --text:#f0f4ed;
+    --text-2:#a7afa4;
+    --text-3:#7d857b;
+    --accent:#6fd6b4;
+    --accent-strong:#8ce7c7;
+    --accent-soft:rgba(111,214,180,.11);
+    --accent-soft-strong:rgba(111,214,180,.19);
+    --on-accent:#062018;
+    --ok:#67d3a1;
+    --ok-soft:rgba(103,211,161,.12);
+    --warn:#e1b45f;
+    --warn-soft:rgba(225,180,95,.12);
+    --danger:#ef8b7c;
+    --danger-soft:rgba(239,139,124,.10);
+    --toast-bg:rgba(20,24,21,.97);
+    --code-bg:#0f1310;
+    --row-hover:rgba(255,255,255,.035);
+    --sk-base:#20251f;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.30);
+    --shadow-md:0 18px 40px -24px rgba(0,0,0,.65);
+    --shadow-lg:0 34px 80px -34px rgba(0,0,0,.75);
+    --glow-a:rgba(111,214,180,.05);
+    --glow-b:rgba(180,220,120,.03);
+  }
+}
+body{
+  background:var(--bg);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+body::before{ background:radial-gradient(45% 70% at 84% -10%,var(--glow-a),transparent 70%),radial-gradient(40% 60% at 8% 110%,var(--glow-b),transparent 72%); }
+
+.app.is-home{ display:block; min-height:100dvh; }
+.app.is-home .sidebar,.app.is-home .topbar,.app.is-home .scrim{ display:none !important; }
+.app.is-home .main{ display:block; }
+.app.is-home .view{ max-width:none; padding:0; min-height:100dvh; }
+.app.is-home .state-wrap{ padding:8vh 16px; }
+
+.launcher{
+  min-height:100dvh;
+  width:100%;
+  max-width:1280px;
+  margin:0 auto;
+  padding:clamp(20px,3.6vw,40px) clamp(18px,4vw,56px) calc(30px + env(safe-area-inset-bottom,0px));
+  display:flex;
+  flex-direction:column;
+  gap:clamp(18px,3vw,30px);
+}
+.launcher-top{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding-top:env(safe-area-inset-top,0px); }
+.launcher-brand{ display:flex; align-items:center; gap:11px; color:var(--text); text-decoration:none; }
+.launcher-brand .brand-mark{ width:38px; height:38px; border-radius:11px; }
+.launcher-brand strong{ display:block; font-size:15px; letter-spacing:-.025em; line-height:1.1; }
+.launcher-brand small{ display:block; margin-top:3px; font-size:10px; color:var(--text-3); letter-spacing:.08em; text-transform:uppercase; }
+.launcher-tools{ display:flex; align-items:center; gap:8px; }
+.launcher-hero{ padding:clamp(26px,6vw,74px) 0 clamp(8px,2vw,18px); max-width:820px; }
+.eyebrow{ margin:0 0 12px; font-size:10px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); }
+.launcher-hero h1{ margin:0; font-size:clamp(38px,6.4vw,74px); line-height:.98; letter-spacing:-.06em; font-weight:680; color:var(--text); }
+.launcher-lede{ margin:20px 0 0; max-width:52ch; color:var(--text-2); font-size:clamp(13px,1.3vw,15px); line-height:1.75; }
+.launcher-stats{ display:flex; gap:clamp(22px,4vw,48px); margin-top:clamp(22px,4vw,38px); }
+.launcher-stats div{ display:flex; flex-direction:column; gap:3px; }
+.launcher-stats strong{ font-size:clamp(22px,2.6vw,30px); line-height:1; letter-spacing:-.04em; font-variant-numeric:tabular-nums; }
+.launcher-stats span{ font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-3); }
+.bot-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; }
+.bot-card{
+  position:relative;
+  display:flex; flex-direction:column; gap:16px;
+  min-height:208px; padding:16px;
+  background:var(--surface-solid);
+  border:1px solid var(--border);
+  border-radius:20px;
+  box-shadow:var(--shadow-sm);
+  cursor:pointer;
+  overflow:hidden;
+  transition:transform 160ms var(--ease-out),border-color 160ms ease,box-shadow 160ms var(--ease-out);
+}
+.bot-card:active{ transform:scale(.992); }
+.bot-card-top{ display:flex; align-items:center; gap:8px; }
+.platform-tag{ display:inline-flex; align-items:center; height:22px; padding:0 8px; border-radius:999px; background:var(--surface-2); font-size:10px; font-weight:650; letter-spacing:.04em; color:var(--text-2); }
+.platform-qq{ background:rgba(54,116,255,.10); color:#2f62c8; }
+.platform-telegram{ background:rgba(34,158,217,.11); color:#1679a8; }
+.bot-card-state{ display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--text-2); }
+.bot-card-state i{ width:6px; height:6px; border-radius:50%; background:var(--text-3); }
+.bot-card-state.ok i{ background:var(--ok); box-shadow:0 0 0 3px var(--ok-soft); }
+.bot-card-state.warn i{ background:var(--warn); box-shadow:0 0 0 3px var(--warn-soft); }
+.bot-card-state.muted i{ background:var(--text-3); }
+.bot-card-menu{ display:flex; gap:2px; margin-left:auto; }
+.bot-card-main{ display:flex; align-items:center; gap:11px; min-width:0; }
+.bot-card-avatar{ width:42px; height:42px; flex:0 0 auto; display:grid; place-items:center; border-radius:12px; background:var(--accent-soft); color:var(--accent-strong); font-size:16px; font-weight:700; letter-spacing:-.03em; }
+.bot-card-name{ min-width:0; }
+.bot-card-name h2{ margin:0; font-size:16px; line-height:1.2; letter-spacing:-.025em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bot-card-name p{ margin:2px 0 0; font-size:11.5px; color:var(--text-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bot-card-id{ margin-left:auto; font-size:10px; color:var(--text-3); }
+.bot-card-meta{ display:flex; flex-wrap:wrap; gap:6px; }
+.bot-card-meta span{ display:inline-flex; height:20px; align-items:center; padding:0 7px; border-radius:6px; background:var(--surface-2); color:var(--text-3); font-size:10px; }
+.bot-card-foot{ margin-top:auto; padding-top:12px; border-top:1px solid var(--border); }
+.bot-card-enter{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px; color:var(--accent-strong); font-size:11.5px; font-weight:650; text-align:left; }
+.bot-card-enter .i{ width:15px; height:15px; transition:transform 160ms var(--ease-out); }
+.bot-add-card{
+  min-height:208px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:8px;
+  padding:18px; text-align:left; color:var(--text-2);
+  background:transparent; border:1px dashed var(--border-strong); border-radius:20px;
+  transition:background-color 160ms ease,border-color 160ms ease,transform 160ms var(--ease-out);
+}
+.bot-add-card:active{ transform:scale(.992); }
+.bot-add-icon{ width:38px; height:38px; display:grid; place-items:center; border-radius:11px; background:var(--surface-2); color:var(--text-2); margin-bottom:4px; }
+.bot-add-card strong{ font-size:14px; color:var(--text); }
+.bot-add-card > span:last-child{ font-size:11.5px; color:var(--text-3); }
+.launcher-empty{ display:flex; flex-direction:column; align-items:flex-start; gap:10px; padding:clamp(32px,7vw,70px) 0; }
+.launcher-empty .empty-icon{ width:54px; height:54px; display:grid; place-items:center; border-radius:16px; background:var(--accent-soft); color:var(--accent-strong); }
+.launcher-empty h2{ margin:4px 0 0; font-size:22px; letter-spacing:-.03em; }
+.launcher-empty p{ margin:0 0 8px; max-width:48ch; color:var(--text-2); font-size:13px; line-height:1.7; }
+.launcher-foot{ margin-top:auto; display:flex; flex-wrap:wrap; gap:8px 20px; padding-top:18px; border-top:1px solid var(--border); font-size:10.5px; color:var(--text-3); }
+.launcher-foot span:last-child{ margin-left:auto; }
+
+/* workspace shell refinements */
+.brand{ padding:6px 8px 10px; }
+.brand-mark{ background:var(--accent); color:var(--on-accent); box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 6px 16px -8px rgba(20,60,45,.5); }
+.brand-name{ font-size:14px; font-weight:680; }
+.brand-sub{ font-size:10px; letter-spacing:.08em; text-transform:uppercase; }
+.nav-back{ display:flex; align-items:center; gap:8px; min-height:32px; padding:0 8px; border-radius:8px; color:var(--text-2); font-size:11.5px; font-weight:550; text-decoration:none; transition:background-color 120ms ease,color 120ms ease; }
+.nav-back .i{ width:14px; height:14px; }
+.bot-context{ display:flex; align-items:center; gap:9px; padding:9px; border:1px solid var(--border); border-radius:12px; background:var(--surface-solid); }
+.bot-context[hidden]{ display:none !important; }
+.bot-context-avatar{ width:30px; height:30px; flex:0 0 auto; display:grid; place-items:center; border-radius:9px; background:var(--accent-soft); color:var(--accent-strong); font-size:12px; font-weight:700; }
+.bot-context-text{ min-width:0; }
+.bot-context-text strong{ display:block; font-size:11.5px; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bot-context-text small{ display:block; margin-top:2px; font-size:9.5px; color:var(--text-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bot-context-dot{ width:6px; height:6px; margin-left:auto; border-radius:50%; background:var(--text-3); flex:0 0 auto; }
+.bot-context-dot.ok{ background:var(--ok); }
+.bot-context-dot.warn{ background:var(--warn); }
+.nav-link{ min-height:34px; border-radius:9px; font-size:13px; }
+.nav-link[aria-current="page"]{ background:var(--accent-soft); color:var(--accent-strong); }
+.nav-link[aria-current="page"]::before{ display:none; }
+.crumb{ font-size:12px; }
+.crumb-root{ color:var(--text-3); text-decoration:none; }
+.crumb-root:hover{ color:var(--text); }
+.crumb-bot{ max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); font-weight:600; }
+.topbar{ min-height:58px; border-bottom:1px solid var(--border); }
+.view{ padding-top:clamp(18px,2.4vw,28px); }
+.card{ border-radius:18px; }
+.btn{ border-radius:10px; }
+.btn:active{ transform:scale(.97); }
+.input,.select,.textarea{ border-radius:10px; }
+.badge{ border-radius:6px; }
+
+@media (hover:hover) and (pointer:fine){
+  .bot-card:hover{ transform:translateY(-2px); border-color:var(--border-strong); box-shadow:var(--shadow-md); }
+  .bot-card:hover .bot-card-foot .i{ transform:translateX(2px); }
+  .bot-add-card:hover{ background:var(--surface-2); border-color:var(--accent); }
+  .nav-back:hover{ background:var(--surface-2); color:var(--text); }
+  .nav-link:hover{ background:var(--surface-2); color:var(--text); }
+  .nav-link[aria-current="page"]:hover{ background:var(--accent-soft); color:var(--accent-strong); }
+}
+@media (max-width:760px){
+  .launcher{ gap:14px; padding-left:16px; padding-right:16px; }
+  .launcher-hero{ padding-top:22px; }
+  .launcher-hero h1{ font-size:clamp(36px,10vw,52px); }
+  .launcher-lede{ margin-top:16px; }
+  .bot-grid{ grid-template-columns:1fr; }
+  .bot-card,.bot-add-card{ min-height:0; border-radius:17px; }
+  .bot-add-card{ min-height:96px; }
+  .launcher-stats{ gap:26px; }
+  .launcher-foot span:last-child{ margin-left:0; width:100%; }
+  .bot-card-menu .icon-btn{ opacity:1; }
+  .crumb-bot{ max-width:100px; }
+  .bot-context{ display:none; }
+}
+@media (prefers-reduced-motion: reduce){
+  .bot-card,.bot-add-card,.bot-card-foot .i,.nav-back,.nav-link{ transition:none !important; }
+  .bot-card:hover,.bot-card:active,.bot-add-card:active{ transform:none !important; }
+}
 </style>
 </head>
 <body>
@@ -868,6 +1098,7 @@ details[open] > summary .chev{ transform:rotate(90deg); }
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></symbol>
   <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
   <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+  <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
   <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
 </svg>
 
@@ -875,13 +1106,21 @@ details[open] > summary .chev{ transform:rotate(90deg); }
   <div class="scrim" id="scrim" aria-hidden="true"></div>
 
   <aside class="sidebar" id="sidebar" aria-label="侧边导航">
-    <a class="brand" href="#overview" aria-label="LianT 总览">
+    <a class="brand" href="#bots" aria-label="LianT 所有 Bot">
       <span class="brand-mark"><svg class="i" aria-hidden="true"><use href="#i-bot"></use></svg></span>
       <span class="brand-text">
         <span class="brand-name">LianT</span>
-        <span class="brand-sub">多 Bot 控制台</span>
+        <span class="brand-sub">Bot 工作台</span>
       </span>
     </a>
+    <a class="nav-back" href="#bots" data-tab="bots">
+      <svg class="i" aria-hidden="true"><use href="#i-arrow-left"></use></svg><span>所有 Bot</span>
+    </a>
+    <div class="bot-context" id="bot-context" hidden>
+      <span class="bot-context-avatar" id="bot-context-avatar">L</span>
+      <span class="bot-context-text"><strong id="bot-context-name">—</strong><small id="bot-context-meta">—</small></span>
+      <span class="bot-context-dot" id="bot-context-dot" aria-hidden="true"></span>
+    </div>
     <nav class="nav" id="nav" aria-label="主导航"></nav>
     <div class="sidebar-foot">
       <div class="conn" id="conn" data-state="idle" role="status" aria-live="polite">
@@ -900,7 +1139,9 @@ details[open] > summary .chev{ transform:rotate(90deg); }
         <svg class="i" aria-hidden="true"><use href="#i-menu"></use></svg>
       </button>
       <div class="crumb">
-        <span class="crumb-root">LianT</span>
+        <a class="crumb-root" href="#bots">所有 Bot</a>
+        <span class="crumb-sep" aria-hidden="true">/</span>
+        <span id="crumb-bot" class="crumb-bot">—</span>
         <span class="crumb-sep" aria-hidden="true">/</span>
         <span id="crumb-tab">总览</span>
       </div>
@@ -996,7 +1237,7 @@ details[open] > summary .chev{ transform:rotate(90deg); }
     { id: "admins", label: "管理员", icon: "key", desc: "决定谁能在群里使用中文指令。" },
     { id: "mutes", label: "禁言", icon: "clock", desc: "本地禁言记录与平台侧状态，最长 30 天。" },
     { id: "blacklist", label: "黑名单", icon: "ban", desc: "本地立即生效；平台侧同步需要相应权限。" },
-    { id: "bots", label: "机器人", icon: "bot", desc: "多 Bot 注册、Telegram/QQ、token 与启停。" },
+    { id: "bots", label: "所有 Bot", icon: "bot", desc: "选择要进入的 Bot，或添加一个新的。" },
     { id: "audit", label: "操作日志", icon: "list", desc: "谁、在哪个群、对谁做了什么。" },
     { id: "qq", label: "手动操作", icon: "terminal", desc: "直接调用平台接口，所有操作写入日志。" },
     { id: "settings", label: "设置", icon: "settings", desc: "回复策略、入群审批与配置导出。" }
@@ -1006,7 +1247,7 @@ details[open] > summary .chev{ transform:rotate(90deg); }
     ["控制台", ["overview"]],
     ["运营", ["chat", "rules", "words", "joins"]],
     ["社群", ["groups", "admins", "mutes", "blacklist"]],
-    ["系统", ["bots", "audit", "qq", "settings"]]
+    ["系统", ["audit", "qq", "settings"]]
   ];
   const MATCHES = [
     ["exact", "精确匹配"],
@@ -1386,7 +1627,7 @@ details[open] > summary .chev{ transform:rotate(90deg); }
         </label>
         <button class="btn primary" type="submit">连接</button>
       </form>
-      <p class="state-hint">token 会保存在这台设备的浏览器里；也可以在地址后加 <code>?token=...</code> 打开一次。</p>
+      <p class="state-hint">token 会写进 HttpOnly cookie，不保存在 localStorage；也可以在地址后加 <code>?token=...</code> 打开一次。</p>
     </div></div>`;
   }
 
@@ -1427,20 +1668,41 @@ details[open] > summary .chev{ transform:rotate(90deg); }
 
   function tabFromHash() {
     const id = String(location.hash || "").replace(/^#/, "");
-    return TAB_MAP[id] ? id : "overview";
+    return TAB_MAP[id] ? id : "bots";
+  }
+
+  async function enterBot(id) {
+    const bot = botByID(id);
+    if (bot && !bot.running) toast("这个 Bot 未运行；可在工作台里重启或编辑配置", { type: "info", duration: 5000 });
+    state.botID = String(id || "");
+    if (state.botID) store.set("liant_bot", state.botID);
+    state.tab = "overview";
+    updateBotSelect();
+    if (location.hash === "#overview") await loadCurrent();
+    else location.hash = "#overview";
   }
 
   /* ======================================================================
      加载主流程
      ====================================================================== */
   async function loadCurrent(opts = {}) {
-    const tab = state.tab;
+    let tab = state.tab;
+    if (tab !== "bots" && !state.botID) {
+      tab = "bots";
+      state.tab = tab;
+      if (location.hash !== "#bots") history.replaceState(null, "", "#bots");
+    }
     const meta = TAB_MAP[tab] || TAB_MAP.overview;
     const my = ++state.seq;
     stopChatPoll();
+    const home = tab === "bots";
+    document.getElementById("app").classList.toggle("is-home", home);
+    document.getElementById("bot-context").hidden = home;
+    document.getElementById("crumb-bot").textContent = home ? "选择 Bot" : (botByID(state.botID) || {}).name || "Bot";
     document.getElementById("crumb-tab").textContent = meta.label;
-    document.title = meta.label + " · LianT";
+    document.title = (home ? "选择 Bot" : meta.label) + " · LianT";
     syncNav();
+    if (!home) renderBotContext();
     const changed = view.dataset.tab !== tab;
     if (changed && !opts.quiet) {
       view.innerHTML = skeleton(meta);
@@ -1821,6 +2083,21 @@ details[open] > summary .chev{ transform:rotate(90deg); }
     }).join("");
     sel.value = String(state.botID || "");
   }
+  function renderBotContext() {
+    const bot = botByID(state.botID);
+    const box = document.getElementById("bot-context");
+    if (!box || !bot) return;
+    const name = bot.name || ("Bot #" + bot.id);
+    const avatar = document.getElementById("bot-context-avatar");
+    const title = document.getElementById("bot-context-name");
+    const meta = document.getElementById("bot-context-meta");
+    const dot = document.getElementById("bot-context-dot");
+    if (avatar) avatar.textContent = String(name).trim().slice(0, 1).toUpperCase() || "B";
+    if (title) title.textContent = name;
+    if (meta) meta.textContent = [bot.platform_name || bot.platform, bot.username ? "@" + bot.username : "", botStateText(bot)].filter(Boolean).join(" · ");
+    if (dot) dot.className = "bot-context-dot " + botStateTone(bot);
+  }
+
   async function loadBots(preferID = "") {
     const bots = await api("bots");
     state.bots = Array.isArray(bots) ? bots : [];
@@ -1886,45 +2163,90 @@ details[open] > summary .chev{ transform:rotate(90deg); }
   }
   async function renderBots() {
     await loadBots();
-    const rows = state.bots.map(b => {
+    const total = state.bots.length;
+    const running = state.bots.filter(b => b.running).length;
+    const platforms = [...new Set(state.bots.map(b => b.platform_name || b.platform || "telegram"))];
+    const cards = state.bots.map(b => {
       const caps = b.capabilities || {};
+      const name = b.name || ("Bot #" + b.id);
       const who = b.username ? "@" + b.username : (b.platform_id || "—");
-      return `<tr>
-        <td><strong>${esc(b.name || ("Bot #" + b.id))}</strong><div class="mono muted">#${esc(b.id)}</div></td>
-        <td><span class="badge">${esc(b.platform_name || b.platform || "telegram")}</span></td>
-        <td><span class="mono">${esc(who)}</span></td>
-        <td><span class="badge ${botTone(b)}">${esc(botStateText(b))}</span></td>
-        <td class="hide-sm">${esc(b.mode || "polling")}</td>
-        <td class="hide-sm"><div class="chip-row">${caps.topics ? '<span class="badge">话题</span>' : ""}${caps.inline ? '<span class="badge">内联</span>' : ""}${caps.webhook ? '<span class="badge">webhook</span>' : ""}</div></td>
-        <td class="actions"><div class="row-actions">
-          <button class="btn sm" type="button" data-act="use-bot" data-id="${esc(b.id)}">${String(b.id) === String(state.botID) ? "当前" : "切换"}</button>
-          <button class="icon-btn sm" type="button" data-act="restart-bot" data-id="${esc(b.id)}" title="重启" ${b.enabled ? "" : "disabled"}>${icon("refresh")}</button>
-          <button class="icon-btn sm" type="button" data-act="edit-bot" data-id="${esc(b.id)}" title="编辑">${icon("edit")}</button>
-          <button class="icon-btn sm danger" type="button" data-act="delete-bot" data-id="${esc(b.id)}" title="删除">${icon("trash")}</button>
-        </div></td>
-      </tr>`;
+      const platform = (b.platform || "telegram").toLowerCase();
+      const stateText = botStateText(b);
+      const tone = botStateTone(b);
+      const capChips = [
+        caps.text ? "文本" : "", caps.media ? "媒体" : "",
+        caps.buttons ? "按钮" : "", caps.inline ? "内联" : "",
+        caps.topics ? "话题" : "", caps.join_approval ? "入群" : "",
+        caps.webhook ? "Webhook" : ""
+      ].filter(Boolean).slice(0, 4);
+      return `<article class="bot-card ${b.running ? "is-running" : ""}" data-act="enter-bot" data-id="${esc(b.id)}" aria-label="进入 ${esc(name)}">
+        <div class="bot-card-top">
+          <span class="platform-tag platform-${esc(platform)}">${esc(b.platform_name || platform)}</span>
+          <span class="bot-card-state ${tone}"><i></i>${esc(stateText)}</span>
+          <div class="bot-card-menu">
+            <button class="icon-btn sm" type="button" data-act="edit-bot" data-id="${esc(b.id)}" aria-label="编辑 ${esc(name)}" title="编辑">${icon("edit")}</button>
+            <button class="icon-btn sm" type="button" data-act="restart-bot" data-id="${esc(b.id)}" aria-label="重启 ${esc(name)}" title="重启" ${b.enabled ? "" : "disabled"}>${icon("refresh")}</button>
+            <button class="icon-btn sm danger" type="button" data-act="delete-bot" data-id="${esc(b.id)}" aria-label="删除 ${esc(name)}" title="删除">${icon("trash")}</button>
+          </div>
+        </div>
+        <div class="bot-card-main">
+          <span class="bot-card-avatar">${esc(String(name).trim().slice(0, 1).toUpperCase() || "B")}</span>
+          <div class="bot-card-name"><h2>${esc(name)}</h2><p>${esc(who)}</p></div>
+          <span class="bot-card-id mono">#${esc(b.id)}</span>
+        </div>
+        <div class="bot-card-meta">
+          <span class="bot-card-mode">${esc(b.mode === "webhook" ? "Webhook" : b.mode === "websocket" ? "WebSocket" : "长轮询")}</span>
+          ${capChips.map(c => `<span>${esc(c)}</span>`).join("")}
+        </div>
+        <div class="bot-card-foot">
+          <button class="bot-card-enter" type="button" data-act="enter-bot" data-id="${esc(b.id)}">进入工作台${icon("arrow-right")}</button>
+        </div>
+      </article>`;
     }).join("");
-    const table = state.bots.length
-      ? dataTable([
-          { label: "Bot" }, { label: "平台" }, { label: "账号" }, { label: "状态" },
-          { label: "模式", cls: "hide-sm" }, { label: "能力", cls: "hide-sm" }, { label: "", cls: "actions" }
-        ], rows)
-      : emptyState({
-          icon: "bot", title: "还没有 Bot",
-          text: "添加一个 Telegram Bot token；token 只存在本机 SQLite，可随时停用或删除。",
-          action: `<button class="btn primary" type="button" data-act="new-bot">${icon("plus")}添加 Bot</button>`
-        });
-    return `${pageHead(TAB_MAP.bots, `<button class="btn primary" type="button" data-act="new-bot">${icon("plus")}添加 Bot</button>`)}
-      <section class="card">
-        <div class="card-head"><div><h2>SQLite 注册表</h2><p>每个 Bot 独立业务库；右上角切换当前 Bot。</p></div></div>
-        ${table}
+    const addCard = `<button class="bot-add-card" type="button" data-act="new-bot">
+      <span class="bot-add-icon">${icon("plus")}</span>
+      <strong>添加 Bot</strong>
+      <span>Telegram 或 QQ，凭据加密存储</span>
+    </button>`;
+    const empty = `<div class="launcher-empty">
+      <div class="empty-icon">${icon("bot")}</div>
+      <h2>还没有 Bot</h2>
+      <p>先添加一个 Telegram token 或 QQ AppID:AppSecret，之后所有规则、群和操作都会收进它的工作台。</p>
+      <button class="btn primary" type="button" data-act="new-bot">${icon("plus")}添加第一个 Bot</button>
+    </div>`;
+    return `<div class="launcher">
+      <header class="launcher-top">
+        <a class="launcher-brand" href="#bots" aria-label="LianT 首页">
+          <span class="brand-mark">${icon("bot")}</span>
+          <span><strong>LianT</strong><small>Bot 控制台</small></span>
+        </a>
+        <div class="launcher-tools">
+          <button class="btn ghost" type="button" data-act="open-token">${icon("key")}连接设置</button>
+          <button class="btn primary" type="button" data-act="new-bot">${icon("plus")}添加 Bot</button>
+        </div>
+      </header>
+
+      <section class="launcher-hero">
+        <p class="eyebrow">Bot workspace</p>
+        <h1>选择一个 Bot，<br>开始管理。</h1>
+        <p class="launcher-lede">每个 Bot 有独立数据库、规则和成员。进入工作台后，再处理群、消息、违禁词和审计。</p>
+        <div class="launcher-stats">
+          <div><strong>${total}</strong><span>Bot</span></div>
+          <div><strong>${running}</strong><span>运行中</span></div>
+          <div><strong>${platforms.length}</strong><span>平台</span></div>
+        </div>
       </section>
-      <section class="card card-pad">
-        <div class="head-row"><div><h2>平台兼容层</h2><p>后台只依赖统一能力声明；Telegram / QQ 共用同一页面。</p></div></div>
-        <div class="chip-row">${state.platforms.map(p => `<span class="badge">${esc(p.name)} · ${esc(p.id)}</span>`).join("") || '<span class="muted">没有平台适配器</span>'}</div>
-        <p class="field-hint" style="margin-top:10px">当前已实现：Telegram、QQ。新增平台实现 platform.Adapter 即可，不需要改页面。</p>
-      </section>`;
+
+      ${total ? `<section class="bot-grid">${cards}${addCard}</section>` : empty}
+
+      <footer class="launcher-foot">
+        <span>${state.platforms.map(p => p.name).join(" · ") || "Telegram"}</span>
+        <span>凭据存入 SQLite · AES-256-GCM 加密</span>
+        <span>${total ? running + " / " + total + " 运行中" : "等待第一个 Bot"}</span>
+      </footer>
+    </div>`;
   }
+
 
   /* ======================================================================
      视图：总览
@@ -3558,6 +3880,8 @@ details[open] > summary .chev{ transform:rotate(90deg); }
      ====================================================================== */
   const ACTIONS = {
     refresh: () => loadCurrent(),
+    "enter-bot": el => enterBot(el.dataset.id),
+    "back-bots": () => { location.hash = "#bots"; },
     "new-bot": () => openBotForm(null),
     "edit-bot": el => {
       const bot = botByID(el.dataset.id);
@@ -3848,6 +4172,12 @@ details[open] > summary .chev{ transform:rotate(90deg); }
     });
 
     view.addEventListener("keydown", event => {
+      const enter = event.target.closest('[data-act="enter-bot"][role="link"]');
+      if (enter && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        enterBot(enter.dataset.id);
+        return;
+      }
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
         const form = event.target.closest('form[data-form="chat-send"]');
         if (form) {
@@ -3872,7 +4202,7 @@ details[open] > summary .chev{ transform:rotate(90deg); }
     } catch (err) {
       if (err && err.status !== 401) toast.error(err.message || String(err));
     }
-    if (!state.botID) {
+    if (state.tab !== "bots" && !state.botID) {
       state.tab = "bots";
       if (location.hash !== "#bots") history.replaceState(null, "", "#bots");
       syncNav();
