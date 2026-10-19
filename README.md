@@ -68,7 +68,7 @@ Bot token 存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个
 ```sh
 cp config/.env.example .env
 # .env 只放路径/端口/代理/管理端 token，不再放 Bot token。
-# Bot token 存在 SQLite：用 `./LianT bot add <token>` 或网页「机器人」添加。
+# Bot token 存在 SQLite：用 `./LianT bot add`（按提示输入 token）或网页「机器人」添加。
 ```
 
 ### 3. 编译
@@ -85,7 +85,7 @@ go build -trimpath -ldflags "-s -w" -o LianT .          # 根入口
 
 ```sh
 ./LianT init                 # 生成 .env 模板 + 初始化注册表（可选）
-./LianT bot add <token>      # 添加第一个 Bot（也可启动后在网页「机器人」添加）
+./LianT bot add             # 交互输入 token，添加第一个 Bot（也可网页「机器人」添加）
 ./LianT start                # 后台启动任务进程（会启动所有 enabled 的 Bot）
 ./LianT status               # 看 Bot 数量与运行状态
 ./LianT admin                # 打印网页后台地址与 token
@@ -270,7 +270,7 @@ type Adapter interface {
 | `LianT logs [行数] [-f]` | 看日志 |
 | `LianT admin` | 网页后台地址 + token |
 | `LianT bot list` | 列出 SQLite 里的 Bot |
-| `LianT bot add <token> [名称]` | 校验并添加 Bot（写入 SQLite） |
+| `LianT bot add [名称]` | 交互输入 token，校验并添加 Bot（加密写入 SQLite） |
 | `LianT bot remove <id>` | 删除 Bot 注册（业务库保留） |
 | `LianT bot enable/disable <id>` | 启用/停用 Bot |
 | `LianT db` | 注册表统计 |
@@ -279,6 +279,16 @@ type Adapter interface {
 | `LianT reconnect` | 尽快重连 Telegram |
 | `LianT path` | 打印所有路径 |
 | `LianT run` | 前台运行（调试，日志打屏） |
+
+## 敏感数据与加密
+
+- `bots.token`、`bots.webhook_secret`、`settings.admin_token` 使用 **AES-256-GCM** 加密后写入 SQLite。
+- 默认密钥文件：`<数据目录>/secret.key`，首次启动生成，权限 `0600`；也可以设置 `LIANT_SECRET` 固定密钥。
+- **备份或迁移时必须同时带走 `secret.key`**（或记住 `LIANT_SECRET`），只拷数据库无法解密 token。
+- 数据库文件本身会 `chmod 0600`；密钥文件同样 `0600`。
+- CLI 推荐直接 `LianT bot add` 交互输入 token（关闭终端回显），不要把 token 写在命令行；`--token` 仅为脚本兼容，会提示 history 风险。
+- Web 后台 token 输入框是 password 类型；登录后只写 **HttpOnly + SameSite=Lax** cookie，不再把管理 token 存进 localStorage。
+- 远程访问请用 HTTPS：可以设 `LIANT_ADMIN_TLS_CERT` / `LIANT_ADMIN_TLS_KEY` 让管理端自己上 TLS，也可以用 Caddy/Nginx 反代。
 
 ## 数据库
 

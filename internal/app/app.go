@@ -25,6 +25,7 @@ import (
 	"LianT/internal/platform"
 	"LianT/internal/process"
 	"LianT/internal/rules"
+	"LianT/internal/secret"
 	"LianT/internal/store"
 	"bufio"
 	"fmt"
@@ -321,7 +322,7 @@ func cmdDB() int {
 // openFirstBotStore 打开第一个启用 Bot 的业务库（CLI 单 Bot 视图）。
 func openFirstBotStore() (*store.Store, store.BotRec, error) {
 	store.Quiet = true
-	reg, err := store.Open(config.DBPath)
+	reg, err := store.Open(registryDBPath())
 	if err != nil {
 		return nil, store.BotRec{}, fmt.Errorf("打开注册表失败: %w", err)
 	}
@@ -341,7 +342,7 @@ func openFirstBotStore() (*store.Store, store.BotRec, error) {
 		rec = recs[0]
 	}
 	if rec.ID == 0 {
-		return nil, rec, fmt.Errorf("还没有 Bot：先运行 LianT bot add <token> 或打开网页后台「机器人」")
+		return nil, rec, fmt.Errorf("还没有 Bot：先运行 LianT bot add（按提示输入 token）或打开网页后台「机器人」")
 	}
 	st, err := store.Open(manager.BotDBPath(rec.ID))
 	if err != nil {
@@ -350,18 +351,93 @@ func openFirstBotStore() (*store.Store, store.BotRec, error) {
 	return st, rec, nil
 }
 
+func secretKeyLabel(dbPath string) string {
+	if strings.TrimSpace(config.EnvOr("LIANT_SECRET", "")) != "" {
+		return "LIANT_SECRET"
+	}
+	return secret.KeyPathForDB(dbPath)
+}
+
+// registryDBPath 优先用任务进程当前打开的注册表，避免 CLI 和 daemon
+// 因工作目录不同而操作两个 LianT.db。
+func registryDBPath() string {
+	if ok, _, data := ipc.DaemonStatus(); ok && data != nil {
+		if v := strings.TrimSpace(data["registry_db"]); v != "" {
+			return v
+		}
+	}
+	return config.DBPath
+}
+
+// botAddInput 解析 bot add 参数。推荐交互输入 token，避免 shell history/ps 泄漏。
+func botAddInput(args []string) (token, name string, err error) {
+	var nameParts []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--token-stdin":
+			line, rerr := bufio.NewReader(os.Stdin).ReadString('\n')
+			if rerr != nil && strings.TrimSpace(line) == "" {
+				return "", "", fmt.Errorf("从 stdin 读取 token 失败: %w", rerr)
+			}
+			token = strings.TrimSpace(line)
+		case strings.HasPrefix(a, "--token="):
+			token = strings.TrimSpace(strings.TrimPrefix(a, "--token="))
+			fmt.Fprintln(os.Stderr, "[!] --token 会留在 shell history；建议直接 LianT bot add 交互输入")
+		case a == "--token":
+			if i+1 >= len(args) {
+				return "", "", fmt.Errorf("--token 后面缺少值")
+			}
+			i++
+			token = strings.TrimSpace(args[i])
+			fmt.Fprintln(os.Stderr, "[!] --token 会留在 shell history；建议直接 LianT bot add 交互输入")
+		case strings.HasPrefix(a, "--name="):
+			name = strings.TrimSpace(strings.TrimPrefix(a, "--name="))
+		default:
+			// 兼容旧用法：LianT bot add <token> [名称]
+			if token == "" && looksLikeBotToken(a) && len(nameParts) == 0 {
+				token = strings.TrimSpace(a)
+				fmt.Fprintln(os.Stderr, "[!] 不推荐把 token 放在命令行（会留在 shell history）；下次直接 LianT bot add")
+				continue
+			}
+			nameParts = append(nameParts, a)
+		}
+	}
+	if name == "" {
+		name = strings.Join(nameParts, " ")
+	}
+	if token == "" {
+		token, err = readSecretLine("Token: ")
+		if err != nil && token == "" {
+			return "", "", fmt.Errorf("读取 token 失败: %w", err)
+		}
+	}
+	if token == "" {
+		return "", "", fmt.Errorf("token 不能为空")
+	}
+	return token, name, nil
+}
+
+func looksLikeBotToken(s string) bool {
+	s = strings.TrimSpace(s)
+	return len(s) >= 30 && strings.Contains(s, ":") && !strings.ContainsAny(s, " \t")
+}
+
 // cmdBot 管理 SQLite 里的多 Bot 注册表。
 func cmdBot(args []string) int {
 	store.Quiet = true
-	reg, err := store.Open(config.DBPath)
+	dbPath := registryDBPath()
+	reg, err := store.Open(dbPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[X] 打开数据库失败 %s: %v\n", config.DBPath, err)
+		fmt.Fprintf(os.Stderr, "[X] 打开数据库失败 %s: %v\n", dbPath, err)
 		return 1
 	}
 	defer reg.Close()
 
 	if len(args) == 0 {
-		fmt.Println("用法: LianT bot list | add <token> [名称] | remove <id> | enable <id> | disable <id>")
+		fmt.Println("用法: LianT bot list | add [名称] | add --token-stdin [名称] | remove <id> | enable <id> | disable <id>")
+		fmt.Printf("注册表: %s\n", dbPath)
+		fmt.Printf("加密  : AES-256-GCM（%s）\n", secretKeyLabel(dbPath))
 		return 0
 	}
 	sub := strings.ToLower(strings.TrimSpace(args[0]))
@@ -373,9 +449,11 @@ func cmdBot(args []string) int {
 			return 1
 		}
 		if len(recs) == 0 {
-			fmt.Println("还没有 Bot。用 `LianT bot add <token>` 或网页后台「机器人」添加。")
+			fmt.Println("还没有 Bot。用 `LianT bot add`（按提示输入 token）或网页后台「机器人」添加。")
 			return 0
 		}
+		fmt.Printf("注册表: %s\n", dbPath)
+		fmt.Printf("加密  : AES-256-GCM（%s）\n", secretKeyLabel(dbPath))
 		fmt.Printf("%-4s %-20s %-10s %-24s %-8s\n", "ID", "名称", "平台", "账号", "状态")
 		for _, b := range recs {
 			status := "停用"
@@ -387,24 +465,31 @@ func cmdBot(args []string) int {
 		return 0
 
 	case "add":
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "用法: LianT bot add <token> [名称]")
+		token, name, err := botAddInput(args[1:])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[X] %v\n", err)
 			return 2
 		}
-		token := strings.TrimSpace(args[1])
 		ad := platform.Get("telegram")
 		if ad == nil {
 			fmt.Fprintln(os.Stderr, "[X] Telegram 适配器未注册")
 			return 1
 		}
-		ident, err := ad.ValidateToken(token)
+		existing, err := reg.Bots()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[X] %v\n", err)
+			fmt.Fprintf(os.Stderr, "[X] 读取现有 Bot 失败: %v\n", err)
 			return 1
 		}
-		name := ""
-		if len(args) > 2 {
-			name = strings.Join(args[2:], " ")
+		for _, b := range existing {
+			if b.Token == token {
+				fmt.Fprintf(os.Stderr, "[X] 这个 token 已经添加过（Bot #%d %s）\n", b.ID, b.Name)
+				return 1
+			}
+		}
+		ident, err := ad.ValidateToken(token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[X] Telegram token 校验失败（检查 token、网络或代理）: %v\n", err)
+			return 1
 		}
 		if name == "" {
 			name = "@" + ident.Username
@@ -423,6 +508,8 @@ func cmdBot(args []string) int {
 			return 1
 		}
 		fmt.Printf("[OK] 已添加 Bot #%d @%s（%s）\n", id, ident.Username, name)
+		fmt.Printf("     注册表: %s\n", dbPath)
+		fmt.Println("     token 已用 AES-256-GCM 加密存进 SQLite；备份数据目录时别忘了 secret.key")
 		notifyBotReload()
 		return 0
 
@@ -482,7 +569,11 @@ func notifyBotReload() {
 		return
 	}
 	if resp.Msg != "" {
-		fmt.Println(resp.Msg)
+		if resp.OK {
+			fmt.Println(resp.Msg)
+		} else {
+			fmt.Fprintln(os.Stderr, "[!] "+resp.Msg)
+		}
 	}
 }
 
@@ -612,7 +703,7 @@ func cmdInit() int {
 	bots, _ := st.Bots()
 	fmt.Printf("配置模板: %s%s\n", config.EnvPath, mark(madeEnv))
 	fmt.Printf("注册表  : %s（Bot %d 个）\n", config.DBPath, len(bots))
-	fmt.Println("Bot token 不在 .env：用 `LianT bot add <token>` 或网页后台「机器人」添加。")
+	fmt.Println("Bot token 不在 .env：用 `LianT bot add`（按提示输入 token）或网页后台「机器人」添加。")
 	fmt.Println("每个 Bot 会自动创建独立业务库（LianT-data/bots/<id>.db），规则/违禁词互不影响。")
 	fmt.Println("路径/端口仍可用 .env 或 LIANT_* 环境变量覆盖；改完重启生效。")
 	return 0
@@ -814,7 +905,7 @@ func printUsage() {
   LianT init               生成 .env 模板（Bot token 在 SQLite / 网页后台）
   LianT path               打印数据目录/日志/配置文件等路径
   LianT bot list           列出 SQLite 里的 Bot
-  LianT bot add <token>    添加 Bot（也可用网页后台）
+  LianT bot add [名称]     交互输入 token（也可用网页后台）
   LianT bot remove <id>    删除 Bot 注册
   LianT bot enable/disable <id>
   LianT help               本帮助

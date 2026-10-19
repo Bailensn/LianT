@@ -1049,7 +1049,7 @@ details[open] > summary .chev{ transform:rotate(90deg); }
 
   const state = {
     tab: "overview",
-    token: store.get(TOKEN_KEY, ""),
+    token: "",
     bots: [],
     platforms: [],
     botID: store.get("liant_bot", ""),
@@ -1844,7 +1844,7 @@ details[open] > summary .chev{ transform:rotate(90deg); }
     return `
       ${fieldHTML("平台", selectHTML("platform", platforms.map(p => [p.id, p.name]), b.platform || "telegram"))}
       ${fieldHTML("名称", inputHTML("name", { value: b.name || "", placeholder: "主 Bot", maxlength: 60 }))}
-      ${fieldHTML("Token", inputHTML("token", { type: "password", value: "", placeholder: isEdit ? "留空 = 不修改" : "123456789:AA…", autocomplete: false }), isEdit ? "留空保留原 token" : "必填", "span-2")}
+      ${fieldHTML("Token", inputHTML("token", { type: "password", value: "", placeholder: isEdit ? "留空 = 不修改" : "123456789:AA…", autocomplete: false }), isEdit ? "留空保留原 token；新 token 会用 AES-256-GCM 加密存储" : "必填；AES-256-GCM 加密存储，不显示明文", "span-2")}
       ${fieldHTML("收消息方式", selectHTML("mode", [["polling", "长轮询"], ["webhook", "Webhook"]], b.mode || "polling"))}
       ${switchHTML("enabled", "启用并启动", "保存后立即启动该 Bot", isEdit ? Boolean(b.enabled) : true)}
       <p class="field-hint span-2" style="margin:0">多个 webhook Bot 请使用不同的本地监听端口。</p>
@@ -1876,7 +1876,7 @@ details[open] > summary .chev{ transform:rotate(90deg); }
           enabled: fd.get("enabled") === "on"
         };
         if (!isEdit && !body.token) throw new Error("token 不能为空");
-        const data = await api(isEdit ? "bots/update" : "bots", { method: "POST", body });
+        const data = await api(isEdit ? "bots/update" : "bots", { method: "POST", body, timeout: 60000 });
         const newID = isEdit ? bot.id : (data && data.id);
         await loadBots(newID);
         await loadCurrent();
@@ -3474,9 +3474,10 @@ details[open] > summary .chev{ transform:rotate(90deg); }
   async function formAuth(form) {
     const token = String(new FormData(form).get("token") || "").trim();
     if (!token) throw new Error("请输入 token");
-    state.token = token;
-    store.set(TOKEN_KEY, token);
-    await loadCurrent();
+    const url = new URL(location.href);
+    url.searchParams.set("token", token);
+    location.replace(url.pathname + url.search + url.hash);
+    return;
   }
 
   async function saveSettings(form) {
@@ -3662,6 +3663,7 @@ details[open] > summary .chev{ transform:rotate(90deg); }
      启动 / 全局事件
      ====================================================================== */
   function captureTokenFromURL() {
+    store.del(TOKEN_KEY);
     const url = new URL(location.href);
     const token = url.searchParams.get("token");
     if (!token) return;
@@ -3731,19 +3733,17 @@ details[open] > summary .chev{ transform:rotate(90deg); }
         toast.error("请输入 token");
         return;
       }
-      state.token = value;
-      store.set(TOKEN_KEY, value);
-      document.getElementById("token-modal").close();
-      toast.success("token 已保存，正在连接");
-      loadCurrent();
+      const url = new URL(location.href);
+      url.searchParams.set("token", value);
+      location.replace(url.pathname + url.search + url.hash);
     });
-    document.getElementById("token-clear").addEventListener("click", () => {
+    document.getElementById("token-clear").addEventListener("click", async () => {
       state.token = "";
       store.del(TOKEN_KEY);
-      document.getElementById("token-input").value = "";
-      document.getElementById("token-modal").close();
-      toast("已清除 token，改用浏览器会话", { type: "info" });
-      loadCurrent();
+      try {
+        await fetch(BASE + "/api/logout", { method: "POST", credentials: "same-origin" });
+      } catch {}
+      location.reload();
     });
 
     document.getElementById("confirm").addEventListener("click", event => {

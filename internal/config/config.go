@@ -88,6 +88,11 @@ func init() { Init() }
 func Init() {
 	EnvPath = ResolveEnvFilePath()
 	dotEnvInst = NewDotEnv(EnvPath)
+	if EnvPath != "" {
+		if _, err := os.Stat(EnvPath); err == nil {
+			_ = os.Chmod(EnvPath, 0o600)
+		}
+	}
 
 	DataDir = ResolveDataDir()
 	if strings.TrimSpace(DataDir) == "" {

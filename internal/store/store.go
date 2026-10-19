@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"LianT/internal/secret"
 )
 
 // ============================================================================
@@ -310,6 +312,7 @@ type AuditRec struct {
 type Store struct {
 	db   *sql.DB
 	path string
+	box  *secret.Box
 	rev  int64
 	mu   sync.Mutex // 写操作串行（SQLite 单写者）
 }
@@ -339,6 +342,7 @@ func Open(path string) (*Store, error) {
 		"PRAGMA synchronous=NORMAL",
 		"PRAGMA busy_timeout=10000",
 		"PRAGMA foreign_keys=ON",
+		"PRAGMA secure_delete=ON",
 	} {
 		if _, err := db.Exec(p); err != nil {
 			_ = db.Close()
@@ -346,11 +350,21 @@ func Open(path string) (*Store, error) {
 		}
 	}
 
-	s := &Store{db: db, path: path}
+	box, err := secret.ForDB(path)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("加载加密密钥失败: %w", err)
+	}
+	s := &Store{db: db, path: path, box: box}
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := s.migrateSecrets(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	_ = os.Chmod(path, 0o600)
 	return s, nil
 }
 
@@ -402,6 +416,70 @@ func (s *Store) migrate() error {
 	return nil
 }
 
+// migrateSecrets 把旧库里的明文敏感字段就地加密（幂等）。
+// 只处理 admin_token 和 bots.token/webhook_secret，避免每次启动重复写。
+func (s *Store) migrateSecrets() error {
+	if s.box == nil {
+		return nil
+	}
+	var admin string
+	if err := s.db.QueryRow(`SELECT value FROM settings WHERE key='admin_token'`).Scan(&admin); err == nil && admin != "" && !secret.IsEncrypted(admin) {
+		enc, err := s.box.Encrypt(admin)
+		if err != nil {
+			return fmt.Errorf("加密 admin_token 失败: %w", err)
+		}
+		if _, err := s.db.Exec(`UPDATE settings SET value=?, updated_at=? WHERE key='admin_token'`, enc, NowStr()); err != nil {
+			return fmt.Errorf("写回加密 admin_token 失败: %w", err)
+		}
+	}
+
+	rows, err := s.db.Query(`SELECT id, token, webhook_secret FROM bots`)
+	if err != nil {
+		return nil // 还没有 bots 表/库时不阻塞启动
+	}
+	defer rows.Close()
+	type row struct {
+		id     int64
+		token  string
+		secret string
+	}
+	var list []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.token, &r.secret); err != nil {
+			return err
+		}
+		list = append(list, r)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, r := range list {
+		tok, sec := r.token, r.secret
+		changed := false
+		if tok != "" && !secret.IsEncrypted(tok) {
+			v, err := s.box.Encrypt(tok)
+			if err != nil {
+				return fmt.Errorf("加密 Bot #%d token 失败: %w", r.id, err)
+			}
+			tok, changed = v, true
+		}
+		if sec != "" && !secret.IsEncrypted(sec) {
+			v, err := s.box.Encrypt(sec)
+			if err != nil {
+				return fmt.Errorf("加密 Bot #%d webhook secret 失败: %w", r.id, err)
+			}
+			sec, changed = v, true
+		}
+		if changed {
+			if _, err := s.db.Exec(`UPDATE bots SET token=?, webhook_secret=? WHERE id=?`, tok, sec, r.id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // ---------------- settings ----------------
 
 func (s *Store) Setting(key, def string) string {
@@ -410,15 +488,35 @@ func (s *Store) Setting(key, def string) string {
 	if err != nil {
 		return def
 	}
+	if secret.IsEncrypted(v) {
+		dec, derr := s.box.Decrypt(v)
+		if derr != nil {
+			log.Printf("[!] 解密 settings.%s 失败: %v", key, derr)
+			return def
+		}
+		return dec
+	}
 	return v
 }
 
+func sensitiveSettingKey(key string) bool {
+	return key == "admin_token"
+}
+
 func (s *Store) SetSetting(key, value string) error {
+	stored := value
+	if sensitiveSettingKey(key) {
+		enc, err := s.box.Encrypt(value)
+		if err != nil {
+			return fmt.Errorf("加密 %s 失败: %w", key, err)
+		}
+		stored = enc
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, err := s.db.Exec(`INSERT INTO settings(key, value, updated_at) VALUES(?,?,?)
 		ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`,
-		key, value, NowStr())
+		key, stored, NowStr())
 	if err == nil {
 		s.bump()
 	}
@@ -434,9 +532,18 @@ func (s *Store) Settings() map[string]string {
 	defer rows.Close()
 	for rows.Next() {
 		var k, v string
-		if rows.Scan(&k, &v) == nil {
-			out[k] = v
+		if rows.Scan(&k, &v) != nil {
+			continue
 		}
+		if secret.IsEncrypted(v) {
+			dec, err := s.box.Decrypt(v)
+			if err != nil {
+				log.Printf("[!] 解密 settings.%s 失败: %v", k, err)
+				continue
+			}
+			v = dec
+		}
+		out[k] = v
 	}
 	return out
 }
@@ -1060,6 +1167,12 @@ func (s *Store) Bots() ([]BotRec, error) {
 		if b.Mode == "" {
 			b.Mode = "polling"
 		}
+		if b.Token, err = s.box.Decrypt(b.Token); err != nil {
+			return nil, fmt.Errorf("解密 Bot #%d token 失败: %w", b.ID, err)
+		}
+		if b.WebhookSecret, err = s.box.Decrypt(b.WebhookSecret); err != nil {
+			return nil, fmt.Errorf("解密 Bot #%d webhook secret 失败: %w", b.ID, err)
+		}
 		out = append(out, b)
 	}
 	return out, rows.Err()
@@ -1078,6 +1191,16 @@ func (s *Store) Bot(id int64) (BotRec, bool) {
 	if b.Mode == "" {
 		b.Mode = "polling"
 	}
+	tok, err := s.box.Decrypt(b.Token)
+	if err != nil {
+		return BotRec{}, false
+	}
+	b.Token = tok
+	sec, err := s.box.Decrypt(b.WebhookSecret)
+	if err != nil {
+		return BotRec{}, false
+	}
+	b.WebhookSecret = sec
 	return b, true
 }
 
@@ -1094,10 +1217,18 @@ func (s *Store) AddBot(b BotRec) (int64, error) {
 	if b.Platform == "" {
 		b.Platform = "telegram"
 	}
+	encToken, err := s.box.Encrypt(b.Token)
+	if err != nil {
+		return 0, fmt.Errorf("加密 token 失败: %w", err)
+	}
+	encSecret, err := s.box.Encrypt(b.WebhookSecret)
+	if err != nil {
+		return 0, fmt.Errorf("加密 webhook secret 失败: %w", err)
+	}
 	res, err := s.db.Exec(`INSERT INTO bots(name, token, username, telegram_id, platform, platform_id, mode, webhook_url, webhook_secret, webhook_listen, webhook_path, enabled, created_at, updated_at)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		b.Name, b.Token, b.Username, b.TelegramID, b.Platform, b.PlatformID, b.Mode,
-		b.WebhookURL, b.WebhookSecret, b.WebhookListen, b.WebhookPath,
+		b.Name, encToken, b.Username, b.TelegramID, b.Platform, b.PlatformID, b.Mode,
+		b.WebhookURL, encSecret, b.WebhookListen, b.WebhookPath,
 		BoolInt(b.Enabled), now, now)
 	if err != nil {
 		return 0, err
@@ -1116,16 +1247,23 @@ func (s *Store) UpdateBot(b BotRec) error {
 	if b.Platform == "" {
 		b.Platform = "telegram"
 	}
-	var err error
+	encSecret, err := s.box.Encrypt(b.WebhookSecret)
+	if err != nil {
+		return fmt.Errorf("加密 webhook secret 失败: %w", err)
+	}
 	if strings.TrimSpace(b.Token) != "" {
+		encToken, err := s.box.Encrypt(b.Token)
+		if err != nil {
+			return fmt.Errorf("加密 token 失败: %w", err)
+		}
 		_, err = s.db.Exec(`UPDATE bots SET name=?, token=?, username=?, telegram_id=?, platform=?, platform_id=?, mode=?, webhook_url=?, webhook_secret=?, webhook_listen=?, webhook_path=?, enabled=?, updated_at=? WHERE id=?`,
-			b.Name, b.Token, b.Username, b.TelegramID, b.Platform, b.PlatformID, b.Mode,
-			b.WebhookURL, b.WebhookSecret, b.WebhookListen, b.WebhookPath,
+			b.Name, encToken, b.Username, b.TelegramID, b.Platform, b.PlatformID, b.Mode,
+			b.WebhookURL, encSecret, b.WebhookListen, b.WebhookPath,
 			BoolInt(b.Enabled), NowStr(), b.ID)
 	} else {
 		_, err = s.db.Exec(`UPDATE bots SET name=?, username=?, telegram_id=?, platform=?, platform_id=?, mode=?, webhook_url=?, webhook_secret=?, webhook_listen=?, webhook_path=?, enabled=?, updated_at=? WHERE id=?`,
 			b.Name, b.Username, b.TelegramID, b.Platform, b.PlatformID, b.Mode,
-			b.WebhookURL, b.WebhookSecret, b.WebhookListen, b.WebhookPath,
+			b.WebhookURL, encSecret, b.WebhookListen, b.WebhookPath,
 			BoolInt(b.Enabled), NowStr(), b.ID)
 	}
 	if err == nil {

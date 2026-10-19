@@ -86,9 +86,18 @@ func (m *Manager) Add(rec store.BotRec) (int64, error) {
 	if ad == nil {
 		return 0, platform.ErrUnsupported(rec.Platform)
 	}
+	existing, err := m.reg.Bots()
+	if err != nil {
+		return 0, fmt.Errorf("读取现有 Bot 失败: %w", err)
+	}
+	for _, old := range existing {
+		if old.Token == rec.Token {
+			return 0, fmt.Errorf("这个 token 已经添加过（Bot #%d %s）", old.ID, old.Name)
+		}
+	}
 	ident, err := ad.ValidateToken(rec.Token)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("Telegram token 校验失败（检查 token、网络或代理）: %w", err)
 	}
 	if rec.Name == "" {
 		rec.Name = "@" + ident.Username
@@ -106,7 +115,7 @@ func (m *Manager) Add(rec store.BotRec) (int64, error) {
 	}
 	id, err := m.reg.AddBot(rec)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("写入 Bot 注册表失败: %w", err)
 	}
 	rec.ID = id
 	if rec.WebhookListen == "" {
@@ -116,8 +125,8 @@ func (m *Manager) Add(rec store.BotRec) (int64, error) {
 
 	if rec.Enabled {
 		if err := m.start(rec); err != nil {
-			log.Printf("[!] Bot #%d 已入库但启动失败: %v", id, err)
-			return id, nil
+			_ = m.reg.DeleteBot(id)
+			return 0, fmt.Errorf("Bot 已写入但启动失败，已回滚注册：%w", err)
 		}
 	}
 	return id, nil
@@ -149,13 +158,22 @@ func (m *Manager) Update(rec store.BotRec) error {
 
 	// token / 平台没变就不打网络：允许离线改名、改 webhook、停用。
 	if token != old.Token || rec.Platform != old.Platform {
+		existing, err := m.reg.Bots()
+		if err != nil {
+			return fmt.Errorf("读取现有 Bot 失败: %w", err)
+		}
+		for _, other := range existing {
+			if other.ID != rec.ID && other.Token == token {
+				return fmt.Errorf("这个 token 已经属于 Bot #%d %s", other.ID, other.Name)
+			}
+		}
 		ad := platform.Get(rec.Platform)
 		if ad == nil {
 			return platform.ErrUnsupported(rec.Platform)
 		}
 		ident, err := ad.ValidateToken(token)
 		if err != nil {
-			return err
+			return fmt.Errorf("Telegram token 校验失败（检查 token、网络或代理）: %w", err)
 		}
 		rec.Username = ident.Username
 		rec.PlatformID = ident.ID
@@ -201,10 +219,10 @@ func (m *Manager) Restart(id int64) error {
 
 // Reconcile 让运行中的实例与注册表对齐：启动新启用的、停止已删除/停用的。
 // CLI 改了 bots 表后调用它即可，不用重启任务进程。
-func (m *Manager) Reconcile() {
+func (m *Manager) Reconcile() []string {
 	recs, err := m.reg.Bots()
 	if err != nil {
-		return
+		return []string{"读取 Bot 注册表失败: " + err.Error()}
 	}
 	want := map[int64]store.BotRec{}
 	for _, rec := range recs {
@@ -223,14 +241,18 @@ func (m *Manager) Reconcile() {
 	for _, id := range stopIDs {
 		m.stop(id)
 	}
+	var errs []string
 	for id, rec := range want {
 		if _, ok := m.Get(id); ok {
 			continue
 		}
 		if err := m.start(rec); err != nil {
-			log.Printf("[!] 启动 Bot #%d(%s) 失败: %v", id, rec.Name, err)
+			msg := fmt.Sprintf("启动 Bot #%d(%s) 失败: %v", id, rec.Name, err)
+			log.Printf("[!] %s", msg)
+			errs = append(errs, msg)
 		}
 	}
+	return errs
 }
 
 // ReloadAll 让所有运行中的 Bot 尽快重连（不重启进程）。

@@ -168,7 +168,14 @@ func migrateLegacyToken(mgr *manager.Manager, reg *store.Store) {
 		return
 	}
 	_ = reg.SetSetting("legacy_env_imported", "1")
-	log.Printf("[OK] 已把 .env 里的 LIANT_BOT_TOKEN 导入为 Bot #%d（之后请用网页后台管理）", id)
+	if config.RemoveEnvKey("LIANT_BOT_TOKEN") {
+		log.Printf("[OK] 已把 .env 里的 LIANT_BOT_TOKEN 导入为 Bot #%d，并注释掉 .env 中的明文 token", id)
+	} else {
+		log.Printf("[OK] 已把 LIANT_BOT_TOKEN 导入为 Bot #%d", id)
+	}
+	if os.Getenv("LIANT_BOT_TOKEN") != "" {
+		log.Printf("[!] 启动环境变量里仍有 LIANT_BOT_TOKEN，请从 shell/服务配置中删除")
+	}
 }
 
 func mustBots(reg *store.Store) []store.BotRec {
@@ -216,7 +223,7 @@ func DispatchControl(req ipc.Request, mgr *manager.Manager) (ipc.Response, bool)
 			"pid": strconv.Itoa(os.Getpid()), "port": strconv.Itoa(config.ControlPort()),
 			"protocol": strconv.Itoa(config.ProtocolVersion), "app": config.AppVersion,
 			"data_dir": config.DataDir, "log_path": config.LogPath, "env_file": config.EnvPath,
-			"db_file": config.DBPath, "admin_addr": admin.ListenAddr(),
+			"db_file": config.DBPath, "registry_db": config.DBPath, "admin_addr": admin.ListenAddr(),
 			"admin_prefix": admin.NormalizePrefix(config.AdminPrefix()),
 			"started_at": DaemonStartedAt.Format("2006-01-02 15:04:05"),
 			"bots": strconv.Itoa(len(views)), "running": strconv.Itoa(running),
@@ -233,9 +240,13 @@ func DispatchControl(req ipc.Request, mgr *manager.Manager) (ipc.Response, bool)
 		return ipc.Response{OK: true, Msg: "运行中", Data: data}, false
 
 	case "reload", "reconnect":
-		mgr.Reconcile()
+		errs := mgr.Reconcile()
 		mgr.ReloadAll()
-		return ipc.Response{OK: true, Msg: fmt.Sprintf("已同步注册表并请求 %d 个 Bot 重连", running), Data: map[string]string{"bots": strconv.Itoa(len(views))}}, false
+		msg := fmt.Sprintf("已同步注册表并请求 %d 个 Bot 重连", running)
+		if len(errs) > 0 {
+			return ipc.Response{OK: false, Msg: msg + "；" + strings.Join(errs, "；"), Data: map[string]string{"bots": strconv.Itoa(len(views))}}, false
+		}
+		return ipc.Response{OK: true, Msg: msg, Data: map[string]string{"bots": strconv.Itoa(len(views))}}, false
 
 	case "test_reply":
 		rt, ok := pickRuntime(mgr, req.Args["bot_id"])

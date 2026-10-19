@@ -84,6 +84,14 @@ func (c *Client) Me() User {
 // Username 返回机器人用户名（不带 @）。
 func (c *Client) Username() string { return c.Me().Username }
 
+// redact 防止网络错误里的 URL 带出 bot token。
+func (c *Client) redact(err error) error {
+	if err == nil || c.token == "" {
+		return err
+	}
+	return fmt.Errorf("%s", strings.ReplaceAll(err.Error(), c.token, "<redacted>"))
+}
+
 // Call 调一个 Bot API 方法；out 非空时解析 result。
 func (c *Client) Call(method string, params map[string]interface{}, out interface{}) error {
 	if params == nil {
@@ -98,13 +106,13 @@ func (c *Client) Call(method string, params map[string]interface{}, out interfac
 	for attempt := 0; attempt < 3; attempt++ {
 		req, err := http.NewRequest("POST", c.base+"/bot"+c.token+"/"+method, bytes.NewReader(body))
 		if err != nil {
-			return fmt.Errorf("构造请求失败: %w", err)
+			return fmt.Errorf("构造请求失败: %w", c.redact(err))
 		}
 		req.Header.Set("Content-Type", "application/json")
 
 		resp, err := c.hc.Do(req)
 		if err != nil {
-			lastErr = fmt.Errorf("请求 Telegram 失败: %w", err)
+			lastErr = fmt.Errorf("请求 Telegram 失败: %w", c.redact(err))
 			if attempt < 2 {
 				time.Sleep(time.Duration(attempt+1) * time.Second)
 				continue
@@ -817,12 +825,12 @@ func (c *Client) CallMultipart(method string, params map[string]interface{}, fil
 
 	req, err := http.NewRequest("POST", c.base+"/bot"+c.token+"/"+method, &buf)
 	if err != nil {
-		return nil, err
+		return nil, c.redact(err)
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	resp, err := c.hc.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("上传请求失败: %w", err)
+		return nil, fmt.Errorf("上传请求失败: %w", c.redact(err))
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))

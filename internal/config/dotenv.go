@@ -203,3 +203,35 @@ func ResolveEnvFilePath() string {
 
 // Lookup 供其它包查询 .env 里的值（内部仍走大小写敏感的 get）。
 func (d *DotEnv) Lookup(key string) (string, bool) { return d.get(key) }
+
+// RemoveEnvKey 把 .env 里的某个 key 注释掉（迁移 token 到 SQLite 后调用）。
+// 只改文件，不动当前进程环境变量。
+func RemoveEnvKey(key string) bool {
+	if strings.TrimSpace(EnvPath) == "" {
+		return false
+	}
+	b, err := os.ReadFile(EnvPath)
+	if err != nil {
+		return false
+	}
+	lines := strings.Split(string(b), "\n")
+	changed := false
+	for i, line := range lines {
+		t := strings.TrimSpace(line)
+		t = strings.TrimPrefix(t, "export ")
+		if strings.HasPrefix(t, key+"=") {
+			lines[i] = "# " + key + " 已迁移到 SQLite（加密存储），此行可删除"
+			changed = true
+		}
+	}
+	if !changed {
+		return false
+	}
+	if err := os.WriteFile(EnvPath, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
+		log.Printf("[!] 清理 .env 里的 %s 失败: %v", key, err)
+		return false
+	}
+	_ = os.Chmod(EnvPath, 0o600)
+	EnvFile().Reload()
+	return true
+}

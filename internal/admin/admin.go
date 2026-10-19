@@ -156,12 +156,28 @@ func Start(m *manager.Manager, reg *store.Store) *Server {
 		return nil
 	}
 	a.srv = &http.Server{Handler: a.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	tlsCert := strings.TrimSpace(config.EnvOr("LIANT_ADMIN_TLS_CERT", ""))
+	tlsKey := strings.TrimSpace(config.EnvOr("LIANT_ADMIN_TLS_KEY", ""))
+	if (tlsCert == "") != (tlsKey == "") {
+		log.Printf("[X] LIANT_ADMIN_TLS_CERT 和 LIANT_ADMIN_TLS_KEY 必须同时设置")
+		return nil
+	}
+	scheme := "http"
+	if tlsCert != "" {
+		scheme = "https"
+	}
 	go func() {
-		if err := a.srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+		var err error
+		if tlsCert != "" {
+			err = a.srv.ServeTLS(ln, tlsCert, tlsKey)
+		} else {
+			err = a.srv.Serve(ln)
+		}
+		if err != nil && err != http.ErrServerClosed {
 			log.Printf("[X] 管理端退出: %v", err)
 		}
 	}()
-	base := "http://" + a.addr + a.prefix
+	base := scheme + "://" + a.addr + a.prefix
 	if views, err := m.List(); err == nil {
 		running := 0
 		for _, v := range views {
@@ -185,6 +201,13 @@ func MaskToken(t string) string {
 	return t[:4] + "…" + t[len(t)-4:]
 }
 
+func secureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https")
+}
+
 func (a *Server) Close() {
 	if a != nil && a.srv != nil {
 		_ = a.srv.Close()
@@ -202,6 +225,14 @@ func (a *Server) Handler() http.Handler {
 		}
 		if !strings.HasPrefix(p, "/api/") {
 			http.NotFound(w, r)
+			return
+		}
+		if p == "/api/logout" {
+			http.SetCookie(w, &http.Cookie{
+				Name: "LianT_admin_token", Value: "", Path: "/", HttpOnly: true,
+				Secure: secureRequest(r), SameSite: http.SameSiteLaxMode, MaxAge: -1,
+			})
+			ApiOK(w, "logged out")
 			return
 		}
 		if !a.Authorized(r) {
@@ -1329,7 +1360,7 @@ func (a *Server) ServeUI(w http.ResponseWriter, r *http.Request) {
 	if t := strings.TrimSpace(r.URL.Query().Get("token")); t != "" && a.token != "" {
 		if subtle.ConstantTimeCompare([]byte(t), []byte(a.token)) == 1 {
 			http.SetCookie(w, &http.Cookie{
-				Name: "LianT_admin_token", Value: t, Path: "/", HttpOnly: true, Secure: r.TLS != nil,
+				Name: "LianT_admin_token", Value: t, Path: "/", HttpOnly: true, Secure: secureRequest(r),
 				SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 3600,
 			})
 		}
