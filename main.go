@@ -21,6 +21,8 @@ import (
 	"LianT/internal/daemon"
 	"LianT/internal/ipc"
 	"LianT/internal/logfile"
+	"LianT/internal/manager"
+	"LianT/internal/platform"
 	"LianT/internal/proc"
 	"LianT/internal/rules"
 	"LianT/internal/store"
@@ -88,6 +90,8 @@ func runController(args []string) int {
 		return cmdLogs(rest)
 	case "admin", "web":
 		return cmdAdmin()
+	case "bot", "bots":
+		return cmdBot(rest)
 	case "db":
 		return cmdDB()
 	case "reply":
@@ -114,7 +118,6 @@ func cmdStart() int {
 		fmt.Printf("任务进程已经在运行，本次不启动（全局只会有一个）。\n")
 		fmt.Printf("  PID=%s  启动时间=%s  运行时长=%s\n",
 			get(data, "pid", "?"), get(data, "started_at", "?"), get(data, "uptime", "?"))
-		fmt.Printf("  Token 来源=%s\n", get(data, "token_source", "?"))
 		fmt.Printf("  数据目录=%s\n", get(data, "data_dir", cfg.DataDir))
 		fmt.Printf("  日志文件=%s\n", get(data, "log_path", cfg.LogPath))
 		fmt.Printf("  控制端口=%s\n", addr)
@@ -127,10 +130,6 @@ func cmdStart() int {
 	}
 	cleanStale()
 
-	if msg := cfg.TokenError(); msg != "" {
-		// 不拦着启动：任务进程会照常跑，等你在 .env 里填好 Token 后自动生效
-		fmt.Fprintf(os.Stderr, "[!] %s\n", msg)
-	}
 	// 注意：Android 上 os.Executable() 有时返回 linker64，必须用 selfPath()。
 	exe := selfPath()
 	if exe == "" || !FileExists(exe) {
@@ -209,6 +208,9 @@ func cmdStatus() int {
 		fmt.Printf("  控制端口  : %s\n", addr)
 		fmt.Printf("  启动时间  : %s\n", get(data, "started_at", "?"))
 		fmt.Printf("  运行时长  : %s\n", get(data, "uptime", "?"))
+		if v := data["bots"]; v != "" {
+			fmt.Printf("  Bot 数量  : %s（运行中 %s）\n", v, get(data, "running", "0"))
+		}
 		fmt.Printf("  状态      : %s\n", get(data, "bot_state", "?"))
 		fmt.Printf("  已收消息  : %s 条\n", get(data, "messages", "0"))
 		fmt.Printf("  重连次数  : %s\n", get(data, "reconnects", "0"))
@@ -232,7 +234,6 @@ func cmdStatus() int {
 		if v := data["reply_error"]; v != "" {
 			fmt.Printf("  规则错误  : %s（已继续用上一版）\n", v)
 		}
-		fmt.Printf("  Token 来源: %s（%s）\n", get(data, "token_source", "?"), get(data, "env_file", cfg.EnvPath))
 		fmt.Printf("  数据库    : %s（规则 %s / 违禁词 %s）\n", get(data, "db_file", cfg.DBPath),
 			get(data, "reply_rules", "?"), get(data, "words", "?"))
 		fmt.Printf("  管理端    : http://%s%s/\n", get(data, "admin_addr", admin.ListenAddr()), get(data, "admin_prefix", ""))
@@ -294,10 +295,9 @@ func portOf(addr string) string {
 
 // cmdDB 查看/初始化数据库情况。
 func cmdDB() int {
-	store.Quiet = true
-	st, err := store.Open(cfg.DBPath)
+	st, rec, err := openFirstBotStore()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[X] 打开数据库失败 %s: %v\n", cfg.DBPath, err)
+		fmt.Fprintf(os.Stderr, "[X] %v\n", err)
 		return 1
 	}
 	defer st.Close()
@@ -308,17 +308,186 @@ func cmdDB() int {
 	mutes, _ := st.Mutes(true)
 	bl, _ := st.Blacklists("")
 	recent, _ := st.Audit(1, "", "")
-	fmt.Printf("数据库: %s\n", cfg.DBPath)
+	fmt.Printf("注册表: %s\n", cfg.DBPath)
+	fmt.Printf("Bot: #%d %s（%s）\n", rec.ID, rec.Name, rec.Platform)
+	fmt.Printf("业务库: %s\n", manager.BotDBPath(rec.ID))
 	fmt.Printf("  回复规则 %d 条 / 违禁词 %d 条 / 群 %d 个 / 管理员 %d 人 / 禁言中 %d 人 / 黑名单 %d 人 / 审计 %d 条\n",
 		len(Rules), len(words), len(groups), len(admins), len(mutes), len(bl), len(recent))
 	fmt.Println("  改这些请用网页后台（LianT admin 看地址），或直接在群里用中文指令。")
 	return 0
 }
 
+// openFirstBotStore 打开第一个启用 Bot 的业务库（CLI 单 Bot 视图）。
+func openFirstBotStore() (*store.Store, store.BotRec, error) {
+	store.Quiet = true
+	reg, err := store.Open(cfg.DBPath)
+	if err != nil {
+		return nil, store.BotRec{}, fmt.Errorf("打开注册表失败: %w", err)
+	}
+	recs, err := reg.Bots()
+	_ = reg.Close()
+	if err != nil {
+		return nil, store.BotRec{}, err
+	}
+	var rec store.BotRec
+	for _, b := range recs {
+		if b.Enabled {
+			rec = b
+			break
+		}
+	}
+	if rec.ID == 0 && len(recs) > 0 {
+		rec = recs[0]
+	}
+	if rec.ID == 0 {
+		return nil, rec, fmt.Errorf("还没有 Bot：先运行 LianT bot add <token> 或打开网页后台「机器人」")
+	}
+	st, err := store.Open(manager.BotDBPath(rec.ID))
+	if err != nil {
+		return nil, rec, fmt.Errorf("打开 Bot #%d 业务库失败: %w", rec.ID, err)
+	}
+	return st, rec, nil
+}
+
+// cmdBot 管理 SQLite 里的多 Bot 注册表。
+func cmdBot(args []string) int {
+	store.Quiet = true
+	reg, err := store.Open(cfg.DBPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[X] 打开数据库失败 %s: %v\n", cfg.DBPath, err)
+		return 1
+	}
+	defer reg.Close()
+
+	if len(args) == 0 {
+		fmt.Println("用法: LianT bot list | add <token> [名称] | remove <id> | enable <id> | disable <id>")
+		return 0
+	}
+	sub := strings.ToLower(strings.TrimSpace(args[0]))
+	switch sub {
+	case "list", "ls":
+		recs, err := reg.Bots()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[X] 读取失败: %v\n", err)
+			return 1
+		}
+		if len(recs) == 0 {
+			fmt.Println("还没有 Bot。用 `LianT bot add <token>` 或网页后台「机器人」添加。")
+			return 0
+		}
+		fmt.Printf("%-4s %-20s %-10s %-24s %-8s\n", "ID", "名称", "平台", "账号", "状态")
+		for _, b := range recs {
+			status := "停用"
+			if b.Enabled {
+				status = "启用"
+			}
+			fmt.Printf("%-4d %-20s %-10s %-24s %-8s\n", b.ID, truncateText(b.Name, 20), b.Platform, truncateText("@"+b.Username, 24), status)
+		}
+		return 0
+
+	case "add":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "用法: LianT bot add <token> [名称]")
+			return 2
+		}
+		token := strings.TrimSpace(args[1])
+		ad := platform.Get("telegram")
+		if ad == nil {
+			fmt.Fprintln(os.Stderr, "[X] Telegram 适配器未注册")
+			return 1
+		}
+		ident, err := ad.ValidateToken(token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[X] %v\n", err)
+			return 1
+		}
+		name := ""
+		if len(args) > 2 {
+			name = strings.Join(args[2:], " ")
+		}
+		if name == "" {
+			name = "@" + ident.Username
+		}
+		var tgID int64
+		if n, err := strconv.ParseInt(ident.ID, 10, 64); err == nil {
+			tgID = n
+		}
+		id, err := reg.AddBot(store.BotRec{
+			Name: name, Token: token, Username: ident.Username,
+			Platform: "telegram", PlatformID: ident.ID, TelegramID: tgID,
+			Mode: "polling", Enabled: true,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[X] 写入失败: %v\n", err)
+			return 1
+		}
+		fmt.Printf("[OK] 已添加 Bot #%d @%s（%s）\n", id, ident.Username, name)
+		notifyBotReload()
+		return 0
+
+	case "remove", "rm", "del":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "用法: LianT bot remove <id>")
+			return 2
+		}
+		id, _ := strconv.ParseInt(args[1], 10, 64)
+		if id <= 0 {
+			fmt.Fprintln(os.Stderr, "[X] id 不合法")
+			return 2
+		}
+		if err := reg.DeleteBot(id); err != nil {
+			fmt.Fprintf(os.Stderr, "[X] 删除失败: %v\n", err)
+			return 1
+		}
+		fmt.Printf("[OK] 已删除 Bot #%d（业务库文件保留）\n", id)
+		notifyBotReload()
+		return 0
+
+	case "enable", "disable":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "用法: LianT bot %s <id>\n", sub)
+			return 2
+		}
+		id, _ := strconv.ParseInt(args[1], 10, 64)
+		rec, ok := reg.Bot(id)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "[X] Bot #%d 不存在\n", id)
+			return 1
+		}
+		rec.Enabled = sub == "enable"
+		if err := reg.UpdateBot(rec); err != nil {
+			fmt.Fprintf(os.Stderr, "[X] 更新失败: %v\n", err)
+			return 1
+		}
+		fmt.Printf("[OK] Bot #%d 已%s\n", id, map[bool]string{true: "启用", false: "停用"}[rec.Enabled])
+		notifyBotReload()
+		return 0
+
+	default:
+		fmt.Fprintf(os.Stderr, "未知 bot 子命令: %s\n", sub)
+		return 2
+	}
+}
+
+func notifyBotReload() {
+	addr, ok := ipc.FindDaemonAddr()
+	if !ok {
+		fmt.Println("提示：任务进程未运行，LianT start 后会读取 SQLite 里的 Bot。")
+		return
+	}
+	resp, err := ipc.CallAt(addr, "reload", nil, 20*time.Second)
+	if err != nil {
+		fmt.Printf("[!] 通知任务进程失败: %v（可稍后 LianT reload）\n", err)
+		return
+	}
+	if resp.Msg != "" {
+		fmt.Println(resp.Msg)
+	}
+}
+
 // localRuleCheck 不开任务进程也能干跑规则（读数据库）。
 func localRuleCheck(text string) (rules.Result, error) {
-	store.Quiet = true
-	st, err := store.Open(cfg.DBPath)
+	st, _, err := openFirstBotStore()
 	if err != nil {
 		return rules.Result{}, err
 	}
@@ -372,16 +541,15 @@ func cmdReply(args []string) int {
 	text := strings.TrimSpace(strings.Join(args, " "))
 
 	if text == "" {
-		store.Quiet = true
-		st, err := store.Open(cfg.DBPath)
+		st, rec, err := openFirstBotStore()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[X] 读数据库失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "[X] %v\n", err)
 			return 1
 		}
 		defer st.Close()
 		recs, _ := st.Rules()
 		words, _ := st.Words()
-		fmt.Printf("数据库: %s\n", cfg.DBPath)
+		fmt.Printf("Bot: #%d %s\n业务库: %s\n", rec.ID, rec.Name, manager.BotDBPath(rec.ID))
 		fmt.Printf("reply_all=%s  reply_default=%q  规则 %d 条  违禁词 %d 条\n",
 			st.Setting("reply_all", "true"), st.Setting("reply_default", ""), len(recs), len(words))
 		fmt.Println("回复规则:")
@@ -403,7 +571,7 @@ func cmdReply(args []string) int {
 		// 任务进程没跑：直接读数据库干跑一遍（只读）
 		res, err := localRuleCheck(text)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[X] 读数据库失败: %v（数据库 %s）\n", err, cfg.DBPath)
+			fmt.Fprintf(os.Stderr, "[X] 读数据库失败: %v\n", err)
 			return 1
 		}
 		printReplyResult(text, res)
@@ -440,26 +608,12 @@ func cmdInit() int {
 		return 1
 	}
 	defer st.Close()
-
-	existing, _ := st.Rules()
-	madeRule := false
-	if len(existing) == 0 {
-		dc := rules.DefaultConfig()
-		for i, r := range dc.Rules {
-			reply := ""
-			if r.Reply != nil {
-				reply = *r.Reply
-			}
-			_, _ = st.SaveRule(store.RuleRec{
-				Priority: 100 + i, Match: r.Match, Pattern: r.Pattern, Reply: reply,
-				Fold: r.Fold, Always: r.Always, Enabled: true, Note: "初始规则",
-			})
-		}
-		madeRule = true
-	}
+	bots, _ := st.Bots()
 	fmt.Printf("配置模板: %s%s\n", cfg.EnvPath, mark(madeEnv))
-	fmt.Printf("数据库  : %s（回复规则 %d 条%s）\n", cfg.DBPath, len(existing), map[bool]string{true: "，已播种默认规则", false: ""}[madeRule])
-	fmt.Println("配置文件改完保存即生效；规则/违禁词也可以直接在群里用中文指令改。")
+	fmt.Printf("注册表  : %s（Bot %d 个）\n", cfg.DBPath, len(bots))
+	fmt.Println("Bot token 不在 .env：用 `LianT bot add <token>` 或网页后台「机器人」添加。")
+	fmt.Println("每个 Bot 会自动创建独立业务库（LianT-data/bots/<id>.db），规则/违禁词互不影响。")
+	fmt.Println("路径/端口仍可用 .env 或 LIANT_* 环境变量覆盖；改完重启生效。")
 	return 0
 }
 
@@ -652,16 +806,21 @@ func printUsage() {
   LianT logs [行数] [-f]    查看日志，默认 50 行，-f 持续跟随
   LianT admin              网页管理端地址 + token（以及反代示例）
   LianT db                 看数据库统计（规则/违禁词/群/管理员…）
-  LianT reload             重载规则缓存 + .env Token（不重启、不断线）
+  LianT reload             同步 SQLite Bot 注册表并请求重连（不重启进程）
   LianT reply [文本]        不带文本=打印当前规则；带文本=干跑看会回什么
   LianT reconnect          让任务进程尽快重连 Telegram（进程不退出）
   LianT run                前台运行任务进程（调试用，日志同时打屏）
-  LianT init               生成 .env 模板并给数据库播种默认规则
+  LianT init               生成 .env 模板（Bot token 在 SQLite / 网页后台）
   LianT path               打印数据目录/日志/配置文件等路径
+  LianT bot list           列出 SQLite 里的 Bot
+  LianT bot add <token>    添加 Bot（也可用网页后台）
+  LianT bot remove <id>    删除 Bot 注册
+  LianT bot enable/disable <id>
   LianT help               本帮助
 
 配置（改完保存即生效，不用重新编译）:
-  Bot Token %s         LIANT_BOT_TOKEN（@BotFather 获取）
+  Bot token                    SQLite bots 表：./LianT bot list 或网页「机器人」
+  路径/端口                    .env：%s
   API / 代理                    LIANT_API_BASE / LIANT_PROXY
   环境变量优先级: 进程环境变量 > .env > config.go 常量
   日志文件  %s         （单文件 8MB 自动轮转，留 .1 ~ .5）
@@ -670,6 +829,14 @@ func printUsage() {
   控制端口  %d          （LIANT_PORT，只在启动时读）
 `,
 		cfg.AppVersion, cfg.EnvPath, cfg.LogPath, cfg.DataDir, cfg.DBPath, cfg.ControlPort())
+}
+
+func truncateText(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
 
 func get(m map[string]string, key, def string) string {

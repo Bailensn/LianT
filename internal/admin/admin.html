@@ -190,6 +190,17 @@ button { cursor: pointer; }
 .topbar h1 { margin: 0; font-size: 20px; line-height: 1.2; letter-spacing: -0.025em; font-weight: 700; }
 .topbar p { margin: 4px 0 0; color: var(--text-3); font-size: 12.5px; }
 .top-actions { display: flex; align-items: center; gap: 6px; }
+.bot-switcher {
+  height: 34px; max-width: 230px; padding: 0 30px 0 10px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--surface); color: var(--text-2); font-size: 12.5px;
+  outline: none; appearance: none; -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-3) 50%), linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 14px, calc(100% - 9px) 14px;
+  background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+}
+.bot-switcher:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+@media (max-width: 860px) { .bot-switcher { max-width: 132px; height: 32px; } }
 .view { width: 100%; max-width: 1280px; padding: 22px 28px 64px; display: flex; flex-direction: column; gap: 16px; }
 .view > * { animation: rise 220ms var(--ease-out) both; }
 .view > *:nth-child(2) { animation-delay: 28ms; }
@@ -481,6 +492,7 @@ body.modal-open { overflow: hidden; }
 </head>
 <body>
 <svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></symbol>
   <symbol id="i-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></symbol>
   <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
   <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></symbol>
@@ -545,6 +557,7 @@ body.modal-open { overflow: hidden; }
     <header class="topbar">
       <div><h1 id="page-title">总览</h1><p id="page-desc">机器人状态与运营数据</p></div>
       <div class="top-actions">
+        <select class="bot-switcher" id="bot-switcher" aria-label="切换 Bot"></select>
         <button class="icon-btn" id="refresh" aria-label="刷新" title="刷新"><svg class="icon"><use href="#i-refresh"></use></svg></button>
       </div>
     </header>
@@ -574,8 +587,8 @@ const NAV_GROUPS = [
   ["运营", [["overview", "总览", "overview"], ["chats", "群组", "users"], ["messages", "消息", "message"], ["broadcast", "群发", "send"], ["joins", "入群", "userPlus"]]],
   ["自动化", [["rules", "回复规则", "list"], ["words", "违禁词", "shield"]]],
   ["成员", [["admins", "管理员", "userCheck"], ["mutes", "禁言", "clock"], ["blacklist", "黑名单", "ban"]]],
-  ["工具", [["chattools", "群工具", "wrench"], ["bot", "Bot", "bot"], ["botapi", "Bot API", "terminal"]]],
-  ["系统", [["audit", "操作日志", "activity"], ["settings", "设置", "sliders"], ["help", "帮助", "help"]]]
+  ["工具", [["chattools", "群工具", "wrench"], ["bot", "Bot 资料", "bot"], ["botapi", "Bot API", "terminal"]]],
+  ["系统", [["bots", "机器人", "layers"], ["audit", "操作日志", "activity"], ["settings", "设置", "sliders"], ["help", "帮助", "help"]]]
 ];
 const NAV = NAV_GROUPS.flatMap(([, items]) => items);
 const TITLES = Object.fromEntries(NAV.map(([id, label]) => [id, label]));
@@ -591,7 +604,8 @@ const DESCS = {
   mutes: "禁言记录与解除",
   blacklist: "黑名单成员",
   chattools: "群信息、邀请链接、话题与权限",
-  bot: "机器人资料、命令与 webhook",
+  bots: "多 Bot 注册与启停",
+  bot: "当前 Bot 的资料、命令与 webhook",
   botapi: "直接调用任意 Bot API 方法",
   audit: "所有处置与后台操作",
   settings: "全局开关、欢迎语与备份",
@@ -604,7 +618,8 @@ const KIND_LABELS = {
 };
 
 const state = {
-  active: "overview", chats: [], rules: [], words: [], admins: [], mutes: [], blacklist: [],
+  active: "overview", bots: [], platforms: [], currentBot: "",
+  chats: [], rules: [], words: [], admins: [], mutes: [], blacklist: [],
   audit: [], settings: {}, overview: null, selectedChat: "", messages: [],
   joins: [], chatInfo: null, chatAdmins: [], chatBotMember: null,
   botMe: null, webhook: null, commands: null,
@@ -617,8 +632,13 @@ let modalResolve = null;
 let lastFocus = null;
 
 /* ---------------- api ---------------- */
+function withBot(path) {
+  if (!state.currentBot) return path;
+  if (path.startsWith("bots") || path.startsWith("platforms")) return path;
+  return path + (path.indexOf("?") >= 0 ? "&" : "?") + "bot_id=" + encodeURIComponent(state.currentBot);
+}
 async function api(path, opt = {}) {
-  const res = await fetch(BASE + "/api/" + path, Object.assign({
+  const res = await fetch(BASE + "/api/" + withBot(path), Object.assign({
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" }
   }, opt));
@@ -637,6 +657,48 @@ const del = (path, params) => api(path + "?" + new URLSearchParams(params), { me
 async function botAPI(method, params = {}) {
   const r = await post("botapi", { method, params });
   return r.result;
+}
+
+function currentBotData() {
+  return state.bots.find((b) => String(b.id) === String(state.currentBot)) || null;
+}
+function botHas(cap) {
+  const b = currentBotData();
+  return !!(b && b.capabilities && b.capabilities[cap]);
+}
+function platformName() {
+  const b = currentBotData();
+  return (b && b.platform_name) || "Telegram";
+}
+function populateBotSwitcher() {
+  const sel = $("#bot-switcher");
+  if (!sel) return;
+  if (!state.bots.length) {
+    sel.innerHTML = `<option value="">未添加 Bot</option>`;
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  sel.innerHTML = state.bots.map((b) => {
+    const stateText = b.running ? "运行中" : (b.enabled ? "未运行" : "已停用");
+    const name = b.name || ("Bot #" + b.id);
+    return `<option value="${esc(b.id)}"${String(b.id) === String(state.currentBot) ? " selected" : ""}>${esc(name)} · ${esc(stateText)}</option>`;
+  }).join("");
+}
+async function refreshOverview() {
+  try {
+    state.overview = await get("overview");
+    renderFoot();
+  } catch (e) {
+    if (e.status === 401) showAuth();
+  }
+}
+async function selectBot(id, reload = true) {
+  state.currentBot = String(id || "");
+  try { localStorage.setItem("liant-bot", state.currentBot); } catch (e) {}
+  populateBotSwitcher();
+  await refreshOverview();
+  if (reload) await loadSection();
 }
 
 /* ---------------- formatting ---------------- */
@@ -797,13 +859,19 @@ function setHeader(id) {
   $("#page-desc").textContent = DESCS[id] || "";
 }
 function renderFoot() {
-  const b = (state.overview && state.overview.bot) || {};
-  const raw = b.bot_state || "";
+  const live = (state.overview && state.overview.bot) || {};
+  const rec = currentBotData();
+  const raw = live.bot_state || "";
   const dot = $("#status-dot");
-  dot.className = "status-dot " + (/在线/.test(raw) ? "online" : /错误|失败/.test(raw) ? "bad" : "warn");
-  $("#foot-bot").textContent = b.bot_username || "未连接";
-  $("#foot-mode").textContent = modeLabel(b.mode) + (b.uptime ? " · " + b.uptime : "");
-  $("#foot-bot").title = raw || "未连接";
+  const running = rec ? rec.running : false;
+  dot.className = "status-dot " + (running ? (/错误|失败/.test(raw) ? "bad" : "online") : "warn");
+  $("#foot-bot").textContent = (rec && (rec.name || rec.username)) || "未配置 Bot";
+  const bits = [];
+  if (rec) bits.push(rec.platform_name || rec.platform || "telegram");
+  bits.push(modeLabel(live.mode || (rec && rec.mode)));
+  if (running) bits.push("运行中");
+  $("#foot-mode").textContent = bits.join(" · ");
+  $("#foot-bot").title = [rec && rec.username ? "@" + rec.username : "", raw].filter(Boolean).join(" · ");
 }
 function showAuth() {
   $("#auth").hidden = false;
@@ -836,13 +904,41 @@ async function loadSection() {
   const seq = ++loadSeq;
   setHeader(id);
   buildNav();
-  $("#view").innerHTML = skeletonHTML();
   const still = () => seq === loadSeq;
   try {
+    if (id === "bots") {
+      state.bots = await get("bots");
+      state.platforms = await get("platforms").catch(() => []);
+      populateBotSwitcher();
+      if (!still()) return;
+      renderBots();
+      renderFoot();
+      return;
+    }
+    if (!state.currentBot) {
+      $("#view").innerHTML = renderNoBots();
+      renderFoot();
+      return;
+    }
+    const rec = currentBotData();
+    if (!rec) {
+      state.currentBot = "";
+      populateBotSwitcher();
+      $("#view").innerHTML = renderNoBots();
+      renderFoot();
+      return;
+    }
+    if (!rec.running) {
+      $("#view").innerHTML = renderBotUnavailable(rec);
+      renderFoot();
+      return;
+    }
+    $("#view").innerHTML = skeletonHTML();
     if (id === "overview") {
       const data = await get("overview");
       if (!still()) return;
       state.overview = data;
+      if (data.no_bot) { $("#view").innerHTML = renderNoBots(); return; }
       renderOverview();
     } else if (id === "chats") {
       state.chats = await get("chats");
@@ -932,6 +1028,81 @@ function route() {
   loadSection();
 }
 
+/* ---------------- bots ---------------- */
+function renderBots() {
+  const rows = state.bots.map((b) => {
+    const caps = b.capabilities || {};
+    const statePill = b.running ? '<span class="pill ok">运行中</span>' : (b.enabled ? '<span class="pill warn">未运行</span>' : '<span class="pill">已停用</span>');
+    return `<tr>
+      <td><div class="cell-main truncate" title="${esc(b.name || "")}">${esc(b.name || ("Bot #" + b.id))}</div><div class="mono">#${esc(b.id)} · ${esc(b.platform_id || b.telegram_id || "—")}</div></td>
+      <td><span class="pill">${esc(b.platform_name || b.platform || "telegram")}</span></td>
+      <td>${b.username ? "@" + esc(b.username) : "<span class='muted'>—</span>"}<div class="cell-sub">${esc(b.mode || "polling")}${b.token_set ? " · token 已配置" : " · 无 token"}</div></td>
+      <td>${statePill}</td>
+      <td class="hide-sm"><div class="chip-row">${caps.topics ? '<span class="pill">话题</span>' : ""}${caps.inline ? '<span class="pill">内联</span>' : ""}${caps.payments ? '<span class="pill">支付</span>' : ""}${caps.webhook ? '<span class="pill">webhook</span>' : ""}</div></td>
+      <td><div class="row-actions">
+        <button class="btn sm" data-act="use-bot" data-id="${b.id}">${String(b.id) === String(state.currentBot) ? "当前" : "切换"}</button>
+        <button class="btn sm" data-act="restart-bot" data-id="${b.id}" ${b.enabled ? "" : "disabled"}>重启</button>
+        <button class="btn sm ghost" data-act="edit-bot" data-id="${b.id}">编辑</button>
+        <button class="btn sm danger" data-act="del-bot" data-id="${b.id}">删除</button>
+      </div></td>
+    </tr>`;
+  }).join("");
+  $("#view").innerHTML = `
+    <div class="card"><div class="card-head"><div><h2 class="card-title">机器人</h2><p class="card-sub">每个 Bot 有独立 token、独立业务库、独立长轮询/webhook；共享同一个管理后台。</p></div><button class="btn primary" data-act="add-bot">${icon("plus", "sm")}添加 Bot</button></div>
+      <div class="table-wrap">${rows ? `<table><thead><tr><th>Bot</th><th>平台</th><th>账号</th><th>状态</th><th class="hide-sm">能力</th><th style="text-align:right">操作</th></tr></thead><tbody>${rows}</tbody></table>` : emptyState("bot", "添加第一个 Bot token 后即可开始工作。", "还没有 Bot")}</div>
+    </div>
+    <div class="card"><div class="card-head"><div><h2 class="card-title">平台兼容层</h2><p class="card-sub">后台只依赖统一的能力声明；QQ/其他平台实现 adapter 后即可复用这套 UI。</p></div></div><div class="card-body"><div class="chip-row">${(state.platforms || []).map((p) => `<span class="pill">${esc(p.name)} · ${esc(p.id)}</span>`).join("") || '<span class="hint">没有平台适配器</span>'}</div><p class="hint" style="margin:10px 0 0">当前已接入：Telegram。新增平台时实现 platform.Adapter（ValidateToken / Capabilities），无需改后台页面。</p></div></div>`;
+}
+function botForm(b = {}) {
+  const isNew = !b.id;
+  const platforms = state.platforms && state.platforms.length ? state.platforms : [{ id: "telegram", name: "Telegram" }];
+  const mode = b.mode || "polling";
+  return `<form id="form-bot" class="grid-form">
+    <input type="hidden" name="id" value="${esc(b.id || 0)}">
+    <label class="field"><span>平台</span><select name="platform">${platforms.map((p) => `<option value="${esc(p.id)}"${p.id === (b.platform || "telegram") ? " selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
+    <label class="field"><span>名称</span><input name="name" value="${esc(b.name || "")}" placeholder="主 Bot"></label>
+    <label class="field full"><span>Token ${isNew ? "*" : "（留空 = 不修改）"}</span><input name="token" type="password" autocomplete="new-password" placeholder="${isNew ? "123456789:AA..." : "留空保留原 token"}"></label>
+    <label class="field"><span>收消息方式</span><select name="mode"><option value="polling"${mode === "polling" ? " selected" : ""}>长轮询</option><option value="webhook"${mode === "webhook" ? " selected" : ""}>Webhook</option></select></label>
+    <label class="check"><input type="checkbox" name="enabled" ${b.enabled !== false ? "checked" : ""}> 启用并启动</label>
+    <p class="hint full" style="margin:0">多个 webhook Bot 请使用不同的「本地监听端口」或不同的反代路径。</p>
+    <label class="field full"><span>Webhook URL（webhook 模式必填）</span><input name="webhook_url" value="${esc(b.webhook_url || "")}" placeholder="https://example.com/telegram/webhook"></label>
+    <label class="field"><span>Webhook secret</span><input name="webhook_secret" value="${esc(b.webhook_secret || "")}" placeholder="A-Za-z0-9_-"></label>
+    <label class="field"><span>Webhook 本地监听</span><input name="webhook_listen" value="${esc(b.webhook_listen || ("127.0.0.1:" + (28743 + state.bots.length)))}" placeholder="127.0.0.1:28743"></label>
+    <label class="field"><span>Webhook 路径</span><input name="webhook_path" value="${esc(b.webhook_path || "/telegram/webhook")}"></label>
+    <div class="form-actions full"><button class="btn primary" type="submit">${isNew ? "添加并启动" : "保存并重启"}</button></div>
+  </form>`;
+}
+function bindBotForm(root) {
+  $("#form-bot", root).onsubmit = async (e) => {
+    e.preventDefault();
+    const o = formObj(e.target);
+    const id = Number(o.id || 0);
+    o.id = id;
+    o.enabled = !!o.enabled;
+    if (!id) o.enabled = true;
+    try {
+      const r = await post(id ? "bots/update" : "bots", o);
+      const newID = id || (r && r.id);
+      state.bots = await get("bots");
+      if (newID) state.currentBot = String(newID);
+      try { localStorage.setItem("liant-bot", state.currentBot); } catch (err) {}
+      populateBotSwitcher();
+      toast(id ? "已保存并重启" : "Bot 已添加", "ok");
+      closeModal();
+      await refreshOverview();
+      location.hash = "#bots";
+      await loadSection();
+    } catch (err) { toast(errorText(err), "bad"); }
+  };
+}
+function renderNoBots() {
+  return `<div class="card"><div class="card-body">${emptyState("bot", "Bot token 存在 SQLite 里，不再依赖 .env。添加后每个 Bot 会得到独立业务库。", "还没有 Bot")}<div style="text-align:center;margin-top:16px"><button class="btn primary" data-act="add-bot">${icon("plus", "sm")}添加第一个 Bot</button></div></div></div>`;
+}
+function renderBotUnavailable(rec) {
+  return `<div class="card"><div class="card-head"><div><h2 class="card-title">${esc(rec.name || ("Bot #" + rec.id))}</h2><p class="card-sub">${esc(rec.platform_name || rec.platform || "telegram")} · ${rec.enabled ? "已启用但未运行" : "已停用"}</p></div><span class="pill warn">不可用</span></div>
+    <div class="card-body"><p class="hint" style="font-size:12.5px">这个 Bot 当前没有运行。可以重启它，或到「机器人」里检查 token / webhook 配置。</p><div class="form-actions" style="justify-content:flex-start"><button class="btn primary" data-act="restart-bot" data-id="${rec.id}">重启</button><button class="btn" data-act="edit-bot" data-id="${rec.id}">编辑配置</button><button class="btn ghost" data-act="goto" data-target="bots">机器人列表</button></div></div></div>`;
+}
+
 /* ---------------- overview ---------------- */
 function renderOverview() {
   const o = state.overview || {}, b = o.bot || {}, c = o.counts || {};
@@ -948,7 +1119,7 @@ function renderOverview() {
   $("#view").innerHTML = `
     <section class="card hero">
       <div class="hero-main">
-        <span class="eyebrow"><span class="status-dot ${statusClass}"></span>${esc(b.bot_state || "未知状态")} · ${esc(modeLabel(b.mode))}</span>
+        <span class="eyebrow"><span class="status-dot ${statusClass}"></span>${esc(b.bot_state || "未知状态")} · ${esc(modeLabel(b.mode))} · ${esc(platformName())}</span>
         <h2>${esc(b.bot_username || "LianT")}</h2>
         <p>运行 ${esc(b.uptime || "—")} · 已收 ${fmtNum(b.messages)} 条消息 · 重连 ${fmtNum(b.reconnects)} 次</p>
       </div>
@@ -1060,7 +1231,7 @@ function renderMessages() {
         <label class="field" data-field="content"><span>文本内容 / 投票问题</span><textarea name="content" placeholder="输入消息内容…" maxlength="4000"></textarea></label>
         <label class="field full" data-field="media"><span>媒体 / 坐标 / 骰子 emoji</span><input name="media" placeholder="https://… 或 file_id" autocomplete="off"></label>
         <label class="field full" data-field="caption"><span>媒体说明 / 投票选项</span><textarea name="caption" placeholder="媒体说明；投票选项如：A|B|C"></textarea></label>
-        <label class="field full"><span>按钮 JSON（可选，二维数组或完整 reply_markup）</span><textarea name="buttons" placeholder='[[{"text":"删除","callback_data":"del:123"}]]'></textarea></label>
+        ${botHas("buttons") ? `<label class="field full"><span>按钮 JSON（可选，二维数组或完整 reply_markup）</span><textarea name="buttons" placeholder='[[{"text":"删除","callback_data":"del:123"}]]'></textarea></label>` : ""}
         <label class="field"><span>解析模式</span><select name="parse_mode"><option value="">纯文本</option><option value="HTML">HTML</option><option value="MarkdownV2">MarkdownV2</option></select></label>
         <label class="check"><input type="checkbox" name="disable_preview"> 不显示链接预览</label>
         <div class="form-actions full"><button class="btn primary" type="submit">${icon("send", "sm")}发送</button></div>
@@ -1117,6 +1288,10 @@ async function doBroadcast(form) {
 
 /* ---------------- joins ---------------- */
 function renderJoins() {
+  if (!botHas("join_approval")) {
+    $("#view").innerHTML = `<div class="card">${emptyState("userPlus", "当前平台适配器不支持入群审批。", "平台不支持")}</div>`;
+    return;
+  }
   const rows = state.joins.map((j) => `
     <tr><td><div class="cell-main">${esc(j.username || j.user_id)}</div><div class="mono">${esc(j.user_id)}</div></td>
       <td>${esc(chatName(j.chat_id))}<div class="mono">${esc(j.chat_id)}</div></td>
@@ -1277,13 +1452,13 @@ function renderSettings() {
       <label class="field"><span>群聊回复策略</span><select name="reply_all"><option value="true"${pick("reply_all", "true") === "true" ? " selected" : ""}>回复所有消息</option><option value="false"${pick("reply_all", "true") === "false" ? " selected" : ""}>只回 @机器人 / 命令</option></select></label>
       <label class="field"><span>未命中时的默认回复</span><input name="reply_default" value="${esc(pick("reply_default", ""))}" placeholder="留空 = 不回"></label>
       <label class="field"><span>入群申请</span><select name="join_auto_approve"><option value="false"${pick("join_auto_approve", "false") === "false" ? " selected" : ""}>人工审批</option><option value="true"${pick("join_auto_approve", "false") === "true" ? " selected" : ""}>自动通过</option></select></label>
-      <label class="field"><span>支付/配送自动确认</span><select name="payment_auto_approve"><option value="false"${pick("payment_auto_approve", "false") === "false" ? " selected" : ""}>关闭</option><option value="true"${pick("payment_auto_approve", "false") === "true" ? " selected" : ""}>自动确认</option></select></label>
+      ${botHas("payments") ? `<label class="field"><span>支付/配送自动确认</span><select name="payment_auto_approve"><option value="false"${pick("payment_auto_approve", "false") === "false" ? " selected" : ""}>关闭</option><option value="true"${pick("payment_auto_approve", "false") === "true" ? " selected" : ""}>自动确认</option></select></label>` : ""}
       <label class="field full"><span>入群欢迎语</span><textarea name="welcome_text" placeholder="欢迎 {name} 加入 {chat}！">${esc(pick("welcome_text", ""))}</textarea></label>
-      <label class="field full"><span>内联查询结果（每行 标题|内容）</span><textarea name="inline_results" placeholder="LianT 帮助|发送 /help 查看指令">${esc(pick("inline_results", ""))}</textarea></label>
+      ${botHas("inline") ? `<label class="field full"><span>内联查询结果（每行 标题|内容）</span><textarea name="inline_results" placeholder="LianT 帮助|发送 /help 查看指令">${esc(pick("inline_results", ""))}</textarea></label>` : ""}
       <div class="form-actions full"><button class="btn primary" type="submit">保存设置</button></div>
     </form></div></div>
     <div class="grid-2">
-      <div class="card"><div class="card-head"><div><h2 class="card-title">备份</h2><p class="card-sub">不包含 admin token 与 offset。</p></div></div><div class="card-body"><a class="btn" href="${BASE}/api/export" target="_blank" rel="noopener">${icon("link", "sm")}导出 JSON 配置</a></div></div>
+      <div class="card"><div class="card-head"><div><h2 class="card-title">备份</h2><p class="card-sub">不包含 admin token 与 offset。</p></div></div><div class="card-body"><a class="btn" href="${BASE}/api/export?bot_id=${encodeURIComponent(state.currentBot)}" target="_blank" rel="noopener">${icon("link", "sm")}导出 JSON 配置</a></div></div>
       <div class="card"><div class="card-head"><div><h2 class="card-title">运行环境</h2><p class="card-sub">只读</p></div></div><div class="card-body"><dl class="kv">
         <dt>数据库</dt><dd class="mono">${esc((state.overview && state.overview.db_file) || "—")}</dd>
         <dt>API</dt><dd class="mono">${esc((state.overview && state.overview.bot && state.overview.bot.api_base) || "—")}</dd>
@@ -1308,6 +1483,11 @@ function renderHelp() {
 
 /* ---------------- chat tools ---------------- */
 async function loadChatTools() {
+  const rec = currentBotData();
+  if (rec && rec.platform && rec.platform !== "telegram") {
+    $("#view").innerHTML = `<div class="card">${emptyState("wrench", "群工具目前调用的是 Telegram 原生方法；该平台需要自己的 runtime 接口。", "平台暂不支持")}</div>`;
+    return;
+  }
   const chatID = state.selectedChat;
   if (!chatID) { state.chatInfo = null; state.chatAdmins = []; renderChatTools(); return; }
   $("#view").innerHTML = skeletonHTML();
@@ -1347,14 +1527,14 @@ function renderChatTools() {
         <dt>简介</dt><dd>${esc(info.description || "—")}</dd>
         <dt>邀请链接</dt><dd>${info.invite_link ? `<span class="mono">${esc(info.invite_link)}</span> <button class="btn sm ghost" data-act="copy" data-copy="${esc(info.invite_link)}">复制</button>` : "—"}</dd>
       </dl>` : emptyState("wrench", "选择一个会话读取信息。", "群工具")}</div></div>
-    <div class="card"><div class="card-head"><div><h2 class="card-title">快捷操作</h2><p class="card-sub">调用 Bot API；部分操作需要机器人是管理员。</p></div></div><div class="card-body"><div class="actions-grid">
-      <button class="action-tile" data-act="tool-invite">${icon("link")}<strong>创建邀请链接</strong><span>生成新的 invite link</span></button>
-      <button class="action-tile" data-act="tool-topic">${icon("message")}<strong>创建话题</strong><span>论坛群 message_thread_id</span></button>
+    <div class="card"><div class="card-head"><div><h2 class="card-title">快捷操作</h2><p class="card-sub">按当前平台的能力声明显示；部分操作需要机器人是管理员。</p></div></div><div class="card-body"><div class="actions-grid">
+      ${botHas("invite_links") ? `<button class="action-tile" data-act="tool-invite">${icon("link")}<strong>创建邀请链接</strong><span>生成新的 invite link</span></button>` : ""}
+      ${botHas("topics") ? `<button class="action-tile" data-act="tool-topic">${icon("message")}<strong>创建话题</strong><span>论坛群 message_thread_id</span></button>` : ""}
       <button class="action-tile" data-act="tool-title">${icon("edit")}<strong>修改群名</strong><span>setChatTitle</span></button>
       <button class="action-tile" data-act="tool-desc">${icon("list")}<strong>修改简介</strong><span>setChatDescription</span></button>
       <button class="action-tile" data-act="tool-pin">${icon("pin")}<strong>置顶消息</strong><span>按 message_id</span></button>
-      <button class="action-tile" data-act="tool-muteall">${icon("ban")}<strong>全员禁言</strong><span>setChatPermissions</span></button>
-      <button class="action-tile" data-act="tool-unmuteall">${icon("check")}<strong>恢复发言</strong><span>恢复默认权限</span></button>
+      ${botHas("roles") ? `<button class="action-tile" data-act="tool-muteall">${icon("ban")}<strong>全员禁言</strong><span>setChatPermissions</span></button>
+      <button class="action-tile" data-act="tool-unmuteall">${icon("check")}<strong>恢复发言</strong><span>恢复默认权限</span></button>` : ""}
       <button class="action-tile" data-act="tool-leave">${icon("logout")}<strong>退出群组</strong><span>leaveChat（不可撤销）</span></button>
     </div></div></div>
     <div class="card"><div class="card-head"><div><h2 class="card-title">管理员</h2><p class="card-sub">getChatAdministrators</p></div></div><div class="table-wrap">${admRows ? `<table><thead><tr><th>成员</th><th>状态</th><th class="hide-sm">头衔</th><th style="text-align:right">操作</th></tr></thead><tbody>${admRows}</tbody></table>` : emptyState("userCheck", "读取后显示群管理员。", "没有管理员数据")}</div></div>`;
@@ -1364,6 +1544,13 @@ function renderChatTools() {
 
 /* ---------------- bot page ---------------- */
 async function loadBot() {
+  const rec = currentBotData();
+  if (rec && rec.platform && rec.platform !== "telegram") {
+    state.botMe = null; state.webhook = null; state.commands = [];
+    state.botDesc = ""; state.botShort = "";
+    renderPlatformBot(rec);
+    return;
+  }
   const [me, webhook, commands, desc, shortDesc] = await Promise.all([
     botAPI("getMe"),
     botAPI("getWebhookInfo").catch(() => null),
@@ -1378,10 +1565,25 @@ async function loadBot() {
   state.botShort = (shortDesc && shortDesc.short_description) || "";
   renderBot();
 }
+function renderPlatformBot(rec) {
+  const caps = rec.capabilities || {};
+  const rows = Object.keys(caps).filter((k) => typeof caps[k] === "boolean").map((k) => `<dt>${esc(k)}</dt><dd>${caps[k] ? "支持" : "不支持"}</dd>`).join("");
+  $("#view").innerHTML = `<div class="card"><div class="card-head"><div><h2 class="card-title">${esc(rec.platform_name || rec.platform)}</h2><p class="card-sub">平台适配器已接入；资料/命令页尚未实现</p></div><span class="pill">${esc(rec.platform || "platform")}</span></div>
+    <div class="card-body"><p class="hint">当前平台 runtime 还没有提供 getMe / 命令菜单等资料接口。通用的群组、规则、禁言、审计页面仍可复用。</p><dl class="kv">${rows}</dl></div></div>`;
+}
+
 function renderBot() {
   const me = state.botMe || {};
   const wh = state.webhook || {};
   const cmds = Array.isArray(state.commands) ? state.commands : [];
+  const webhookCard = botHas("webhook")
+    ? `<div class="card"><div class="card-head"><div><h2 class="card-title">Webhook</h2><p class="card-sub">getWebhookInfo</p></div></div><div class="card-body"><dl class="kv">
+        <dt>地址</dt><dd class="mono">${esc(wh.url || "长轮询模式（未设置 webhook）")}</dd>
+        <dt>待处理</dt><dd>${esc(wh.pending_update_count == null ? "—" : wh.pending_update_count)}</dd>
+        <dt>最近错误</dt><dd>${esc(wh.last_error_message || "—")}</dd>
+        <dt>最近错误时间</dt><dd>${esc(fmtTime(wh.last_error_date ? wh.last_error_date * 1000 : ""))}</dd>
+      </dl></div></div>`
+    : `<div class="card"><div class="card-head"><div><h2 class="card-title">Webhook</h2><p class="card-sub">当前平台不支持</p></div></div><div class="card-body"><p class="hint">该平台适配器没有声明 webhook 能力。</p></div></div>`;
   $("#view").innerHTML = `
     <div class="grid-2">
       <div class="card"><div class="card-head"><div><h2 class="card-title">机器人</h2><p class="card-sub">getMe</p></div></div><div class="card-body"><dl class="kv">
@@ -1389,13 +1591,9 @@ function renderBot() {
         <dt>ID</dt><dd class="mono">${esc(me.id || "—")}</dd>
         <dt>名称</dt><dd>${esc([me.first_name, me.last_name].filter(Boolean).join(" ") || "—")}</dd>
         <dt>Bot</dt><dd>${me.is_bot ? "是" : "否"}</dd>
+        <dt>平台</dt><dd>${esc(platformName())}</dd>
       </dl></div></div>
-      <div class="card"><div class="card-head"><div><h2 class="card-title">Webhook</h2><p class="card-sub">getWebhookInfo</p></div></div><div class="card-body"><dl class="kv">
-        <dt>地址</dt><dd class="mono">${esc(wh.url || "长轮询模式（未设置 webhook）")}</dd>
-        <dt>待处理</dt><dd>${esc(wh.pending_update_count == null ? "—" : wh.pending_update_count)}</dd>
-        <dt>最近错误</dt><dd>${esc(wh.last_error_message || "—")}</dd>
-        <dt>最近错误时间</dt><dd>${esc(fmtTime(wh.last_error_date ? wh.last_error_date * 1000 : ""))}</dd>
-      </dl></div></div>
+      ${webhookCard}
     </div>
     <div class="card"><div class="card-head"><div><h2 class="card-title">命令菜单</h2><p class="card-sub">setMyCommands / deleteMyCommands</p></div></div><div class="card-body"><form id="form-commands" class="grid-form">
       <label class="field full"><span>命令 JSON（数组，每项 command + description）</span><textarea name="commands" style="min-height:160px">${esc(JSON.stringify(cmds.length ? cmds : [{ command: "help", description: "查看帮助" }], null, 2))}</textarea></label>
@@ -1503,6 +1701,37 @@ const ACTIONS = {
   "theme": () => toggleTheme(),
   "logout": () => { document.cookie = "LianT_admin_token=; Max-Age=0; path=/"; location.href = BASE + "/"; },
   "copy": (el) => copyText(el.dataset.copy || ""),
+  "add-bot": () => openModal("添加 Bot", botForm({}), bindBotForm),
+  "edit-bot": (el) => { const b = state.bots.find((x) => String(x.id) === String(el.dataset.id)) || {}; openModal("编辑 Bot", botForm(b), bindBotForm, { wide: true }); },
+  "del-bot": async (el) => {
+    if (!(await confirmAction("删除这个 Bot 的注册信息？业务库文件会保留。", { danger: true, confirmText: "删除" }))) return;
+    try {
+      await del("bots", { id: el.dataset.id });
+      state.bots = await get("bots");
+      if (String(state.currentBot) === String(el.dataset.id)) {
+        const first = state.bots.find((b) => b.running) || state.bots[0];
+        state.currentBot = first ? String(first.id) : "";
+      }
+      try { localStorage.setItem("liant-bot", state.currentBot); } catch (e2) {}
+      populateBotSwitcher();
+      toast("已删除", "ok");
+      await refreshOverview();
+      await loadSection();
+    } catch (e) { toast(errorText(e), "bad"); }
+  },
+  "restart-bot": async (el) => {
+    try {
+      await post("bots/restart", { id: Number(el.dataset.id) });
+      toast("已重启", "ok");
+      state.bots = await get("bots");
+      await refreshOverview();
+      await loadSection();
+    } catch (e) { toast(errorText(e), "bad"); }
+  },
+  "use-bot": async (el) => {
+    await selectBot(el.dataset.id);
+    toast("已切换", "ok");
+  },
   "add-chat": () => openModal("添加会话", chatForm({ enabled: true, reply_all: true, commands_enabled: true, group_admin_can_command: true }), bindChatForm),
   "edit-chat": (el) => { const c = state.chats.find((x) => String(x.chat_id) === el.dataset.id) || {}; openModal("编辑会话", chatForm(c), bindChatForm); },
   "del-chat": async (el) => {
@@ -1673,7 +1902,8 @@ document.addEventListener("submit", async (e) => {
     } else if (form.id === "form-upload") {
       e.preventDefault();
       const fd = new FormData(form);
-      const res = await fetch(BASE + "/api/upload", { method: "POST", body: fd, credentials: "same-origin" });
+      const uploadURL = BASE + "/api/upload" + (state.currentBot ? "?bot_id=" + encodeURIComponent(state.currentBot) : "");
+      const res = await fetch(uploadURL, { method: "POST", body: fd, credentials: "same-origin" });
       const body = await res.json().catch(() => ({ ok: false, error: "HTTP " + res.status }));
       if (!body.ok) throw new Error(body.error || "上传失败");
       $("#upload-result").textContent = JSON.stringify(body.data.result, null, 2);
@@ -1724,7 +1954,22 @@ $("#auth-form").addEventListener("submit", (e) => {
 $("#refresh").addEventListener("click", () => loadSection());
 $("#theme-toggle").addEventListener("click", toggleTheme);
 $("#logout").addEventListener("click", ACTIONS.logout);
+$("#bot-switcher").addEventListener("change", (e) => selectBot(e.target.value));
 window.addEventListener("hashchange", route);
+
+async function loadBotsAndPlatforms() {
+  state.bots = await get("bots");
+  state.platforms = await get("platforms").catch(() => []);
+  let saved = "";
+  try { saved = localStorage.getItem("liant-bot") || ""; } catch (e) {}
+  let pick = state.bots.find((b) => String(b.id) === saved);
+  if (!pick) pick = state.bots.find((b) => b.running) || state.bots.find((b) => b.enabled) || state.bots[0];
+  state.currentBot = pick ? String(pick.id) : "";
+  if (state.currentBot) {
+    try { localStorage.setItem("liant-bot", state.currentBot); } catch (e) {}
+  }
+  populateBotSwitcher();
+}
 
 (async function boot() {
   applyTheme();
@@ -1732,8 +1977,16 @@ window.addEventListener("hashchange", route);
   const id = (location.hash || "#overview").slice(1);
   state.active = TITLES[id] ? id : "overview";
   try {
-    state.overview = await get("overview");
-    renderFoot();
+    await loadBotsAndPlatforms();
+    await refreshOverview();
+    if (!state.currentBot || (state.overview && state.overview.no_bot)) {
+      state.active = "bots";
+      try { history.replaceState(null, "", "#bots"); } catch (e) {}
+      buildNav();
+      renderBots();
+      renderFoot();
+      return;
+    }
     if (state.active === "overview") renderOverview();
     else await loadSection();
   } catch (e) {

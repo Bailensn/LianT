@@ -25,7 +25,7 @@ import (
 // ============================================================================
 
 // SchemaVersion 每次改表结构都 +1，并在 migrations 里追加一段。
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 // SchemaStatements 是当前版本的全量建表语句（幂等，可重复执行）。
 var SchemaStatements = []string{
@@ -120,6 +120,24 @@ var SchemaStatements = []string{
 		last_seen     TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY (chat_id, user_id)
 	)`,
+	`CREATE TABLE IF NOT EXISTS bots (
+		id             INTEGER PRIMARY KEY AUTOINCREMENT,
+		name           TEXT NOT NULL DEFAULT '',
+		token          TEXT NOT NULL,
+		username       TEXT NOT NULL DEFAULT '',
+		telegram_id    INTEGER NOT NULL DEFAULT 0,
+		platform       TEXT NOT NULL DEFAULT 'telegram',
+		platform_id    TEXT NOT NULL DEFAULT '',
+		mode           TEXT NOT NULL DEFAULT 'polling',
+		webhook_url    TEXT NOT NULL DEFAULT '',
+		webhook_secret TEXT NOT NULL DEFAULT '',
+		webhook_listen TEXT NOT NULL DEFAULT '',
+		webhook_path   TEXT NOT NULL DEFAULT '',
+		enabled        INTEGER NOT NULL DEFAULT 1,
+		created_at     TEXT NOT NULL DEFAULT '',
+		updated_at     TEXT NOT NULL DEFAULT ''
+	)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_bots_token ON bots(token)`,
 	`CREATE TABLE IF NOT EXISTS join_requests (
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
 		chat_id    TEXT NOT NULL,
@@ -242,6 +260,24 @@ type MemberRec struct {
 	Msgs      int64  `json:"msgs"`
 	FirstSeen string `json:"first_seen"`
 	LastSeen  string `json:"last_seen"`
+}
+
+type BotRec struct {
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	Token         string `json:"-"`
+	Username      string `json:"username"`
+	TelegramID    int64  `json:"telegram_id"`
+	Platform      string `json:"platform"`
+	PlatformID    string `json:"platform_id"`
+	Mode          string `json:"mode"`
+	WebhookURL    string `json:"webhook_url"`
+	WebhookSecret string `json:"webhook_secret"`
+	WebhookListen string `json:"webhook_listen"`
+	WebhookPath   string `json:"webhook_path"`
+	Enabled       bool   `json:"enabled"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 type JoinRec struct {
@@ -963,6 +999,160 @@ func (s *Store) FindMembersByName(groupChatID, name string) ([]MemberRec, error)
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+// ---------------- 单 Bot → 多 Bot 迁移 ----------------
+
+// HasBusinessData 判断旧版单 Bot 数据库里是否有业务数据。
+func (s *Store) HasBusinessData() bool {
+	var n int
+	_ = s.db.QueryRow(`SELECT
+		(SELECT COUNT(*) FROM groups) +
+		(SELECT COUNT(*) FROM reply_rules) +
+		(SELECT COUNT(*) FROM banned_words) +
+		(SELECT COUNT(*) FROM admins) +
+		(SELECT COUNT(*) FROM mutes) +
+		(SELECT COUNT(*) FROM blacklist) +
+		(SELECT COUNT(*) FROM members) +
+		(SELECT COUNT(*) FROM audit)`).Scan(&n)
+	return n > 0
+}
+
+// CopyBusinessTo 把旧单 Bot 库的业务表复制到目标 Bot 库。
+// 目标库必须已经用当前 schema 初始化过；settings 里 admin_token/tg_offset 不复制。
+func (s *Store) CopyBusinessTo(dstPath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.db.Exec(`ATTACH DATABASE ? AS dst`, dstPath); err != nil {
+		return err
+	}
+	defer func() { _, _ = s.db.Exec(`DETACH DATABASE dst`) }()
+	for _, t := range []string{"groups", "admins", "reply_rules", "banned_words", "mutes", "blacklist", "members", "audit", "join_requests"} {
+		if _, err := s.db.Exec(`INSERT OR REPLACE INTO dst.` + t + ` SELECT * FROM main.` + t); err != nil {
+			return err
+		}
+	}
+	if _, err := s.db.Exec(`INSERT OR REPLACE INTO dst.settings SELECT * FROM main.settings WHERE key NOT IN ('admin_token')`); err != nil {
+		return err
+	}
+	_, _ = s.db.Exec(`INSERT OR REPLACE INTO main.settings(key,value,updated_at) VALUES('multi_bot_migrated',?,?)`, NowStr(), NowStr())
+	return nil
+}
+
+// ---------------- bots（多 Bot 注册表） ----------------
+
+func (s *Store) Bots() ([]BotRec, error) {
+	rows, err := s.db.Query(`SELECT id, name, token, username, telegram_id, platform, platform_id, mode, webhook_url, webhook_secret, webhook_listen, webhook_path, enabled, created_at, updated_at FROM bots ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BotRec
+	for rows.Next() {
+		var b BotRec
+		var enabled int
+		if err := rows.Scan(&b.ID, &b.Name, &b.Token, &b.Username, &b.TelegramID, &b.Platform, &b.PlatformID, &b.Mode,
+			&b.WebhookURL, &b.WebhookSecret, &b.WebhookListen, &b.WebhookPath,
+			&enabled, &b.CreatedAt, &b.UpdatedAt); err != nil {
+			return nil, err
+		}
+		b.Enabled = enabled != 0
+		if b.Mode == "" {
+			b.Mode = "polling"
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) Bot(id int64) (BotRec, bool) {
+	row := s.db.QueryRow(`SELECT id, name, token, username, telegram_id, platform, platform_id, mode, webhook_url, webhook_secret, webhook_listen, webhook_path, enabled, created_at, updated_at FROM bots WHERE id = ?`, id)
+	var b BotRec
+	var enabled int
+	if err := row.Scan(&b.ID, &b.Name, &b.Token, &b.Username, &b.TelegramID, &b.Platform, &b.PlatformID, &b.Mode,
+		&b.WebhookURL, &b.WebhookSecret, &b.WebhookListen, &b.WebhookPath,
+		&enabled, &b.CreatedAt, &b.UpdatedAt); err != nil {
+		return BotRec{}, false
+	}
+	b.Enabled = enabled != 0
+	if b.Mode == "" {
+		b.Mode = "polling"
+	}
+	return b, true
+}
+
+func (s *Store) AddBot(b BotRec) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := NowStr()
+	if b.Name == "" {
+		b.Name = "未命名 Bot"
+	}
+	if b.Mode == "" {
+		b.Mode = "polling"
+	}
+	if b.Platform == "" {
+		b.Platform = "telegram"
+	}
+	res, err := s.db.Exec(`INSERT INTO bots(name, token, username, telegram_id, platform, platform_id, mode, webhook_url, webhook_secret, webhook_listen, webhook_path, enabled, created_at, updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		b.Name, b.Token, b.Username, b.TelegramID, b.Platform, b.PlatformID, b.Mode,
+		b.WebhookURL, b.WebhookSecret, b.WebhookListen, b.WebhookPath,
+		BoolInt(b.Enabled), now, now)
+	if err != nil {
+		return 0, err
+	}
+	s.bump()
+	return res.LastInsertId()
+}
+
+// UpdateBot 更新注册表；b.Token 为空表示保留原 token。
+func (s *Store) UpdateBot(b BotRec) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if b.Mode == "" {
+		b.Mode = "polling"
+	}
+	if b.Platform == "" {
+		b.Platform = "telegram"
+	}
+	var err error
+	if strings.TrimSpace(b.Token) != "" {
+		_, err = s.db.Exec(`UPDATE bots SET name=?, token=?, username=?, telegram_id=?, platform=?, platform_id=?, mode=?, webhook_url=?, webhook_secret=?, webhook_listen=?, webhook_path=?, enabled=?, updated_at=? WHERE id=?`,
+			b.Name, b.Token, b.Username, b.TelegramID, b.Platform, b.PlatformID, b.Mode,
+			b.WebhookURL, b.WebhookSecret, b.WebhookListen, b.WebhookPath,
+			BoolInt(b.Enabled), NowStr(), b.ID)
+	} else {
+		_, err = s.db.Exec(`UPDATE bots SET name=?, username=?, telegram_id=?, platform=?, platform_id=?, mode=?, webhook_url=?, webhook_secret=?, webhook_listen=?, webhook_path=?, enabled=?, updated_at=? WHERE id=?`,
+			b.Name, b.Username, b.TelegramID, b.Platform, b.PlatformID, b.Mode,
+			b.WebhookURL, b.WebhookSecret, b.WebhookListen, b.WebhookPath,
+			BoolInt(b.Enabled), NowStr(), b.ID)
+	}
+	if err == nil {
+		s.bump()
+	}
+	return err
+}
+
+func (s *Store) DeleteBot(id int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.db.Exec(`DELETE FROM bots WHERE id = ?`, id); err != nil {
+		return err
+	}
+	s.bump()
+	return nil
+}
+
+func (s *Store) SetBotIdentity(id int64, username string, telegramID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.db.Exec(`UPDATE bots SET username=?, telegram_id=?, updated_at=? WHERE id=?`,
+		username, telegramID, NowStr(), id); err != nil {
+		return err
+	}
+	s.bump()
+	return nil
 }
 
 // ---------------- join requests ----------------

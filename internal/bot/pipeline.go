@@ -76,8 +76,12 @@ func (b *Bot) InvalidateRules() {
 // ReplyInfo 状态快照（规则/违禁词/数据库）。
 func (b *Bot) ReplyInfo() map[string]string {
 	group, _, words := b.Rules()
+	dbFile := cfg.DBPath
+	if b.cfg.DBFile != "" {
+		dbFile = b.cfg.DBFile
+	}
 	d := map[string]string{
-		"db_file":     cfg.DBPath,
+		"db_file":     dbFile,
 		"reply_rules": strconv.Itoa(len(group.Rules)),
 		"reply_all":   strconv.FormatBool(group.IsReplyAll()),
 		"reply_ver":   strconv.FormatInt(b.st.Revision(), 10),
@@ -85,7 +89,7 @@ func (b *Bot) ReplyInfo() map[string]string {
 	}
 	if b.st != nil {
 		d["reply_loaded"] = time.Now().Format(time.RFC3339)
-		d["reply_file"] = cfg.DBPath
+		d["reply_file"] = dbFile
 	}
 	return d
 }

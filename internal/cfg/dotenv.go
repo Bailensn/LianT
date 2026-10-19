@@ -18,7 +18,6 @@ import (
 //
 // 文件格式：
 //   # 整行注释（也支持行尾 " # 注释"，但值里有 # 时请用引号包起来）
-//   LIANT_BOT_TOKEN=123456:AA...   # BotFather 给的 token
 //   export LIANT_BOT_TOKEN=xxx    # export 前缀可有可无
 // ============================================================================
 
@@ -159,8 +158,8 @@ func EnsureDotEnvTemplate(path string) bool {
 	content := "# LianT 配置（本文件会被自动读取，改完保存即生效，不用重新编译）\n" +
 		"# 也支持行尾注释；值里含 # 请用引号包起来。\n" +
 		"\n" +
-		"# Telegram Bot Token（必填，找 @BotFather 获取）\n" +
-		"LIANT_BOT_TOKEN=\n" +
+		"# Bot token 不写在 .env：存在 SQLite bots 表，支持多个 Bot。\n" +
+		"# 旧版 LIANT_BOT_TOKEN 会在首次启动时自动导入一次。\n" +
 		"\n" +
 		"# ---- 可选：下面这些只在任务进程启动时读一次，改完要 ./LianT restart ----\n" +
 		"# LIANT_API_BASE=https://api.telegram.org\n" +

@@ -17,6 +17,8 @@ import (
 
 	"LianT/internal/bot"
 	"LianT/internal/cfg"
+	"LianT/internal/manager"
+	"LianT/internal/platform"
 	"LianT/internal/store"
 	"LianT/internal/tg"
 )
@@ -32,12 +34,35 @@ import (
 // ============================================================================
 
 type Server struct {
-	b      *bot.Bot
-	st     *store.Store
+	m      *manager.Manager
+	reg    *store.Store
 	token  string
 	prefix string
 	addr   string
 	srv    *http.Server
+}
+
+// botInput 是多 Bot 管理接口的输入（token 单独传，不在 BotRec 里暴露）。
+type botInput struct {
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	Token         string `json:"token"`
+	Mode          string `json:"mode"`
+	WebhookURL    string `json:"webhook_url"`
+	WebhookSecret string `json:"webhook_secret"`
+	WebhookListen string `json:"webhook_listen"`
+	WebhookPath   string `json:"webhook_path"`
+	Platform      string `json:"platform"`
+	Enabled       bool   `json:"enabled"`
+}
+
+func (in botInput) toRec() store.BotRec {
+	return store.BotRec{
+		ID: in.ID, Name: in.Name, Token: in.Token, Mode: in.Mode,
+		WebhookURL: in.WebhookURL, WebhookSecret: in.WebhookSecret,
+		WebhookListen: in.WebhookListen, WebhookPath: in.WebhookPath,
+		Platform: in.Platform, Enabled: in.Enabled,
+	}
 }
 
 // chatView 是网页会话列表的展示结构。
@@ -100,19 +125,19 @@ func RandomToken(n int) string {
 }
 
 // Start 启动管理端；返回 nil 表示没启动。
-func Start(b *bot.Bot, st *store.Store) *Server {
+func Start(m *manager.Manager, reg *store.Store) *Server {
 	if strings.EqualFold(cfg.EnvOr("LIANT_ADMIN_ENABLE", "true"), "false") {
 		log.Printf("[i] 网页管理端已按 LIANT_ADMIN_ENABLE=false 关闭")
 		return nil
 	}
-	tok, tokSrc := TokenSource(st)
+	tok, tokSrc := TokenSource(reg)
 	if tok == "" {
 		log.Printf("[!] 管理端没有可用 token（来源: %s）", tokSrc)
 	} else {
 		log.Printf("[i] 网页管理端 token 来源: %s", tokSrc)
 	}
 	a := &Server{
-		b: b, st: st, token: tok,
+		m: m, reg: reg, token: tok,
 		prefix: NormalizePrefix(cfg.AdminPrefix()),
 		addr:   ListenAddr(),
 	}
@@ -137,6 +162,15 @@ func Start(b *bot.Bot, st *store.Store) *Server {
 		}
 	}()
 	base := "http://" + a.addr + a.prefix
+	if views, err := m.List(); err == nil {
+		running := 0
+		for _, v := range views {
+			if v.Running {
+				running++
+			}
+		}
+		log.Printf("[i] 已注册 %d 个 Bot，运行中 %d 个", len(views), running)
+	}
 	log.Printf("[OK] 网页管理端: %s/  (token: %s)", base, MaskToken(a.token))
 	if !loopback {
 		log.Printf("[!] 管理端绑在非回环地址 %s：请务必用反代加 HTTPS/额外鉴权", a.addr)
@@ -258,15 +292,45 @@ func DecodeBody(r *http.Request, v interface{}) error {
 func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 	method := r.Method
 	q := r.URL.Query()
-	st := a.st
-	if st == nil {
-		ApiErr(w, http.StatusInternalServerError, "数据库未就绪")
+	reg := a.reg
+	if reg == nil || a.m == nil {
+		ApiErr(w, http.StatusInternalServerError, "存储未就绪")
+		return
+	}
+
+	// 多 Bot：所有业务接口用 ?bot_id= 选择；不带则退回第一个运行中的 Bot。
+	var rt *manager.Runtime
+	if id, err := strconv.ParseInt(strings.TrimSpace(q.Get("bot_id")), 10, 64); err == nil && id > 0 {
+		rt, _ = a.m.Get(id)
+	} else {
+		rt, _ = a.m.First()
+	}
+	var b *bot.Bot
+	var st *store.Store
+	if rt != nil {
+		b, st = rt.Bot, rt.Store
+	}
+	if route == "overview" && rt == nil {
+		ApiOK(w, map[string]interface{}{
+			"bot":      map[string]string{"bot_state": "未配置"},
+			"counts":   map[string]int{},
+			"settings": map[string]string{},
+			"recent":   []store.AuditRec{},
+			"cmd_help": bot.HelpText(),
+			"no_bot":   true,
+			"db_file":  cfg.DBPath,
+			"admin_url": a.addr + a.prefix,
+		})
+		return
+	}
+	if rt == nil && route != "bots" && route != "bots/update" && route != "bots/restart" && route != "platforms" && route != "help" {
+		ApiErr(w, http.StatusConflict, "还没有运行中的 Bot：请先在「机器人」里添加 token 并启用")
 		return
 	}
 
 	switch route {
 	case "overview":
-		group, _, words := a.b.Rules()
+		group, _, words := b.Rules()
 		groups, _ := st.Groups()
 		ruleList, _ := st.Rules()
 		wordRecs, _ := st.Words()
@@ -276,12 +340,16 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		joins, _ := st.JoinRequests("", "pending", 500)
 		recent, _ := st.Audit(20, "", "")
 		tokenSource := "未配置"
-		if _, src := TokenSource(st); src != "" {
+		if _, src := TokenSource(reg); src != "" {
 			tokenSource = src
 		}
+		dbFile := cfg.DBPath
+		if rt != nil {
+			dbFile = manager.BotDBPath(rt.Rec.ID)
+		}
 		ApiOK(w, map[string]interface{}{
-			"bot":          a.b.Status(),
-			"db_file":      cfg.DBPath,
+			"bot":          b.Status(),
+			"db_file":      dbFile,
 			"counts":       map[string]int{"chats": len(groups), "rules": len(ruleList), "words": len(wordRecs), "admins": len(admins), "mutes": len(mutes), "blacklist": len(bl), "joins": len(joins)},
 			"settings":     st.PublicSettings(),
 			"recent":       recent,
@@ -291,6 +359,93 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			"_rules":       len(group.Rules),
 			"_words":       words.Count(),
 		})
+
+	// ---- 多 Bot 注册表 ----
+	case "bots":
+		switch method {
+		case http.MethodGet:
+			list, err := a.m.List()
+			if err != nil {
+				ApiErr(w, 500, err.Error())
+				return
+			}
+			ApiOK(w, list)
+		case http.MethodPost:
+			var in botInput
+			if err := DecodeBody(r, &in); err != nil {
+				ApiErr(w, 400, "请求体不是合法 JSON: "+err.Error())
+				return
+			}
+			rec := in.toRec()
+			if strings.TrimSpace(rec.Token) == "" {
+				ApiErr(w, 400, "需要 token")
+				return
+			}
+			rec.Enabled = true
+			id, err := a.m.Add(rec)
+			if err != nil {
+				ApiErr(w, 502, err.Error())
+				return
+			}
+			_ = reg.AddAudit(store.AuditRec{Kind: "manual", Username: "网页后台", Hit: "添加 Bot", Actions: `["bot"]`, Result: "ok", Detail: fmt.Sprintf("bot_id=%d", id)})
+			ApiOK(w, map[string]interface{}{"id": id})
+		case http.MethodDelete:
+			id, _ := strconv.ParseInt(q.Get("id"), 10, 64)
+			if id <= 0 {
+				ApiErr(w, 400, "缺少 id")
+				return
+			}
+			if err := a.m.Delete(id); err != nil {
+				ApiErr(w, 500, err.Error())
+				return
+			}
+			ApiOK(w, "deleted")
+		default:
+			ApiErr(w, 405, "不支持的方法")
+		}
+
+	case "platforms":
+		var out []map[string]interface{}
+		for _, ad := range platform.List() {
+			out = append(out, map[string]interface{}{
+				"id": ad.ID(), "name": ad.Name(), "capabilities": ad.Capabilities(),
+			})
+		}
+		ApiOK(w, out)
+
+	case "bots/update":
+		if method != http.MethodPost {
+			ApiErr(w, 405, "不支持的方法")
+			return
+		}
+		var in botInput
+		if err := DecodeBody(r, &in); err != nil || in.ID <= 0 {
+			ApiErr(w, 400, "需要 id")
+			return
+		}
+		if err := a.m.Update(in.toRec()); err != nil {
+			ApiErr(w, 502, err.Error())
+			return
+		}
+		ApiOK(w, "updated")
+
+	case "bots/restart":
+		if method != http.MethodPost {
+			ApiErr(w, 405, "不支持的方法")
+			return
+		}
+		var in struct {
+			ID int64 `json:"id"`
+		}
+		if err := DecodeBody(r, &in); err != nil || in.ID <= 0 {
+			ApiErr(w, 400, "需要 id")
+			return
+		}
+		if err := a.m.Restart(in.ID); err != nil {
+			ApiErr(w, 502, err.Error())
+			return
+		}
+		ApiOK(w, "restarted")
 
 	case "rules":
 		switch method {
@@ -315,7 +470,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 				ApiErr(w, 500, err.Error())
 				return
 			}
-			a.b.InvalidateRules()
+			b.InvalidateRules()
 			ApiOK(w, map[string]interface{}{"id": id})
 		case http.MethodDelete:
 			id, _ := strconv.ParseInt(q.Get("id"), 10, 64)
@@ -327,7 +482,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 				ApiErr(w, 500, err.Error())
 				return
 			}
-			a.b.InvalidateRules()
+			b.InvalidateRules()
 			ApiOK(w, "deleted")
 		default:
 			ApiErr(w, 405, "不支持的方法")
@@ -363,7 +518,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 				ApiErr(w, 500, err.Error())
 				return
 			}
-			a.b.InvalidateRules()
+			b.InvalidateRules()
 			ApiOK(w, map[string]interface{}{"id": id})
 		case http.MethodDelete:
 			id, _ := strconv.ParseInt(q.Get("id"), 10, 64)
@@ -371,7 +526,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 				ApiErr(w, 500, err.Error())
 				return
 			}
-			a.b.InvalidateRules()
+			b.InvalidateRules()
 			ApiOK(w, "deleted")
 		default:
 			ApiErr(w, 405, "不支持的方法")
@@ -432,7 +587,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			ApiErr(w, 405, "不支持的方法")
 			return
 		}
-		c := a.b.Client()
+		c := b.Client()
 		if c == nil {
 			ApiErr(w, 503, "机器人尚未连接 Telegram")
 			return
@@ -456,7 +611,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			}
 			name := info.Display()
 			_ = st.UpdateGroup(g.ChatID, &name, nil, nil, nil, nil, nil, nil)
-			if me := a.b.Me(); me.ID > 0 {
+			if me := b.Me(); me.ID > 0 {
 				if m, err := c.GetChatMember(g.ChatID, strconv.FormatInt(me.ID, 10)); err == nil {
 					ok := m.IsAdmin()
 					_ = st.UpdateGroup(g.ChatID, nil, nil, nil, nil, nil, &ok, nil)
@@ -472,7 +627,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 
 	// ---- 单个会话详情 ----
 	case "chats/info":
-		c := a.b.Client()
+		c := b.Client()
 		if c == nil {
 			ApiErr(w, 503, "机器人尚未连接 Telegram")
 			return
@@ -489,7 +644,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		}
 		count, _ := c.GetChatMemberCount(chatID)
 		botState := map[string]interface{}{}
-		if me := a.b.Me(); me.ID > 0 {
+		if me := b.Me(); me.ID > 0 {
 			if m, err := c.GetChatMember(chatID, strconv.FormatInt(me.ID, 10)); err == nil {
 				botState = map[string]interface{}{"status": m.Status, "is_admin": m.IsAdmin()}
 			}
@@ -499,7 +654,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		})
 
 	case "chats/admins":
-		c := a.b.Client()
+		c := b.Client()
 		if c == nil {
 			ApiErr(w, 503, "机器人尚未连接 Telegram")
 			return
@@ -585,7 +740,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			if in.Seconds <= 0 {
 				in.Seconds = 600
 			}
-			results := a.b.MuteMember(bot.ActionCtx{
+			results := b.MuteMember(bot.ActionCtx{
 				ChatID: in.ChatID, UserID: in.UserID, Username: in.Username,
 				Kind: "manual", Hit: "网页禁言", Operator: "web",
 			}, time.Duration(in.Seconds)*time.Second, OrDefault(in.Reason, "网页后台禁言"))
@@ -596,7 +751,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 				ApiErr(w, 400, "需要 chat_id 和 user_id")
 				return
 			}
-			results := a.b.UnmuteMember(bot.ActionCtx{ChatID: cid, UserID: uid, Kind: "manual", Hit: "网页解禁", Operator: "web"})
+			results := b.UnmuteMember(bot.ActionCtx{ChatID: cid, UserID: uid, Kind: "manual", Hit: "网页解禁", Operator: "web"})
 			ApiOK(w, results)
 		default:
 			ApiErr(w, 405, "不支持的方法")
@@ -625,7 +780,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 				return
 			}
 			if in.Ban {
-				results := a.b.BanMember(bot.ActionCtx{
+				results := b.BanMember(bot.ActionCtx{
 					ChatID: in.ChatID, UserID: in.UserID, Username: in.Username,
 					Kind: "manual", Hit: "网页拉黑", Operator: "web",
 				}, true)
@@ -647,7 +802,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 				return
 			}
 			_ = st.RemoveBlacklist(cid, uid)
-			results := a.b.UnbanMember(bot.ActionCtx{ChatID: cid, UserID: uid, Kind: "manual", Hit: "网页解黑", Operator: "web"})
+			results := b.UnbanMember(bot.ActionCtx{ChatID: cid, UserID: uid, Kind: "manual", Hit: "网页解黑", Operator: "web"})
 			ApiOK(w, map[string]interface{}{"local": "removed", "telegram": results})
 		default:
 			ApiErr(w, 405, "不支持的方法")
@@ -674,7 +829,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 				ApiErr(w, 400, "需要 chat_id 和 user_id")
 				return
 			}
-			c := a.b.Client()
+			c := b.Client()
 			if c == nil {
 				ApiErr(w, 503, "机器人尚未连接 Telegram")
 				return
@@ -764,9 +919,9 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			var id int64
 			var err error
 			if kind == "text" {
-				id, err = a.b.SendMessageOpt(cid, strings.TrimSpace(in.Content), opt)
+				id, err = b.SendMessageOpt(cid, strings.TrimSpace(in.Content), opt)
 			} else {
-				id, err = a.b.SendMediaNow(cid, kind, strings.TrimSpace(in.Media), strings.TrimSpace(in.Caption), opt)
+				id, err = b.SendMediaNow(cid, kind, strings.TrimSpace(in.Media), strings.TrimSpace(in.Caption), opt)
 			}
 			if err != nil {
 				results = append(results, oneResult{ChatID: cid, Error: tgErr(err)})
@@ -821,7 +976,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 					return
 				}
 			}
-			a.b.InvalidateRules()
+			b.InvalidateRules()
 			ApiOK(w, "saved")
 		default:
 			ApiErr(w, 405, "不支持的方法")
@@ -834,7 +989,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			ApiErr(w, 400, "需要 chat_id")
 			return
 		}
-		list := a.b.RecentList(gid, 60, 0)
+		list := b.RecentList(gid, 60, 0)
 		messages := make([]map[string]interface{}, 0, len(list))
 		for _, m := range list {
 			messages = append(messages, map[string]interface{}{
@@ -922,7 +1077,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 				ApiErr(w, 400, "消息内容不能为空")
 				return
 			}
-			messageID, sendErr = a.b.SendMessageOpt(chatID, content, opt)
+			messageID, sendErr = b.SendMessageOpt(chatID, content, opt)
 			detailTxt = fmt.Sprintf("id=%d kind=text", messageID)
 		} else {
 			media := strings.TrimSpace(in.Media)
@@ -934,7 +1089,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 				return
 			}
 			content = media
-			messageID, sendErr = a.b.SendMediaNow(chatID, kind, media, strings.TrimSpace(in.Caption), opt)
+			messageID, sendErr = b.SendMediaNow(chatID, kind, media, strings.TrimSpace(in.Caption), opt)
 			detailTxt = fmt.Sprintf("id=%d kind=%s media=%s", messageID, kind, media)
 		}
 		result := "ok"
@@ -974,7 +1129,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			ApiErr(w, 400, "没有要撤回的消息")
 			return
 		}
-		n, err := a.b.RecallMessages(in.ChatID, ids)
+		n, err := b.RecallMessages(in.ChatID, ids)
 		result := "ok"
 		if err != nil {
 			result = "fail"
@@ -1038,7 +1193,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		}
 		_ = file.Close()
 		_ = tmp.Close()
-		c := a.b.Client()
+		c := b.Client()
 		if c == nil {
 			ApiErr(w, 503, "机器人尚未连接 Telegram")
 			return
@@ -1077,7 +1232,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			ApiErr(w, 400, "method 只能是字母数字")
 			return
 		}
-		c := a.b.Client()
+		c := b.Client()
 		if c == nil {
 			ApiErr(w, 503, "机器人尚未连接 Telegram")
 			return
@@ -1104,7 +1259,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		w.Header().Set("Content-Disposition", `attachment; filename="LianT-config.json"`)
 		_, _ = w.Write(buf)
 	case "reload":
-		_ = a.b.ReloadAll()
+		_ = b.ReloadAll()
 		ApiOK(w, "已重载规则缓存与 Token，已请求重连 Telegram")
 	case "help":
 		ApiOK(w, map[string]interface{}{"commands": bot.HelpText(), "actions": "禁言/解禁/踢出/封禁/撤回/规则/违禁词/管理员"})

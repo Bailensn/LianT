@@ -52,7 +52,14 @@ location /LianT/ {
 
 ## Telegram Webhook（可选）
 
-如果不想用长轮询，把 `LIANT_WEBHOOK_URL` 设成公网 HTTPS 地址，并反代到本地监听：
+Webhook 现在按 Bot 配置（SQLite `bots` 表），在网页后台「机器人 → 编辑」里填写：
+
+- `Webhook URL`：公网 HTTPS 地址
+- `Webhook secret`：随机字符串
+- `Webhook 本地监听`：如 `127.0.0.1:28743`
+- `Webhook 路径`：如 `/telegram/webhook`
+
+多个 webhook Bot 必须使用不同的本地监听端口（或由反代按路径分发到不同端口）。
 
 ```nginx
 location /telegram/webhook {
@@ -62,11 +69,6 @@ location /telegram/webhook {
 }
 ```
 
-```env
-LIANT_WEBHOOK_URL=https://你的域名/telegram/webhook
-LIANT_WEBHOOK_SECRET=随机字符串
-LIANT_WEBHOOK_LISTEN=127.0.0.1:28743
-```
-
-程序启动时会自动 `setWebhook` 并校验 `X-Telegram-Bot-Api-Secret-Token`。
-想切回长轮询：删掉 `LIANT_WEBHOOK_URL` 后 `./LianT restart`（启动时会自动 `deleteWebhook`）。
+程序启动/保存时会自动 `setWebhook`，并校验
+`X-Telegram-Bot-Api-Secret-Token`。想切回长轮询：把该 Bot 的模式改成「长轮询」并保存，
+或在网页里清空 Webhook URL。

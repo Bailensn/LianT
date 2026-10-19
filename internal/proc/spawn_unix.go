@@ -18,7 +18,7 @@ import (
 //     会多传一份自身路径，main.normalizeArgs 会剥掉。
 //   - setsid：脱离当前终端的会话/进程组，主进程或终端退出都不会带走它；
 //   - stdout/stderr 追加到日志文件，保证启动早期的输出（含 panic）也不会丢；
-//   - 继承环境变量，所以 LIANT_BOT_TOKEN 之类的配置能传下去。
+//   - 继承环境变量，所以 LIANT_* 路径/端口配置能传下去。
 func SpawnDetached(exe string, args []string, logFile string) (int, error) {
 	logF, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {

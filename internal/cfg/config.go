@@ -2,7 +2,6 @@ package cfg
 
 import (
 	"encoding/json"
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -21,12 +20,6 @@ import (
 // 业务数据（规则/违禁词/群/管理员）全部在 SQLite 里，不在 .env。
 // ============================================================================
 
-// 代码里没有硬编码的 Bot Token；只从环境变量 /.env 读。
-var (
-	// 默认 Bot Token（留空，仅作为文档占位）
-	BotToken = ""
-)
-
 const (
 	DefaultControlPort = 28741
 	DefaultAdminAddr   = "127.0.0.1:28742"
@@ -35,51 +28,6 @@ const (
 	AppVersion      = "0.1.0"
 	AppName         = "LianT"
 )
-
-// ---------------- Bot Token ----------------
-
-// Token 返回 Telegram Bot Token。
-func Token() string {
-	t, _ := TokenWithSource()
-	return t
-}
-
-// TokenWithSource 同时告诉调用方 token 是从哪来的（排错时有用）。
-func TokenWithSource() (string, string) {
-	if v := strings.TrimSpace(os.Getenv("LIANT_BOT_TOKEN")); v != "" {
-		return v, "环境变量"
-	}
-	if v, ok := EnvFile().get("LIANT_BOT_TOKEN"); ok {
-		return strings.TrimSpace(v), "文件 " + EnvPath
-	}
-	if v := strings.TrimSpace(BotToken); v != "" {
-		return v, "config.go 常量"
-	}
-	return "", ""
-}
-
-// TokenMissing 判断 Token 是否还没填（含模板占位符）。
-func TokenMissing() bool {
-	t, _ := TokenWithSource()
-	if t == "" {
-		return true
-	}
-	return strings.Contains(t, "在这里") || strings.Contains(t, "YOUR_") || strings.Contains(t, "123456:")
-}
-
-// TokenError 返回给用户看的中文提示。
-func TokenError() string {
-	if !TokenMissing() {
-		return ""
-	}
-	_, src := TokenWithSource()
-	if src == "" {
-		src = "未配置"
-	}
-	return fmt.Sprintf("Bot Token 未配置(来源: %s)：请填 %s 里的 LIANT_BOT_TOKEN"+
-		"（从 @BotFather 获取），或设置同名环境变量；保存后最长 60 秒自动生效，也可以敲 LianT reload",
-		src, EnvPath)
-}
 
 // ---------------- Telegram API ----------------
 
@@ -91,31 +39,6 @@ func APIBase() string {
 // Proxy 支持 http:// 或 socks5:// 代理（手机/受限网络常用）。
 func Proxy() string {
 	return strings.TrimSpace(EnvOr("LIANT_PROXY", ""))
-}
-
-// ---------------- Webhook（可选） ----------------
-// 默认长轮询；需要公网 HTTPS 回调时设置 LIANT_WEBHOOK_URL。
-func WebhookURL() string {
-	return strings.TrimSpace(EnvOr("LIANT_WEBHOOK_URL", ""))
-}
-
-func WebhookSecret() string {
-	return strings.TrimSpace(EnvOr("LIANT_WEBHOOK_SECRET", ""))
-}
-
-func WebhookListen() string {
-	return EnvOr("LIANT_WEBHOOK_LISTEN", "127.0.0.1:28743")
-}
-
-func WebhookPath() string {
-	p := strings.TrimSpace(EnvOr("LIANT_WEBHOOK_PATH", "/telegram/webhook"))
-	if p == "" {
-		p = "/telegram/webhook"
-	}
-	if !strings.HasPrefix(p, "/") {
-		p = "/" + p
-	}
-	return p
 }
 
 // ---------------- 控制端口 ----------------

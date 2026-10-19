@@ -1,12 +1,12 @@
 # LianT
 
-**自托管的 Telegram 群管理机器人 + 网页管理后台。**
+**自托管的多 Bot 管理后台 + Telegram 群管理机器人。**
 
 单文件 Go 程序，不需要公网 IP、域名或 HTTPS 回调 —— 用 Telegram Bot API 长轮询收消息；
-所有配置与运营数据都在一个 SQLite 文件里，用网页后台或群内中文指令管理。
+Bot token 存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个 Bot 有独立业务库。
+网页后台用同一套 UI 管理所有 Bot，并通过平台适配层（`telegram` 目前；QQ/其他平台可扩展）复用。
 
-设计取向上参考了 [LensnTeam/LianT](https://github.com/LensnTeam/LianT)：Telegram Bot 管理、自托管、SQLite、网页后台。
-本仓库是独立分叉，只做 Telegram。
+设计取向上参考了 [LensnTeam/LianT](https://github.com/LensnTeam/LianT)：Bot 管理、自托管、SQLite、网页后台。
 
 ---
 
@@ -20,6 +20,8 @@
 - **入群**：欢迎语（`{name}` / `{username}` / `{chat}`）、入群申请自动通过或留在 Telegram 里人工审批。
 - **网页后台**：总览、群组、消息、群发、入群审批、规则、违禁词、管理员、禁言、黑名单、
   群工具、Bot 资料、Bot API/文件上传、审计、设置；支持搜索、筛选、明暗主题。
+- **多 Bot**：一个任务进程跑 N 个 Bot；注册表在 `LianT.db`，每个 Bot 的业务库在 `bots/<id>.db`。
+- **平台兼容层**：`platform.Adapter` 统一身份校验与能力声明；管理端按 capabilities 显示功能。
 - **单文件 + SQLite**：纯 Go 驱动（`modernc.org/sqlite`），不需要 cgo/gcc，方便手机和 arm 机器。
 - **两种收消息方式**：默认长轮询（无需公网/证书）；也可设 webhook + 密钥走公网回调。
 - **媒体与交互**：图片/文件/视频/音频/语音/贴纸/动图/位置/投票/骰子、相册、按钮回调、话题、置顶、编辑消息。
@@ -30,21 +32,27 @@
 ## 架构
 
 ```
-┌──────────────┐   指令(回环 TCP)   ┌────────────────────┐   SQLite   ┌──────────────┐
-│ 主进程 LianT  │ ────────────────▶ │ 任务进程 LianT __run │ ─────────▶ │  LianT.db    │
-│ 只发指令      │ ◀──────────────── │ Bot 长轮询 + 管理端  │ ◀───────── │ 规则/违禁词… │
-└──────────────┘                   └─────────┬──────────┘             └──────────────┘
-                                             │ HTTP(可反代)
-                                             ▼
-                                      admin.html ── 浏览器/手机
-                                             │
-                                             ▼
-                                  https://api.telegram.org
+┌──────────────┐   指令(回环 TCP)   ┌──────────────────────────┐
+│ 主进程 LianT  │ ────────────────▶ │ 任务进程 LianT __run      │
+│ 只发指令      │ ◀──────────────── │ 多 Bot 管理器 + 网页后台  │
+└──────────────┘                   └──────────┬───────────────┘
+                                              │
+                    ┌─────────────────────────┼─────────────────────────┐
+                    ▼                         ▼                         ▼
+             LianT.db（注册表）        bots/1.db（Bot #1）        bots/2.db（Bot #2）
+             bots / admin_token        规则/群/禁言/审计…        规则/群/禁言/审计…
+                    │
+                    ▼
+              admin.html（浏览器/手机）
+                    │
+                    ▼
+        Telegram Bot API（每个 Bot 独立 token / 轮询或 webhook）
 ```
 
-- **主进程**：`LianT`，只发指令（start/stop/status/logs/admin…），随时开关不影响机器人。
-- **任务进程**：`LianT __run`，全局唯一（绑定控制端口做单例），跑 Telegram 长轮询和网页后台。
-- **规则/数据**：`LianT.db`，SQLite。
+- **主进程**：`LianT`，只发指令（start/stop/status/logs/admin/bot…），随时开关不影响机器人。
+- **任务进程**：`LianT __run`，全局唯一；一个进程内跑 N 个 Bot。
+- **注册表**：`LianT.db`，存 Bot token、平台、启停、webhook 配置、管理端 token。
+- **业务库**：`bots/<id>.db`，每个 Bot 独立，互不污染。
 - **日志**：`LianT.log`，8MB 轮转，保留 `.1`~`.5`。
 
 ## 快速开始
@@ -59,8 +67,8 @@
 
 ```sh
 cp config/.env.example .env
-# 编辑 .env，填：
-# LIANT_BOT_TOKEN=123456789:AA...
+# .env 只放路径/端口/代理/管理端 token，不再放 Bot token。
+# Bot token 存在 SQLite：用 `./LianT bot add <token>` 或网页「机器人」添加。
 ```
 
 ### 3. 编译
@@ -75,10 +83,11 @@ go build -trimpath -ldflags "-s -w" -o LianT .
 ### 4. 启动
 
 ```sh
-./LianT init      # 生成 .env 模板 + 给数据库播种默认规则（可选）
-./LianT start     # 后台启动任务进程
-./LianT status    # 看机器人状态
-./LianT admin     # 打印网页后台地址与 token
+./LianT init                 # 生成 .env 模板 + 初始化注册表（可选）
+./LianT bot add <token>      # 添加第一个 Bot（也可启动后在网页「机器人」添加）
+./LianT start                # 后台启动任务进程（会启动所有 enabled 的 Bot）
+./LianT status               # 看 Bot 数量与运行状态
+./LianT admin                # 打印网页后台地址与 token
 ```
 
 打开 `http://127.0.0.1:28742/?token=...`，之后 token 会写进 cookie。
@@ -159,16 +168,17 @@ Telegram 普通 @username 不带用户 ID，所以 LianT 会用本地名册（�
 
 ## Webhook（可选）
 
-默认长轮询。要改用 webhook：
+Webhook 按 Bot 配置，在网页后台「机器人 → 编辑」里填写：
 
-```env
-LIANT_WEBHOOK_URL=https://你的域名/telegram/webhook
-LIANT_WEBHOOK_SECRET=随机字符串
-LIANT_WEBHOOK_LISTEN=127.0.0.1:28743
-```
+- Webhook URL：公网 HTTPS 地址
+- Webhook secret：随机字符串
+- Webhook 本地监听：如 `127.0.0.1:28743`
+- Webhook 路径：如 `/telegram/webhook`
 
-反向代理把 `/telegram/webhook` 转到 `127.0.0.1:28743`。LianT 启动时会自动 `setWebhook`，并校验
+多个 webhook Bot 要用不同的本地监听端口；反向代理按端口/路径转发。
+程序启动或保存时会自动 `setWebhook`，并校验
 `X-Telegram-Bot-Api-Secret-Token`；没有密钥的请求直接 403。
+想切回长轮询：把该 Bot 的模式改成「长轮询」并保存。
 
 ## Bot API 控制台
 
@@ -194,32 +204,58 @@ LIANT_WEBHOOK_LISTEN=127.0.0.1:28743
 - Toast 用 transition 而不是 keyframes，可被连续消息打断；关闭/ESC/遮罩都能关弹层。
 - 长群名、长 ID、空列表、超长消息都有专门的截断/换行/空状态处理。
 
+## 多 Bot 与平台兼容层
+
+### 多 Bot
+
+- 注册表 `LianT.db` 的 `bots` 表存 token、平台、启停、长轮询/webhook；不再放 `.env`。
+- 每个 Bot 独立业务库 `bots/<id>.db`，规则/群/禁言/审计互不污染。
+- 一个任务进程同时跑所有 enabled 的 Bot。
+- 网页右上角切换 Bot；「机器人」页添加/编辑/启停/重启/删除。
+- CLI：`LianT bot list|add|remove|enable|disable`。
+
+旧版的 `LIANT_BOT_TOKEN` 会在注册表为空时自动导入一次，并把旧单 Bot 数据复制到新 Bot 库。
+
+### 平台兼容层
+
+后台和数据库只依赖中性的 `chat_id` / `user_id` / `capabilities`，平台实现放在 `internal/platform/`：
+
+```go
+type Adapter interface {
+    ID() string
+    Name() string
+    Capabilities() Capabilities
+    ValidateToken(token string) (Identity, error)
+}
+```
+
+- 当前实现：`internal/platform/telegram`。
+- 管理端所有页面通过 `/api/bots` 拿到 `platform` 与 `capabilities`，据此显示/隐藏话题、邀请链接、内联、支付等入口。
+- 接入 qbot（QQ）或新平台时：实现一个 adapter、给 Bot 注册表加 `platform`，再用同一套 `admin.html` 与 `/api/*` 契约。
+- 合并 qbot 的字段映射与待办见 [docs/platforms.md](docs/platforms.md)。
+
 ## 配置
 
 `.env` 只放启动期配置；业务数据都在数据库里。优先级：**环境变量 > `.env` > 代码默认值**。
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
-| `LIANT_BOT_TOKEN` | 空（必填） | BotFather 给的 token |
 | `LIANT_API_BASE` | `https://api.telegram.org` | 自建网关/反代时改 |
 | `LIANT_PROXY` | 空 | `http://127.0.0.1:7890` 或 `socks5://...` |
 | `LIANT_PORT` | `28741` | 控制端口（多实例时各用一个） |
 | `LIANT_BIND` | `127.0.0.1` | 控制端口绑定地址 |
 | `LIANT_DATA_DIR` | 当前目录/`LianT-data` | 数据目录 |
-| `LIANT_DB_FILE` | `<数据目录>/LianT.db` | SQLite 文件 |
+| `LIANT_DB_FILE` | `<数据目录>/LianT.db` | Bot 注册表 SQLite |
 | `LIANT_LOG_FILE` / `LIANT_PID_FILE` / `LIANT_RUNTIME_FILE` | 数据目录下 | 单独指定 |
 | `LIANT_ADMIN_ADDR` | `127.0.0.1:28742` | 管理端监听地址 |
 | `LIANT_ADMIN_TOKEN` | 自动生成 | 管理端 token |
 | `LIANT_ADMIN_PREFIX` | 空 | 反代挂载前缀，如 `/LianT` |
 | `LIANT_ADMIN_HTML` | 内置 | 自定义管理页 |
 | `LIANT_ADMIN_ENABLE` | `true` | `false` 关闭网页后台 |
-| `LIANT_WEBHOOK_URL` | 空 | 公网 HTTPS 回调地址；设置后从长轮询切到 webhook |
-| `LIANT_WEBHOOK_SECRET` | 空 | webhook 校验密钥（`X-Telegram-Bot-Api-Secret-Token`） |
-| `LIANT_WEBHOOK_LISTEN` | `127.0.0.1:28743` | webhook 本地监听地址 |
-| `LIANT_WEBHOOK_PATH` | `/telegram/webhook` | webhook 本地路径 |
 
-改 Token / 规则**不用重启**：保存后最长 60 秒生效，或 `./LianT reload`。
-改端口 / 绑定地址 / 数据目录需要 `./LianT restart`。
+**Bot token、webhook、启停都在 SQLite**：网页「机器人」或 `./LianT bot ...`。
+新增/修改 Bot 后，运行中的任务进程用 `./LianT reload` 同步（网页保存会自动重启该 Bot）。
+路径/端口/代理改完需要 `./LianT restart`。
 
 ### CLI
 
@@ -227,33 +263,46 @@ LIANT_WEBHOOK_LISTEN=127.0.0.1:28743
 | --- | --- |
 | `LianT` | 交互控制台 |
 | `LianT start` / `stop` / `restart` | 启动 / 停止 / 重启任务进程 |
-| `LianT status` | 机器人状态、规则数、数据库、管理端地址 |
+| `LianT status` | Bot 数量、运行状态、管理端地址 |
 | `LianT logs [行数] [-f]` | 看日志 |
 | `LianT admin` | 网页后台地址 + token |
-| `LianT db` | 数据库统计 |
+| `LianT bot list` | 列出 SQLite 里的 Bot |
+| `LianT bot add <token> [名称]` | 校验并添加 Bot（写入 SQLite） |
+| `LianT bot remove <id>` | 删除 Bot 注册（业务库保留） |
+| `LianT bot enable/disable <id>` | 启用/停用 Bot |
+| `LianT db` | 注册表统计 |
 | `LianT reply [文本]` | 干跑回复规则（不发消息） |
-| `LianT reload` | 重载规则缓存与 Token |
+| `LianT reload` | 同步 Bot 注册表、启动新增 Bot、请求重连 |
 | `LianT reconnect` | 尽快重连 Telegram |
 | `LianT path` | 打印所有路径 |
 | `LianT run` | 前台运行（调试，日志打屏） |
 
 ## 数据库
 
-默认 `<数据目录>/LianT.db`，表：
+### 注册表 `<数据目录>/LianT.db`
 
 | 表 | 内容 |
 | --- | --- |
-| `settings` | reply_all、reply_default、join_auto_approve、welcome_text、admin_token、tg_offset 等 |
+| `bots` | Bot 注册：name、token、platform、platform_id、mode、webhook、enabled |
+| `settings` | 管理端 token、迁移标记等全局配置 |
+
+### 每个 Bot 的业务库 `<数据目录>/bots/<id>.db`
+
+| 表 | 内容 |
+| --- | --- |
+| `settings` | reply_all、reply_default、join_auto_approve、welcome_text、inline_results 等 |
 | `reply_rules` | 回复规则 |
 | `banned_words` | 违禁词与处置 |
-| `groups` | 会话开关（chat_id 为 Telegram 群 ID） |
+| `groups` | 会话开关（chat_id） |
 | `admins` | 后台管理员（全局/限定群） |
 | `mutes` | 禁言记录 |
 | `blacklist` | 本地黑名单 |
 | `members` | 本地名册（来自成员发言） |
+| `join_requests` | 入群申请 |
 | `audit` | 操作日志 |
 
-备份：拷 `LianT.db`，或网页「设置 → 导出 JSON 配置」。
+备份：拷整个 `LianT-data/`（注册表 + 所有 Bot 业务库），或单个 Bot 用网页「设置 → 导出 JSON 配置」。
+升级旧版时，第一次添加 Bot 会自动把旧 `LianT.db` 里的单 Bot 业务数据复制到 `bots/<id>.db`（原库保留）。
 
 ## Telegram 侧限制
 
@@ -278,10 +327,12 @@ LianT/
 ├── main.go                 CLI / 控制台 / 进程拉起
 ├── internal/
 │   ├── cfg/                配置、路径、.env
+│   ├── platform/           平台兼容层（Adapter/Capabilities）+ telegram 适配器
 │   ├── tg/                 Telegram Bot API 客户端（长轮询/消息/成员/禁言）
 │   ├── bot/                业务：事件循环、规则、指令、处置动作
+│   ├── manager/            多 Bot 注册表与运行时管理器
 │   ├── admin/              网页管理端（admin.go + admin.html）
-│   ├── store/              SQLite 存储层
+│   ├── store/              SQLite 存储层（注册表 + 每 Bot 业务库）
 │   ├── rules/              回复规则 + 违禁词引擎（纯逻辑）
 │   ├── daemon/             任务进程装配
 │   ├── ipc/                主进程 ↔ 任务进程协议
@@ -293,7 +344,8 @@ LianT/
 
 ## 路线图
 
-- [ ] 多 Bot 管理（一个实例管理多个 token / 群）
+- [ ] qbot（QQ）平台适配器与统一事件模型
+- [ ] Discord / 其他平台 adapter
 - [ ] 规则模板变量与更细的匹配条件
 - [ ] 封禁/禁言到期自动解封的任务
 - [ ] 管理端内联键盘审批入群申请

@@ -31,6 +31,18 @@ import (
 
 type Config struct {
 	Store *store.Store
+
+	// 多 Bot：每个运行时一份自己的 token / webhook 配置（来自 SQLite bots 表）。
+	ID       int64
+	Name     string
+	Platform string
+	DBFile   string
+	Token    string
+	Mode string // polling | webhook
+	WebhookURL    string
+	WebhookSecret string
+	WebhookListen string
+	WebhookPath   string
 }
 
 type Bot struct {
@@ -339,9 +351,13 @@ func (b *Bot) Supervise() {
 
 // run 一次完整的连接 + 轮询会话，返回即表示断开，需要重连。
 func (b *Bot) run() error {
-	token := cfg.Token()
-	if strings.TrimSpace(token) == "" {
-		return errors.New(cfg.TokenError())
+	token := strings.TrimSpace(b.cfg.Token)
+	if token == "" {
+		name := b.cfg.Name
+		if name == "" {
+			name = "Bot"
+		}
+		return fmt.Errorf("%s 未配置 Token：请在网页后台「机器人」里填写", name)
 	}
 	c, err := tg.New(token, cfg.APIBase(), cfg.Proxy())
 	if err != nil {
@@ -363,7 +379,10 @@ func (b *Bot) run() error {
 	go b.ensureAllGroupsAdmin()
 
 	// 配了公网 webhook 就走回调；否则长轮询。
-	if cfg.WebhookURL() != "" {
+	if strings.EqualFold(strings.TrimSpace(b.cfg.Mode), "webhook") || strings.TrimSpace(b.cfg.WebhookURL) != "" {
+		if strings.TrimSpace(b.cfg.WebhookURL) == "" {
+			return fmt.Errorf("Bot %s 配置为 webhook，但没有 Webhook URL", b.cfg.Name)
+		}
 		return b.runWebhook(c)
 	}
 	if err := c.DeleteWebhook(false); err != nil {
@@ -407,7 +426,7 @@ func (b *Bot) run() error {
 			savedAt = time.Now()
 		}
 		// 改了 .env / 收到 reload：主动退出，让 Supervise 立即重建连接。
-		if b.reloadFlag.Swap(false) || cfg.Token() != token {
+		if b.reloadFlag.Swap(false) || strings.TrimSpace(b.cfg.Token) != token {
 			log.Printf("[i] 配置已变化，重连 Telegram…")
 			return nil
 		}
@@ -665,11 +684,11 @@ func allowedUpdates() []string {
 
 // runWebhook 走 webhook 模式（需要公网 HTTPS），收到更新后交给 handleUpdate。
 func (b *Bot) runWebhook(c *tg.Client) error {
-	if err := c.SetWebhook(cfg.WebhookURL(), cfg.WebhookSecret(), allowedUpdates()); err != nil {
+	if err := c.SetWebhook(b.cfg.WebhookURL, b.cfg.WebhookSecret, allowedUpdates()); err != nil {
 		return fmt.Errorf("设置 webhook 失败: %w", err)
 	}
-	path := cfg.WebhookPath()
-	secret := cfg.WebhookSecret()
+	path := b.webhookPath()
+	secret := b.cfg.WebhookSecret
 	mux := http.NewServeMux()
 	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -693,12 +712,12 @@ func (b *Bot) runWebhook(c *tg.Client) error {
 		w.WriteHeader(http.StatusOK)
 		go b.handleUpdate(c, u)
 	})
-	srv := &http.Server{Addr: cfg.WebhookListen(), Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Addr: b.webhookListen(), Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- srv.ListenAndServe()
 	}()
-	log.Printf("[OK] Webhook 模式：%s -> %s%s", cfg.WebhookURL(), cfg.WebhookListen(), path)
+	log.Printf("[OK] Webhook 模式：%s -> %s%s", b.cfg.WebhookURL, b.webhookListen(), path)
 	select {
 	case <-b.stopCh:
 		_ = srv.Close()
@@ -1046,7 +1065,7 @@ func (b *Bot) Status() map[string]string {
 	b.mu.RUnlock()
 
 	mode := "long-polling"
-	if cfg.WebhookURL() != "" {
+	if strings.EqualFold(strings.TrimSpace(b.cfg.Mode), "webhook") || strings.TrimSpace(b.cfg.WebhookURL) != "" {
 		mode = "webhook"
 	}
 	d := map[string]string{
@@ -1054,9 +1073,10 @@ func (b *Bot) Status() map[string]string {
 		"messages":   strconv.FormatInt(atomic.LoadInt64(&b.msgCount), 10),
 		"reconnects": strconv.FormatInt(atomic.LoadInt64(&b.reconnects), 10),
 		"uptime":     time.Since(b.startedAt).Round(time.Second).String(),
-		"platform":   "Telegram",
+		"platform":   platformOr(b.cfg.Platform),
 		"api_base":   cfg.APIBase(),
 		"mode":       mode,
+		"bot_name":   b.cfg.Name,
 	}
 	if me.ID > 0 {
 		d["bot_id"] = strconv.FormatInt(me.ID, 10)
@@ -1177,6 +1197,31 @@ func (b *Bot) ensureAllGroupsAdmin() {
 			continue
 		}
 	}
+}
+
+func platformOr(p string) string {
+	if p == "" {
+		return "telegram"
+	}
+	return p
+}
+
+func (b *Bot) webhookListen() string {
+	if v := strings.TrimSpace(b.cfg.WebhookListen); v != "" {
+		return v
+	}
+	return "127.0.0.1:28743"
+}
+
+func (b *Bot) webhookPath() string {
+	p := strings.TrimSpace(b.cfg.WebhookPath)
+	if p == "" {
+		return "/telegram/webhook"
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return p
 }
 
 // ---------------- helpers ----------------
