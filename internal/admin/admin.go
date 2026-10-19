@@ -239,6 +239,13 @@ func (a *Server) Handler() http.Handler {
 			return
 		}
 		if !strings.HasPrefix(p, "/api/") {
+			// 前端拼错 base（/index.html/api/x、前缀不匹配）时给一个能看懂的 JSON，
+			// 而不是 Go 默认的纯文本 404 —— 那样页面只会显示「响应不是 JSON」。
+			if strings.Contains(p, "/api/") {
+				log.Printf("[!] 管理端 API 路径不匹配: %s", p)
+				ApiErr(w, http.StatusNotFound, "API 路径不匹配: "+p+"（检查反代前缀或 LIANT_ADMIN_PREFIX）")
+				return
+			}
 			http.NotFound(w, r)
 			return
 		}
@@ -286,6 +293,11 @@ func (a *Server) BasePath(r *http.Request) string {
 	p := r.URL.Path
 	if p == "/" || p == "" {
 		return ""
+	}
+	// 直接打开 /index.html（书签、反代 index 规则）时，base 必须是它所在目录，
+	// 否则前端会拼出 /index.html/api/... 这种地址。
+	if strings.HasSuffix(p, "/index.html") {
+		return strings.TrimSuffix(p, "/index.html")
 	}
 	return strings.TrimSuffix(p, "/")
 }
