@@ -328,6 +328,11 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		return
 	}
 
+	// qbot 页面兼容层：qbot admin.html 使用 OpenID/MemberOpenID 字段。
+	if a.compat(w, r, route, method, rt, b, st) {
+		return
+	}
+
 	switch route {
 	case "overview":
 		group, _, words := b.Rules()

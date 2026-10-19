@@ -193,7 +193,9 @@ Webhook 按 Bot 配置，在网页后台「机器人 → 编辑」里填写：
 
 ## 界面设计
 
-后台的交互遵循 [emilkowalski/skills](https://github.com/emilkowalski/skills) 的原则，重点不是加动效，而是减少错误感：
+后台 HTML 直接复用 qbot 的 `admin.html` 结构与设计令牌（同一套侧栏、顶栏、卡片、表格、弹窗和移动端布局），LianT 只做品牌、多 Bot 切换和平台能力适配；以后合并时两边页面不会各长一套。
+
+交互细节遵循 [emilkowalski/skills](https://github.com/emilkowalski/skills) 的原则，重点不是加动效，而是减少错误感：
 
 - 自定义 `ease-out` 曲线；按钮按下 `scale(0.97)`，反馈在 100–160ms 内完成。
 - 只对 `transform` / `opacity` 做动画；弹层从 `scale(0.96)` + 透明开始，而不是 `scale(0)`。
