@@ -274,6 +274,14 @@ func (a *Server) Path(r *http.Request) string {
 	if a.prefix != "" {
 		p = strings.TrimPrefix(p, a.prefix)
 	}
+	// 反代或书签把 base 拼错时（/index.html/api/x、/LianT/api/x 等），
+	// 按关键字出现的位置截断，别让整页只看到「响应不是 JSON」。
+	for _, marker := range []string{"/api/", "/admin.css", "/admin.js"} {
+		if i := strings.Index(p, marker); i > 0 {
+			p = p[i:]
+			break
+		}
+	}
 	if p == "" {
 		p = "/"
 	}
