@@ -440,9 +440,9 @@ LianT 是一个 Telegram 群管理机器人，不是 Telegram 客户端，也不
 
 本项目以 **GNU Affero General Public License v3.0（AGPL-3.0）** 发布，完整条款见 [LICENSE](LICENSE)。
 
-```
+```text
 LianT - 自托管的多 Bot 管理后台 + Telegram / QQ 群管理机器人
-Copyright (C) 2026  LianT contributors
+Copyright (C) 2026  LensnTeam
 ```
 
 用白话说：
@@ -454,5 +454,5 @@ Copyright (C) 2026  LianT contributors
 
 不修改、只原样运行官方版本的话，源码在仓库里就有，通常不构成额外负担。
 
-版权归各贡献者所有；如需其他授权（商业闭源等），请单独联系仓库维护者。
+版权归 **LensnTeam** 所有；如需其他授权（商业闭源等），请通过 <https://github.com/LensnTeam> 联系。
 
