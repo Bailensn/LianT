@@ -419,8 +419,12 @@ func botAddInput(args []string) (token, name, platformID string, err error) {
 	if platformID == "" {
 		platformID = "telegram"
 	}
-	if platformID != "telegram" && platformID != "qq" {
-		return "", "", platformID, fmt.Errorf("平台只支持 telegram / qq")
+	if platform.Get(platformID) == nil {
+		ids := make([]string, 0, 4)
+		for _, ad := range platform.List() {
+			ids = append(ids, ad.ID())
+		}
+		return "", "", platformID, fmt.Errorf("未知平台 %q；已注册: %s", platformID, strings.Join(ids, ", "))
 	}
 	if appSecretStdin {
 		if platformID != "qq" {
