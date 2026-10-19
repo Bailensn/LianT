@@ -689,6 +689,9 @@ func (b *Bot) runWebhook(c *telegram.Client) error {
 	}
 	path := b.webhookPath()
 	secret := b.cfg.WebhookSecret
+	if strings.TrimSpace(secret) == "" {
+		log.Printf("[!] Webhook 模式没有设置 secret_token：能访问 %s%s 的人都能伪造更新，建议在「机器人」里填 Webhook Secret", b.webhookListen(), path)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
