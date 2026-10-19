@@ -374,6 +374,7 @@ func botAddInput(args []string) (token, name, platformID string, err error) {
 	platformID = "telegram"
 	var nameParts []string
 	var appID, appSecret string
+	var appSecretStdin bool
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
@@ -385,14 +386,8 @@ func botAddInput(args []string) (token, name, platformID string, err error) {
 			}
 			i++
 			appID = strings.TrimSpace(args[i])
-		case strings.HasPrefix(a, "--app-secret="):
-			appSecret = strings.TrimSpace(strings.TrimPrefix(a, "--app-secret="))
-		case a == "--app-secret":
-			if i+1 >= len(args) {
-				return "", "", platformID, fmt.Errorf("--app-secret 后面缺少值")
-			}
-			i++
-			appSecret = strings.TrimSpace(args[i])
+		case a == "--app-secret-stdin":
+			appSecretStdin = true
 		case strings.HasPrefix(a, "--platform="):
 			platformID = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(a, "--platform=")))
 		case a == "--platform":
@@ -407,24 +402,13 @@ func botAddInput(args []string) (token, name, platformID string, err error) {
 				return "", "", platformID, fmt.Errorf("从 stdin 读取 token 失败: %w", rerr)
 			}
 			token = strings.TrimSpace(line)
-		case strings.HasPrefix(a, "--token="):
-			token = strings.TrimSpace(strings.TrimPrefix(a, "--token="))
-			fmt.Fprintln(os.Stderr, "[!] --token 会留在 shell history；建议直接 LianT bot add 交互输入")
-		case a == "--token":
-			if i+1 >= len(args) {
-				return "", "", platformID, fmt.Errorf("--token 后面缺少值")
-			}
-			i++
-			token = strings.TrimSpace(args[i])
-			fmt.Fprintln(os.Stderr, "[!] --token 会留在 shell history；建议直接 LianT bot add 交互输入")
 		case strings.HasPrefix(a, "--name="):
 			name = strings.TrimSpace(strings.TrimPrefix(a, "--name="))
+		case a == "--token" || strings.HasPrefix(a, "--token=") || a == "--app-secret" || strings.HasPrefix(a, "--app-secret="):
+			return "", "", platformID, fmt.Errorf("不要把密钥写在命令行（会进 shell history）；直接运行 LianT bot add，或用 --token-stdin / --app-secret-stdin")
 		default:
-			// 兼容旧用法：LianT bot add <token> [名称]
 			if token == "" && looksLikeBotToken(a) && len(nameParts) == 0 {
-				token = strings.TrimSpace(a)
-				fmt.Fprintln(os.Stderr, "[!] 不推荐把 token 放在命令行（会留在 shell history）；下次直接 LianT bot add")
-				continue
+				return "", "", platformID, fmt.Errorf("检测到命令行里的密钥：请删掉它，直接运行 LianT bot add 交互输入")
 			}
 			nameParts = append(nameParts, a)
 		}
@@ -437,6 +421,19 @@ func botAddInput(args []string) (token, name, platformID string, err error) {
 	}
 	if platformID != "telegram" && platformID != "qq" {
 		return "", "", platformID, fmt.Errorf("平台只支持 telegram / qq")
+	}
+	if appSecretStdin {
+		if platformID != "qq" {
+			return "", "", platformID, fmt.Errorf("--app-secret-stdin 只用于 QQ")
+		}
+		if token != "" {
+			return "", "", platformID, fmt.Errorf("--token-stdin 和 --app-secret-stdin 不能同时使用")
+		}
+		line, rerr := bufio.NewReader(os.Stdin).ReadString('\n')
+		if rerr != nil && strings.TrimSpace(line) == "" {
+			return "", "", platformID, fmt.Errorf("从 stdin 读取 AppSecret 失败: %w", rerr)
+		}
+		appSecret = strings.TrimSpace(line)
 	}
 	if platformID == "qq" && token == "" {
 		if appID == "" {
@@ -454,8 +451,7 @@ func botAddInput(args []string) (token, name, platformID string, err error) {
 		token = strings.TrimSpace(appID) + ":" + strings.TrimSpace(appSecret)
 	}
 	if token == "" {
-		label := "Token: "
-		token, err = readSecretLine(label)
+		token, err = readSecretLine("Token: ")
 		if err != nil && token == "" {
 			return "", "", platformID, fmt.Errorf("读取 token 失败: %w", err)
 		}
@@ -483,7 +479,7 @@ func cmdBot(args []string) int {
 	defer reg.Close()
 
 	if len(args) == 0 {
-		fmt.Println("用法: LianT bot platforms | list | add [--platform qq|telegram] [名称] | add --token-stdin [名称] | add --app-id ID --app-secret SECRET [名称] | remove <id> | enable <id> | disable <id>")
+		fmt.Println("用法: LianT bot platforms | list | add [--platform qq|telegram] [名称] | add --token-stdin [名称] | add --app-id ID --app-secret-stdin [名称] | remove <id> | enable <id> | disable <id>")
 		fmt.Printf("注册表: %s\n", dbPath)
 		fmt.Printf("加密  : AES-256-GCM（%s）\n", secretKeyLabel(dbPath))
 		return 0

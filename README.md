@@ -319,7 +319,7 @@ type Adapter interface {
 - 默认密钥文件：`<数据目录>/secret.key`，首次启动生成，权限 `0600`；也可以设置 `LIANT_SECRET` 固定密钥。
 - **备份或迁移时必须同时带走 `secret.key`**（或记住 `LIANT_SECRET`），只拷数据库无法解密 token。
 - 数据库文件本身会 `chmod 0600`；密钥文件同样 `0600`。
-- CLI 推荐直接 `LianT bot add` 交互输入 token（关闭终端回显），不要把 token 写在命令行；`--token` 仅为脚本兼容，会提示 history 风险。
+- CLI **不接受** `--token` / `--app-secret` 这类密钥参数；直接 `LianT bot add` 隐藏输入，脚本用 `--token-stdin` / `--app-secret-stdin` 从管道读，避免 shell history。
 - Web 后台 token 输入框是 password 类型；登录后只写 **HttpOnly + SameSite=Lax** cookie，不再把管理 token 存进 localStorage。
 - 远程访问请用 HTTPS：可以设 `LIANT_ADMIN_TLS_CERT` / `LIANT_ADMIN_TLS_KEY` 让管理端自己上 TLS，也可以用 Caddy/Nginx 反代。
 
