@@ -631,7 +631,10 @@ func (c *qctx) chatSend(w http.ResponseWriter, r *http.Request, method string) {
 }
 
 func (c *qctx) qqBotState(w http.ResponseWriter, r *http.Request) {
-	ApiOK(w, c.b.Status())
+	st := c.b.Status()
+	msg := "机器人状态：" + st["bot_state"]
+	if v := st["bot_username"]; v != "" { msg += " · " + v }
+	ApiOK(w, map[string]interface{}{"ok": true, "result": msg, "status": st})
 }
 
 func (c *qctx) qqGroupInfo(w http.ResponseWriter, r *http.Request) {
@@ -653,15 +656,12 @@ func (c *qctx) qqMembers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *qctx) qqMuteState(w http.ResponseWriter, r *http.Request) {
-	client := c.b.Client()
-	if client == nil { ApiErr(w, 503, "机器人尚未连接"); return }
-	q := r.URL.Query()
-	gid := q.Get("group")
-	uid := q.Get("member")
-	if uid == "" { ApiErr(w, 400, "需要 member"); return }
-	m, err := client.GetChatMember(gid, uid)
-	if err != nil { ApiErr(w, 502, err.Error()); return }
-	ApiOK(w, m)
+	// qbot 页面查的是"群当前禁言名单 + 全员禁言模式"。
+	// Telegram 没有等价的禁言名单接口；返回空列表，避免页面报错。
+	ApiOK(w, map[string]interface{}{
+		"ok": true, "members": []interface{}{}, "global_mode": "none",
+		"note": "Telegram 不提供群禁言名单；请按成员查看禁言状态。",
+	})
 }
 
 func (c *qctx) qqKick(w http.ResponseWriter, r *http.Request, method string) {
