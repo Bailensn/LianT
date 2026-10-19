@@ -920,12 +920,14 @@ func (b *Bot) handleJoinRequest(c *tg.Client, req *tg.ChatJoinRequest) {
 	}
 	_ = b.st.EnsureGroup(chatID, req.Chat.Display())
 	_ = b.st.TouchMember(chatID, userID, req.From.Display(), "member", false)
+	_ = b.st.UpsertJoinRequest(chatID, userID, req.From.Display(), req.Bio)
 
 	auto := strings.EqualFold(b.st.Setting("join_auto_approve", "false"), "true")
 	result, detail := "待审批", "等待管理员在网页后台处理"
 	if auto {
 		if err := c.ApproveChatJoinRequest(chatID, userID); err == nil {
 			result, detail = "ok", "已自动通过"
+			_ = b.st.SetJoinRequestStatus(chatID, userID, "approved")
 		} else {
 			result, detail = "fail", "自动通过失败："+errText(err)
 		}

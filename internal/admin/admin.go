@@ -273,6 +273,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		admins, _ := st.Admins()
 		mutes, _ := st.Mutes(true)
 		bl, _ := st.Blacklists("")
+		joins, _ := st.JoinRequests("", "pending", 500)
 		recent, _ := st.Audit(20, "", "")
 		tokenSource := "未配置"
 		if _, src := TokenSource(st); src != "" {
@@ -281,7 +282,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		ApiOK(w, map[string]interface{}{
 			"bot":          a.b.Status(),
 			"db_file":      cfg.DBPath,
-			"counts":       map[string]int{"chats": len(groups), "rules": len(ruleList), "words": len(wordRecs), "admins": len(admins), "mutes": len(mutes), "blacklist": len(bl)},
+			"counts":       map[string]int{"chats": len(groups), "rules": len(ruleList), "words": len(wordRecs), "admins": len(admins), "mutes": len(mutes), "blacklist": len(bl), "joins": len(joins)},
 			"settings":     st.PublicSettings(),
 			"recent":       recent,
 			"cmd_help":     bot.HelpText(),
@@ -651,6 +652,137 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		default:
 			ApiErr(w, 405, "不支持的方法")
 		}
+
+	// ---- 入群申请 ----
+	case "joins":
+		switch method {
+		case http.MethodGet:
+			list, err := st.JoinRequests(q.Get("chat_id"), q.Get("status"), 300)
+			if err != nil {
+				ApiErr(w, 500, err.Error())
+				return
+			}
+			ApiOK(w, list)
+		case http.MethodPost:
+			var in struct {
+				ChatID string `json:"chat_id"`
+				UserID string `json:"user_id"`
+				Action string `json:"action"` // approve | decline
+				Reason string `json:"reason"`
+			}
+			if err := DecodeBody(r, &in); err != nil || in.ChatID == "" || in.UserID == "" {
+				ApiErr(w, 400, "需要 chat_id 和 user_id")
+				return
+			}
+			c := a.b.Client()
+			if c == nil {
+				ApiErr(w, 503, "机器人尚未连接 Telegram")
+				return
+			}
+			status, result := "", "ok"
+			var opErr error
+			switch strings.ToLower(strings.TrimSpace(in.Action)) {
+			case "approve":
+				opErr = c.ApproveChatJoinRequest(in.ChatID, in.UserID)
+				status = "approved"
+			case "decline":
+				opErr = c.DeclineChatJoinRequest(in.ChatID, in.UserID)
+				status = "declined"
+			default:
+				ApiErr(w, 400, "action 只能是 approve / decline")
+				return
+			}
+			if opErr != nil {
+				result = "fail"
+			} else {
+				_ = st.SetJoinRequestStatus(in.ChatID, in.UserID, status)
+			}
+			_ = st.AddAudit(store.AuditRec{
+				Kind: "join", ChatID: in.ChatID, UserID: in.UserID,
+				Content: in.Reason, Hit: "网页审批入群", Actions: `["join"]`,
+				Result: result, Detail: tgErr(opErr),
+			})
+			if opErr != nil {
+				ApiErr(w, 502, tgErr(opErr))
+				return
+			}
+			ApiOK(w, map[string]interface{}{"chat_id": in.ChatID, "user_id": in.UserID, "status": status})
+		default:
+			ApiErr(w, 405, "不支持的方法")
+		}
+
+	// ---- 群发 ----
+	case "broadcast":
+		if method != http.MethodPost {
+			ApiErr(w, 405, "不支持的方法")
+			return
+		}
+		var in struct {
+			ChatIDs    []string `json:"chat_ids"`
+			Content    string   `json:"content"`
+			Kind       string   `json:"kind"`
+			Media      string   `json:"media"`
+			Caption    string   `json:"caption"`
+			ParseMode  string   `json:"parse_mode"`
+			ThreadID   int64    `json:"thread_id"`
+		}
+		if err := DecodeBody(r, &in); err != nil {
+			ApiErr(w, 400, "请求体不是合法 JSON: "+err.Error())
+			return
+		}
+		if len(in.ChatIDs) == 0 {
+			ApiErr(w, 400, "需要 chat_ids")
+			return
+		}
+		if len(in.ChatIDs) > 50 {
+			ApiErr(w, 400, "一次最多群发 50 个会话")
+			return
+		}
+		kind := strings.ToLower(strings.TrimSpace(in.Kind))
+		if kind == "" {
+			kind = "text"
+		}
+		opt := tg.SendOptions{ThreadID: in.ThreadID, ParseMode: strings.TrimSpace(in.ParseMode)}
+		type oneResult struct {
+			ChatID string `json:"chat_id"`
+			OK     bool   `json:"ok"`
+			ID     int64  `json:"id,omitempty"`
+			Error  string `json:"error,omitempty"`
+		}
+		results := make([]oneResult, 0, len(in.ChatIDs))
+		okCount := 0
+		for _, cid := range in.ChatIDs {
+			cid = strings.TrimSpace(cid)
+			if cid == "" {
+				continue
+			}
+			g, ok := st.Group(cid)
+			if !ok || !g.Enabled {
+				results = append(results, oneResult{ChatID: cid, Error: "会话未登记或已停用"})
+				continue
+			}
+			var id int64
+			var err error
+			if kind == "text" {
+				id, err = a.b.SendMessageOpt(cid, strings.TrimSpace(in.Content), opt)
+			} else {
+				id, err = a.b.SendMediaNow(cid, kind, strings.TrimSpace(in.Media), strings.TrimSpace(in.Caption), opt)
+			}
+			if err != nil {
+				results = append(results, oneResult{ChatID: cid, Error: tgErr(err)})
+				continue
+			}
+			okCount++
+			results = append(results, oneResult{ChatID: cid, OK: true, ID: id})
+			time.Sleep(80 * time.Millisecond)
+		}
+		_ = st.AddAudit(store.AuditRec{
+			Kind: "push", Username: "网页后台", Content: strings.TrimSpace(in.Content),
+			Hit: "网页群发", Actions: `["broadcast"]`,
+			Result: map[bool]string{true: "ok", false: "fail"}[okCount > 0],
+			Detail: fmt.Sprintf("成功 %d/%d", okCount, len(results)),
+		})
+		ApiOK(w, map[string]interface{}{"ok_count": okCount, "results": results})
 
 	// ---- 审计 ----
 	case "audit":

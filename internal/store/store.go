@@ -25,9 +25,9 @@ import (
 // ============================================================================
 
 // SchemaVersion 每次改表结构都 +1，并在 migrations 里追加一段。
-const SchemaVersion = 1
+const SchemaVersion = 2
 
-// SchemaStatements 是 v1 的全量建表语句（幂等，可重复执行）。
+// SchemaStatements 是当前版本的全量建表语句（幂等，可重复执行）。
 var SchemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS settings (
 		key        TEXT PRIMARY KEY,
@@ -120,6 +120,17 @@ var SchemaStatements = []string{
 		last_seen     TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY (chat_id, user_id)
 	)`,
+	`CREATE TABLE IF NOT EXISTS join_requests (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		chat_id    TEXT NOT NULL,
+		user_id    TEXT NOT NULL,
+		username   TEXT NOT NULL DEFAULT '',
+		bio        TEXT NOT NULL DEFAULT '',
+		status     TEXT NOT NULL DEFAULT 'pending',
+		created_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT '',
+		UNIQUE(chat_id, user_id)
+	)`,
 	`CREATE TABLE IF NOT EXISTS audit (
 		id            INTEGER PRIMARY KEY AUTOINCREMENT,
 		ts            TEXT NOT NULL DEFAULT '',
@@ -138,6 +149,7 @@ var SchemaStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_words_enabled ON banned_words(enabled)`,
 	`CREATE INDEX IF NOT EXISTS idx_mutes_active ON mutes(status, expire_at)`,
 	`CREATE INDEX IF NOT EXISTS idx_blacklist_group ON blacklist(chat_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_join_status ON join_requests(status, updated_at DESC)`,
 }
 
 // ---------------- 记录类型 ----------------
@@ -230,6 +242,17 @@ type MemberRec struct {
 	Msgs      int64  `json:"msgs"`
 	FirstSeen string `json:"first_seen"`
 	LastSeen  string `json:"last_seen"`
+}
+
+type JoinRec struct {
+	ID        int64  `json:"id"`
+	ChatID    string `json:"chat_id"`
+	UserID    string `json:"user_id"`
+	Username  string `json:"username"`
+	Bio       string `json:"bio"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 type AuditRec struct {
@@ -940,6 +963,72 @@ func (s *Store) FindMembersByName(groupChatID, name string) ([]MemberRec, error)
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+// ---------------- join requests ----------------
+
+// UpsertJoinRequest 记录/刷新一条入群申请（同一用户重复申请会回到 pending）。
+func (s *Store) UpsertJoinRequest(chatID, userID, username, bio string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := NowStr()
+	_, err := s.db.Exec(`INSERT INTO join_requests(chat_id, user_id, username, bio, status, created_at, updated_at)
+		VALUES(?,?,?,?, 'pending', ?, ?)
+		ON CONFLICT(chat_id, user_id) DO UPDATE SET
+			username = excluded.username,
+			bio      = excluded.bio,
+			status   = 'pending',
+			updated_at = excluded.updated_at`,
+		chatID, userID, username, bio, now, now)
+	if err == nil {
+		s.bump()
+	}
+	return err
+}
+
+// JoinRequests 取入群申请。status 为空表示全部。
+func (s *Store) JoinRequests(chatID, status string, limit int) ([]JoinRec, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	q := `SELECT id, chat_id, user_id, username, bio, status, created_at, updated_at FROM join_requests WHERE 1=1`
+	args := []interface{}{}
+	if chatID != "" {
+		q += ` AND chat_id = ?`
+		args = append(args, chatID)
+	}
+	if status != "" {
+		q += ` AND status = ?`
+		args = append(args, status)
+	}
+	q += ` ORDER BY updated_at DESC, id DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []JoinRec
+	for rows.Next() {
+		var j JoinRec
+		if err := rows.Scan(&j.ID, &j.ChatID, &j.UserID, &j.Username, &j.Bio, &j.Status, &j.CreatedAt, &j.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}
+
+// SetJoinRequestStatus 更新入群申请状态（approved/declined）。
+func (s *Store) SetJoinRequestStatus(chatID, userID, status string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`UPDATE join_requests SET status = ?, updated_at = ? WHERE chat_id = ? AND user_id = ?`,
+		status, NowStr(), chatID, userID)
+	if err == nil {
+		s.bump()
+	}
+	return err
 }
 
 // ---------------- audit ----------------
