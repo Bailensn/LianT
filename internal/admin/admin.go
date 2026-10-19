@@ -794,6 +794,9 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			detailTxt = fmt.Sprintf("id=%d kind=text", messageID)
 		} else {
 			media := strings.TrimSpace(in.Media)
+			if media == "" && kind == "poll" {
+				media = strings.TrimSpace(in.Content)
+			}
 			if media == "" {
 				ApiErr(w, 400, "需要 media（file_id / URL / 坐标 / 投票问题）")
 				return
