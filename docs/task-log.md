@@ -27,7 +27,7 @@
 - `node --check`、CSS 括号、tree-sitter-go 41 文件、store/bot/qqbot 单文件类型检查通过。
 - 仍未运行项目内 `go build`；SSE 的完整浏览器联调依赖真实后端重启。
 
-**提交**：本次 commit。
+**提交**：`ef47ce7`。
 
 ## 2026-10-20 · 重写 handoff 定位
 
