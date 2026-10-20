@@ -700,10 +700,40 @@ func (c *qctx) chatGroups(w http.ResponseWriter, r *http.Request) {
 	groups, _ := c.st.Groups()
 	out := make([]map[string]interface{}, 0, len(groups))
 	for _, g := range groups {
-		if !g.Enabled { continue }
-		out = append(out, map[string]interface{}{"openid": g.ChatID, "name": g.Name, "last_at": g.UpdatedAt})
+		if !g.Enabled {
+			continue
+		}
+		item := map[string]interface{}{
+			"openid": g.ChatID, "name": g.Name, "note": g.Note, "bot_is_admin": g.BotIsAdmin,
+		}
+		if rec, ok := c.st.LastMessage(g.ChatID); ok {
+			item["last_at"] = rec.At.Format(time.RFC3339)
+			item["last_user"] = rec.Username
+			item["last_text"] = c.messagePreview(rec)
+		} else {
+			item["last_at"] = g.UpdatedAt
+		}
+		out = append(out, item)
 	}
 	ApiOK(w, out)
+}
+
+// messagePreview 给会话列表生成一行预览；没有正文时用媒体类型，不编造文本。
+func (c *qctx) messagePreview(rec store.MessageRec) string {
+	if rec.State == "recalled" {
+		return "撤回了一条消息"
+	}
+	if text := strings.TrimSpace(rec.Content); text != "" {
+		return text
+	}
+	label := bot.KindLabel(rec.Kind)
+	if c.isQQ() {
+		label = qqbot.KindLabel(rec.Kind)
+	}
+	if strings.TrimSpace(label) == "" {
+		return "（无文字）"
+	}
+	return label
 }
 
 func (c *qctx) chatRecent(w http.ResponseWriter, r *http.Request) {

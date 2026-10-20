@@ -12,7 +12,7 @@
 
   const TABS = [
     { id: "overview", label: "总览", icon: "grid", desc: "任务进程、数据规模与最近操作。" },
-    { id: "chat", label: "群消息", icon: "send", desc: "以卡片消息向群发送通知，或查看最近消息。" },
+    { id: "chat", label: "消息", icon: "send", desc: "完整聊天记录、媒体与发送。" },
     { id: "rules", label: "回复规则", icon: "message", desc: "按优先级匹配消息并自动回复，命中第一条即停止。" },
     { id: "words", label: "违禁词", icon: "shield", desc: "命中后撤回、禁言、踢出或拉黑；优先级数字小的先匹配。" },
     { id: "joins", label: "入群申请", icon: "user-plus", desc: "手动审批入群申请，自动通过由设置控制。" },
@@ -100,7 +100,7 @@
       groups: [],
       messages: [],
       group: store.get(CHAT_GROUP_KEY, ""),
-      format: store.get(CHAT_FORMAT_KEY, "card") === "text" ? "text" : "card",
+      format: store.get(CHAT_FORMAT_KEY, "text") === "card" ? "card" : "text",
       draft: { title: "", content: "" },
       error: "",
       timer: 0,
@@ -406,7 +406,10 @@
       return head + `<div class="stat-grid">${'<div class="sk sk-stat"></div>'.repeat(6)}</div><div class="grid two"><div class="sk sk-card"></div><div class="sk sk-card"></div></div>`;
     }
     if (meta.id === "chat") {
-      return head + `<div class="chat-shell"><div class="sk sk-card" style="height:100%"></div><div class="sk sk-card" style="height:100%"></div></div>`;
+      return `<div class="chat-app chat-app-skeleton">
+        <aside class="chat-side"><div class="sk sk-chat-title"></div><div class="sk sk-chat-row"></div><div class="sk sk-chat-row"></div><div class="sk sk-chat-row"></div></aside>
+        <section class="chat-main"><div class="sk sk-chat-head"></div><div class="sk sk-chat-body"></div><div class="sk sk-chat-composer"></div></section>
+      </div>`;
     }
     return head + `<div class="card sk-table"><div class="sk sk-bar"></div>${'<div class="sk sk-row"></div>'.repeat(6)}</div>`;
   }
@@ -492,6 +495,7 @@
     stopChatPoll();
     const home = tab === "bots";
     document.getElementById("app").classList.toggle("is-home", home);
+    document.getElementById("app").classList.toggle("chat-mode", tab === "chat");
     document.getElementById("bot-context").hidden = home;
     document.getElementById("crumb-bot").textContent = home ? "选择 Bot" : (botByID(state.botID) || {}).name || "Bot";
     document.getElementById("crumb-tab").textContent = meta.label;
@@ -524,7 +528,13 @@
   function afterRender(tab) {
     if (tab === "chat") {
       const timeline = document.getElementById("chat-timeline");
-      if (timeline) timeline.scrollTop = timeline.scrollHeight;
+      if (timeline) {
+        timeline.scrollTop = timeline.scrollHeight;
+        // 图片/视频是后加载的，布局变高后再贴一次底。
+        setTimeout(() => {
+          if (state.tab === "chat" && state.chat.group) timeline.scrollTop = timeline.scrollHeight;
+        }, 260);
+      }
       startChatPoll();
     }
     if ((tab === "groups" || tab === "chat") && !state.groupSyncTried && !state.groupSyncDenied) {
@@ -1821,96 +1831,112 @@
     </a>`;
   }
 
-  function chatMessageHTML(message) {
-    const state = String(message.state || "");
-    const recalled = state === "recalled";
-    const bot = Boolean(message.is_bot);
-    const card = !recalled && bot ? parseCard(message.content) : null;
+  function recentMessagePreview(message) {
     const kind = String(message.kind || "");
-    const kindLabel = {
-      image: "图片", photo: "图片", voice: "语音", audio: "音频", video: "视频",
-      file: "文件", document: "文件", sticker: "表情", animation: "动图", video_note: "视频留言",
-      markdown: "Markdown", ark: "卡片", embed: "卡片", media: "富媒体", markup: "表情", other: "附件"
-    }[kind] || "";
-    const name = message.username || (bot ? "LianT" : "成员");
-    const media = !recalled ? mediaHTML(message) : "";
+    if (String(message.state || "") === "recalled") return "撤回了一条消息";
+    const text = String(message.content || "").trim();
+    if (text) return text;
+    return MEDIA_KIND_LABEL[kind] ? "[" + MEDIA_KIND_LABEL[kind] + "]" : "（无文字）";
+  }
+
+  function chatTimeMs(value) {
+    const t = Date.parse(value);
+    return Number.isFinite(t) ? t : 0;
+  }
+
+  function sameChatRun(a, b) {
+    if (!a || !b) return false;
+    if (String(a.state || "") === "recalled" || String(b.state || "") === "recalled") return false;
+    if (Boolean(a.is_bot) !== Boolean(b.is_bot)) return false;
+    if (String(a.username || "") !== String(b.username || "")) return false;
+    if (fmtDate(a.at) !== fmtDate(b.at)) return false;
+    const gap = Math.abs(chatTimeMs(b.at) - chatTimeMs(a.at));
+    return gap < 5 * 60 * 1000;
+  }
+
+  function chatMessageHTML(message, opts = {}) {
+    const bot = Boolean(message.is_bot);
+    const kind = String(message.kind || "");
     const text = String(message.content || "");
-    let stateLabel = "";
-    let stateTitle = "";
-    if (recalled) {
-      stateLabel = "已撤回";
-      stateTitle = "消息已在平台上撤回，正文不再保留";
-    } else if (state === "sent") {
-      stateLabel = "已发送";
-      stateTitle = "平台已受理这条消息；是否送达、对方是否已读，平台不提供回执";
-    } else if (state === "received") {
-      stateLabel = "已收到";
-      stateTitle = "群内收到这条消息的时间";
-    } else if (state) {
-      stateLabel = state;
-      stateTitle = "未知状态，按原始值显示";
-    }
-    let body;
-    if (recalled) {
-      body = `<div class="msg-bubble msg-bubble-recalled"><span>已撤回</span><small>正文已清除</small></div>`;
-    } else if (card) {
-      body = cardBubble(card);
+    const card = bot ? parseCard(text) : null;
+    const media = mediaHTML(message);
+    let bubbleClass = "msg-bubble";
+    let inner = "";
+    if (card) {
+      inner = cardBubble(card);
+      bubbleClass += " is-card";
     } else if (media) {
-      body = `<div class="msg-media-wrap">${media}${text ? `<div class="msg-bubble msg-caption">${esc(text)}</div>` : ""}</div>`;
+      const caption = text && kind !== "sticker" ? `<div class="msg-caption">${esc(text)}</div>` : "";
+      inner = media + caption;
+      bubbleClass += " has-media";
+      if (kind === "sticker") bubbleClass += " is-sticker";
     } else {
-      body = `<div class="msg-bubble">${esc(text || kindLabel || "（空消息）")}</div>`;
+      inner = `<div class="msg-text">${esc(text || "（空消息）")}</div>`;
     }
-    return `<div class="msg ${bot ? "msg-bot" : "msg-user"}${recalled ? " is-recalled" : ""}" data-msg-id="${esc(message.id || "")}">
-      <div class="msg-avatar${bot ? "" : " avatar " + avatarClass(message.username || message.member_openid)}">${bot ? icon("bot") : esc(initial(message.username))}</div>
-      <div class="msg-main">
-        <div class="msg-meta">
-          <span class="msg-name">${esc(name)}</span>
-          <span>${esc(fmtTime(message.at))}</span>
-          ${stateLabel ? `<span class="msg-state msg-state-${esc(state || "unknown")}" title="${esc(stateTitle)}">${esc(stateLabel)}</span>` : ""}
-          ${recalled ? "" : card ? '<span class="badge accent">卡片</span>' : kindLabel ? `<span class="badge">${esc(kindLabel)}</span>` : ""}
-        </div>
-        ${body}
-        ${recalled ? "" : `<div class="msg-actions">
-          <button class="msg-action" type="button" data-act="chat-quote" data-id="${esc(message.id || "")}">引用</button>
-          ${message.id ? `<button class="msg-action" type="button" data-act="chat-recall" data-id="${esc(message.id)}">撤回</button>` : ""}
-        </div>`}
-      </div>
+    const actions = message.id ? `<span class="msg-actions">
+      <button class="msg-action" type="button" data-act="chat-quote" data-id="${esc(message.id)}" aria-label="引用" title="引用">${icon("message")}</button>
+      <button class="msg-action" type="button" data-act="chat-recall" data-id="${esc(message.id)}" aria-label="撤回" title="撤回">${icon("trash")}</button>
+    </span>` : "";
+    const avatar = bot ? "" : `<div class="msg-avatar-slot">${opts.grouped ? "" : `<span class="avatar msg-avatar ${avatarClass(message.username || message.member_openid)}">${esc(initial(message.username))}</span>`}</div>`;
+    const author = !bot && !opts.grouped ? `<div class="msg-author">${esc(message.username || "成员")}</div>` : "";
+    const meta = opts.lastOfRun ? `<div class="msg-meta">
+      <span class="msg-time">${esc(fmtTime(message.at))}</span>
+      ${bot && message.state === "sent" ? `<span class="msg-tick" title="平台已受理；不代表已送达或已读">${icon("check")}</span>` : ""}
+    </div>` : "";
+    return `<div class="msg ${bot ? "msg-out" : "msg-in"}${opts.grouped ? " is-grouped" : ""}" data-msg-id="${esc(message.id || "")}">
+      ${avatar}
+      <div class="msg-body">${author}<div class="${bubbleClass}">${inner}</div>${meta}${actions}</div>
     </div>`;
   }
 
   function chatMessagesHTML(messages) {
     if (!messages || !messages.length) {
       return `<div class="chat-empty">
-        <div class="empty-icon">${icon("send")}</div>
-        <strong>还没有最近消息</strong>
-        <span>机器人只会缓存本次运行期间见过的消息；发一张卡片试试。</span>
+        <div class="empty-icon">${icon("message")}</div>
+        <strong>还没有消息</strong>
+        <span>群里的新消息会自动出现在这里，并保存在本机。</span>
       </div>`;
     }
+    const out = [];
     let lastDay = "";
-    return messages.map(message => {
+    for (let i = 0; i < messages.length; i++) {
+      const message = messages[i];
       const day = fmtDate(message.at);
-      const divider = day && day !== lastDay ? `<div class="msg-day">${esc(day)}</div>` : "";
-      lastDay = day || lastDay;
-      return divider + chatMessageHTML(message);
-    }).join("");
+      if (day && day !== lastDay) {
+        out.push(`<div class="chat-day"><span>${esc(day)}</span></div>`);
+        lastDay = day;
+      }
+      if (String(message.state || "") === "recalled") {
+        const who = message.is_bot ? "LianT" : (message.username || "成员");
+        out.push(`<div class="chat-system">${icon("info")}<span>${esc(who)} 撤回了一条消息</span></div>`);
+        continue;
+      }
+      const prev = i > 0 ? messages[i - 1] : null;
+      const next = i + 1 < messages.length ? messages[i + 1] : null;
+      const grouped = Boolean(prev && sameChatRun(prev, message));
+      const lastOfRun = !next || !sameChatRun(message, next);
+      out.push(chatMessageHTML(message, { grouped, lastOfRun }));
+    }
+    return out.join("");
   }
 
   function chatSignature(messages) {
     return (messages || []).map(m => String(m.id || "") + ":" + String(m.at || "") + ":" + String(m.content || "") + ":" + String((m.media && m.media.state) || "")).join("|");
   }
 
-  function chatHeadHTML(group) {
-    return `<div class="chat-head">
-      <div class="chat-head-avatar avatar ${avatarClass(group.name || group.openid)}">${esc(initial(group.name))}</div>
-      <div class="chat-head-text">
-        <h2>${esc(group.name || "未命名群")}</h2>
-        <span class="chat-head-sub">${esc(group.note || (group.bot_is_admin ? "机器人是管理员" : "以卡片消息发送"))}</span>
+  function chatTopHTML(group) {
+    const name = group.name || "未命名群";
+    const sub = group.note || (group.bot_is_admin ? "机器人是管理员" : "机器人已加入");
+    return `<header class="chat-top">
+      <button class="icon-btn chat-groups-btn" type="button" data-act="chat-groups-toggle" aria-label="会话列表">${icon("menu")}</button>
+      <div class="chat-peer">
+        <span class="avatar chat-peer-avatar ${avatarClass(name)}">${esc(initial(name))}</span>
+        <div class="chat-peer-text"><h2>${esc(name)}</h2><span>${esc(sub)}</span></div>
       </div>
-      <div class="chat-head-actions">
-        <span class="badge ${group.bot_is_admin ? "ok" : "muted"}">${group.bot_is_admin ? "机器人管理员" : "已启用"}</span>
-        <button class="icon-btn sm" type="button" data-act="chat-refresh" aria-label="刷新最近消息" title="刷新最近消息">${icon("refresh")}</button>
+      <div class="chat-top-actions">
+        <button class="icon-btn" type="button" data-act="chat-refresh" aria-label="刷新消息" title="刷新消息">${icon("refresh")}</button>
       </div>
-    </div>`;
+    </header>`;
   }
 
   function chatComposerHTML() {
@@ -1919,40 +1945,53 @@
     const disabled = draft.content.trim() ? "" : " disabled";
     return `<div class="chat-composer">
       <form data-form="chat-send" id="chat-form">
-        <div class="composer-top">
-          <div class="segmented" role="group" aria-label="消息格式">
-            <button class="seg" type="button" data-act="chat-format" data-format="card" aria-pressed="${format === "card"}">卡片</button>
-            <button class="seg" type="button" data-act="chat-format" data-format="text" aria-pressed="${format === "text"}">文本</button>
+        <div class="composer-box">
+          <div class="composer-title" data-chat-title-wrap${format === "text" ? " hidden" : ""}>
+            <input class="input chat-title" name="title" maxlength="60" placeholder="卡片标题（可选）" value="${esc(draft.title)}" autocomplete="off">
           </div>
-          <span class="composer-hint">${format === "card" ? "Markdown · Telegram HTML 卡片" : "纯文本 · 直接发送"}</span>
+          <textarea class="input chat-textarea" name="content" rows="1" maxlength="1800" placeholder="${format === "card" ? "输入卡片内容，支持 **加粗**、列表和链接…" : "发消息…"}" aria-label="消息内容">${esc(draft.content)}</textarea>
+          <div class="composer-bar">
+            <div class="composer-tools">
+              <div class="segmented composer-seg" role="group" aria-label="消息格式">
+                <button class="seg" type="button" data-act="chat-format" data-format="text" aria-pressed="${format === "text"}">文本</button>
+                <button class="seg" type="button" data-act="chat-format" data-format="card" aria-pressed="${format === "card"}">卡片</button>
+              </div>
+              <select class="chat-template" data-chat-template aria-label="插入模板">
+                <option value="">模板</option>
+                ${CARD_TEMPLATES.map(t => `<option value="${t.id}">${esc(t.label)}</option>`).join("")}
+              </select>
+            </div>
+            <span class="composer-count" data-chat-count>${draft.content.length} / 1800</span>
+            <button class="chat-send" type="submit" data-chat-send aria-label="发送" title="发送"${disabled}>${icon("send")}</button>
+          </div>
         </div>
-        <div data-chat-title-wrap${format === "text" ? " hidden" : ""}>
-          <input class="input chat-title" name="title" maxlength="60" placeholder="卡片标题（可选）" value="${esc(draft.title)}" autocomplete="off">
-        </div>
-        <textarea class="input textarea chat-textarea" name="content" maxlength="1800" placeholder="${format === "card" ? "输入 Markdown 卡片内容，支持 **加粗**、列表和链接…" : "输入要发送的文本…"}" aria-label="消息内容">${esc(draft.content)}</textarea>
-        <div class="composer-foot">
-          <select class="input select" data-chat-template aria-label="插入模板">
-            <option value="">模板…</option>
-            ${CARD_TEMPLATES.map(t => `<option value="${t.id}">${esc(t.label)}</option>`).join("")}
-          </select>
-          <span class="composer-count" data-chat-count>${draft.content.length} / 1800</span>
-          <button class="btn primary chat-send" type="submit" data-chat-send${disabled}>${icon("send")}发送</button>
-        </div>
-        <div class="chat-note">主动消息不需要回复消息 ID；受平台频控约束。Ctrl / ⌘ + Enter 发送。</div>
+        <p class="chat-note">Enter 发送 · Shift + Enter 换行 · 消息保存在本机</p>
       </form>
     </div>`;
   }
 
   function chatGroupsHTML() {
+    if (!state.chat.groups.length) return `<p class="chat-side-empty">还没有已启用的群</p>`;
     return state.chat.groups.map(group => {
       const active = group.openid === state.chat.group;
-      const preview = plainPreview(group.last_text || "", 24) || "还没有消息";
-      return `<button class="chat-group${active ? " is-active" : ""}" type="button" data-act="chat-group" data-gid="${esc(group.openid)}" data-search="${esc((group.name || "") + " " + group.openid)}">
-        <span class="chat-group-avatar avatar ${avatarClass(group.name || group.openid)}">${esc(initial(group.name))}</span>
-        <span class="chat-group-text"><strong>${esc(group.name || "未命名群")}</strong><small>${esc(preview)}</small></span>
-        <span class="chat-group-time">${esc(group.last_at ? fmtRelative(group.last_at) : "")}</span>
+      const preview = group.last_text
+        ? (group.last_user ? group.last_user + "：" : "") + group.last_text
+        : "还没有消息";
+      return `<button class="chat-group${active ? " is-active" : ""}" type="button" data-act="chat-group" data-gid="${esc(group.openid)}" data-search="${esc((group.name || "") + " " + group.openid + " " + preview)}">
+        <span class="avatar chat-group-avatar ${avatarClass(group.name || group.openid)}">${esc(initial(group.name))}</span>
+        <span class="chat-group-text">
+          <span class="chat-group-row"><strong>${esc(group.name || "未命名群")}</strong><span class="chat-group-time">${esc(group.last_at ? fmtRelative(group.last_at) : "")}</span></span>
+          <span class="chat-group-preview">${esc(plainPreview(preview, 42))}</span>
+        </span>
       </button>`;
     }).join("");
+  }
+
+  function toggleChatGroups(open) {
+    const app = document.querySelector(".chat-app");
+    if (!app) return;
+    const next = open === undefined ? !app.classList.contains("is-groups-open") : Boolean(open);
+    app.classList.toggle("is-groups-open", next);
   }
 
   async function renderChat() {
@@ -1986,45 +2025,30 @@
   function chatPageHTML() {
     const groups = state.chat.groups;
     const current = groups.find(g => g.openid === state.chat.group) || null;
-
-    if (!groups.length) {
-      return `${pageHead(TAB_MAP.chat, `<button class="btn" type="button" data-act="refresh">${icon("refresh")}刷新</button>`)}
-        <section class="card">${emptyState({
-          icon: "users", title: "还没有可发送的群",
-          text: "机器人被拉进群并收到消息后会自动登记；也可以先去「群」里添加并启用。",
-          action: `<a class="btn primary" href="#groups">去群设置</a>`
-        })}</section>`;
-    }
-
     const timeline = state.chat.error
-      ? `<div class="chat-timeline" id="chat-timeline"><div class="callout danger">${icon("alert")}<span>${esc(state.chat.error)}</span></div><div><button class="btn" type="button" data-act="chat-refresh">重试</button></div></div>`
+      ? `<div class="chat-timeline" id="chat-timeline"><div class="chat-error">${icon("alert")}<span>${esc(state.chat.error)}</span><button class="btn sm" type="button" data-act="chat-refresh">重试</button></div></div>`
       : `<div class="chat-timeline" id="chat-timeline">${chatMessagesHTML(state.chat.messages)}</div>`;
-
-    return `${pageHead(TAB_MAP.chat)}
-      <div class="chat-shell">
-        <aside class="card chat-groups" aria-label="选择群">
-          <div class="chat-groups-head"><h2>群</h2><span>${groups.length} 个可用</span></div>
-          <label class="search">${icon("search")}<input class="input" type="search" data-chat-search placeholder="搜索群…" aria-label="搜索群"></label>
-          <div class="chat-group-list" id="chat-group-list">${chatGroupsHTML()}</div>
-          <p class="chat-groups-note">只显示已启用的群。主动消息频控：每群 20 条/分钟、1000 条/天。</p>
-        </aside>
-
-        <section class="card chat-panel">
-          <div class="chat-mobile-select">
-            <span class="toolbar-count">发送到</span>
-            <select class="input select" data-chat-select aria-label="选择群">
-              ${groups.map(g => `<option value="${esc(g.openid)}"${g.openid === state.chat.group ? " selected" : ""}>${esc(g.name || "未命名群")}</option>`).join("")}
-            </select>
-          </div>
-          ${current ? chatHeadHTML(current) : ""}
-          ${timeline}
-          <div class="chat-footnote">
-            <span>${icon("lock")}消息保存在本机 SQLite（bots/&lt;id&gt;.db），条数不设上限；媒体字节仍按需取回</span>
-            <span>${icon("info")}「已发送」只代表平台受理，不代表已送达或已读</span>
-          </div>
-          ${current ? chatComposerHTML() : ""}
-        </section>
-      </div>`;
+    const main = current
+      ? `${chatTopHTML(current)}${timeline}${chatComposerHTML()}`
+      : `<div class="chat-empty">
+          <div class="empty-icon">${icon("users")}</div>
+          <strong>还没有可用的会话</strong>
+          <span>机器人被拉进群并收到消息后会自动登记；也可以先去「群」里添加并启用。</span>
+          <a class="btn primary" href="#groups">去群设置</a>
+        </div>`;
+    return `<div class="chat-app">
+      <button class="chat-side-scrim" type="button" data-act="chat-groups-close" aria-label="关闭会话列表"></button>
+      <aside class="chat-side" aria-label="会话列表">
+        <div class="chat-side-head">
+          <div><h1>消息</h1><p>${groups.length} 个会话</p></div>
+          <button class="icon-btn" type="button" data-act="refresh" aria-label="刷新" title="刷新">${icon("refresh")}</button>
+        </div>
+        <label class="chat-search">${icon("search")}<input type="search" data-chat-search placeholder="搜索会话" aria-label="搜索会话"></label>
+        <div class="chat-group-list" id="chat-group-list">${chatGroupsHTML()}</div>
+        <p class="chat-side-foot">消息保存在本机 SQLite</p>
+      </aside>
+      <section class="chat-main">${main}</section>
+    </div>`;
   }
 
   function stopChatPoll() {
@@ -2105,6 +2129,11 @@
     if (count) count.textContent = content.length + " / 1800";
     const send = form.querySelector("[data-chat-send]");
     if (send) send.disabled = !content.trim();
+    const area = form.elements.content;
+    if (area) {
+      area.style.height = "auto";
+      area.style.height = Math.min(area.scrollHeight || 0, 128) + "px";
+    }
     captureChatDraft();
   }
 
@@ -2136,7 +2165,7 @@
     if (hint) hint.textContent = next === "card" ? "Markdown · Telegram HTML 卡片" : "纯文本 · 直接发送";
     const area = form.elements.content;
     if (area) {
-      area.placeholder = next === "card" ? "输入 Markdown 卡片内容，支持 **加粗**、列表和链接…" : "输入要发送的文本…";
+      area.placeholder = next === "card" ? "输入卡片内容，支持 **加粗**、列表和链接…" : "发消息…";
       area.focus();
     }
   }
@@ -2922,6 +2951,8 @@
     "copy-output": () => copyText(document.getElementById("qq-out") ? document.getElementById("qq-out").textContent : ""),
     "chat-group": el => switchChatGroup(el.dataset.gid),
     "chat-refresh": () => refreshChatMessages(true),
+    "chat-groups-toggle": () => toggleChatGroups(),
+    "chat-groups-close": () => toggleChatGroups(false),
     "chat-format": el => setChatFormat(el.dataset.format),
     "chat-quote": el => quoteChatMessage(el.dataset.id),
     "chat-recall": el => recallChatMessage(el.dataset.id),
@@ -3059,6 +3090,16 @@
         if (event.target === mediaDialog) mediaDialog.close();
       });
     }
+    // 图片加载完成后，如果原本就在底部，重新贴底。
+    view.addEventListener("load", event => {
+      const img = event.target;
+      if (!(img instanceof HTMLImageElement) || !img.hasAttribute("data-media-img")) return;
+      const timeline = document.getElementById("chat-timeline");
+      if (!timeline) return;
+      if (timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight < 180) {
+        timeline.scrollTop = timeline.scrollHeight;
+      }
+    }, true);
     // 图片是延迟加载的：取回失败时不要在气泡里留一个破图标。
     view.addEventListener("error", event => {
       const img = event.target;
@@ -3074,6 +3115,34 @@
         (button || figure).appendChild(note);
       }
     }, true);
+
+    // 触摸设备没有 hover：长按气泡 420ms 打开"引用/撤回"浮层。
+    let chatPressTimer = 0;
+    view.addEventListener("pointerdown", event => {
+      const msg = event.target.closest(".msg");
+      if (!msg || event.target.closest("[data-act]")) return;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      clearTimeout(chatPressTimer);
+      const cancel = () => clearTimeout(chatPressTimer);
+      msg.addEventListener("pointerup", cancel, { once: true });
+      msg.addEventListener("pointercancel", cancel, { once: true });
+      msg.addEventListener("pointermove", e => {
+        if (Math.hypot(e.clientX - startX, e.clientY - startY) > 8) cancel();
+      }, { once: true });
+      chatPressTimer = setTimeout(() => {
+        view.querySelectorAll(".msg.is-actions-open").forEach(node => node.classList.remove("is-actions-open"));
+        msg.classList.add("is-actions-open");
+        if (navigator.vibrate) {
+          try { navigator.vibrate(8); } catch {}
+        }
+      }, 420);
+    });
+    view.addEventListener("click", event => {
+      if (!event.target.closest("[data-act]") && !event.target.closest(".msg")) {
+        view.querySelectorAll(".msg.is-actions-open").forEach(node => node.classList.remove("is-actions-open"));
+      }
+    });
 
     view.addEventListener("click", event => {
       const target = event.target.closest("[data-act]");
@@ -3174,6 +3243,15 @@
         event.preventDefault();
         enterBot(enter.dataset.id);
         return;
+      }
+      if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.isComposing) {
+        const area = event.target.closest('form[data-form="chat-send"] textarea[name="content"]');
+        if (area) {
+          event.preventDefault();
+          const form = area.closest("form");
+          if (form) form.requestSubmit();
+          return;
+        }
       }
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
         const form = event.target.closest('form[data-form="chat-send"]');

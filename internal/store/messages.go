@@ -277,3 +277,15 @@ func (s *Store) MessageCount() int64 {
 	return n
 }
 
+// LastMessage 取一个会话最后一条消息（会话列表预览用）。
+func (s *Store) LastMessage(chatID string) (MessageRec, bool) {
+	if s == nil || s.db == nil || strings.TrimSpace(chatID) == "" {
+		return MessageRec{}, false
+	}
+	m, err := scanMessage(s.db.QueryRow(`SELECT `+messageColumns+` FROM messages
+		WHERE chat_id = ? ORDER BY seq DESC LIMIT 1`, chatID))
+	if err != nil {
+		return MessageRec{}, false
+	}
+	return m, true
+}
