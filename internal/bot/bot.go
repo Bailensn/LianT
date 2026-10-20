@@ -68,10 +68,6 @@ type Bot struct {
 	// reloadFlag 由 ReloadAll 置位，轮询循环看到后主动退出重连（拿新 token/规则）。
 	reloadFlag atomic.Bool
 
-	// recent 是最近见过的消息，用于「撤回 上一条/某人最后一条/批量撤回」。
-	recentMu sync.Mutex
-	recent   map[string][]RecentMsg
-
 	// roleCache 缓存群成员角色，避免每条消息都调 getChatMember。
 	roleMu    sync.Mutex
 	roleCache map[string]roleEntry
@@ -93,14 +89,13 @@ func New(c Config) *Bot {
 		state:     "启动中",
 		stopCh:    make(chan struct{}),
 		doneCh:    make(chan struct{}),
-		recent:    map[string][]RecentMsg{},
 		roleCache: map[string]roleEntry{},
 	}
 }
 
-// ---------------- 最近消息 ----------------
+// ---------------- 消息历史 ----------------
 
-// RecentMsg 一条见过的消息。
+// RecentMsg 一条见过的消息（从本地业务库读出）。
 type RecentMsg struct {
 	MessageID int64
 	UserID    string
@@ -110,11 +105,9 @@ type RecentMsg struct {
 	IsBot     bool
 	State     string // received / sent / recalled
 	At        time.Time
-	// Media 是这条消息的媒体引用（只在内存里；含 file_id，不序列化）。
+	// Media 是这条消息的媒体引用（含 file_id，随消息持久化）。
 	Media *media.Ref
 }
-
-const RecentKeep = 200
 
 // Classify 把 Telegram 消息归类（用于日志/审计/撤回提示）。
 // 返回 media.Kind* 这套跨平台归一化的类型。
@@ -252,8 +245,9 @@ func KindLabel(kind string) string {
 	return ""
 }
 
+// remember 把收到的消息写入本地业务库。消息不设条数上限，重启后仍可查看。
 func (b *Bot) remember(m *telegram.Message) {
-	if m == nil || m.MessageID == 0 {
+	if m == nil || m.MessageID == 0 || b.st == nil {
 		return
 	}
 	chatID := strconv.FormatInt(m.Chat.ID, 10)
@@ -263,166 +257,179 @@ func (b *Bot) remember(m *telegram.Message) {
 	} else if m.SenderChat != nil {
 		userID, username = strconv.FormatInt(m.SenderChat.ID, 10), m.SenderChat.Display()
 	}
-	b.recentMu.Lock()
-	defer b.recentMu.Unlock()
-	list := append(b.recent[chatID], RecentMsg{
-		MessageID: m.MessageID, UserID: userID, Username: username,
-		Content: m.Content(), Kind: Classify(m), IsBot: isBot, State: "received", At: time.Now(),
-		Media: MediaRefOf(m),
-	})
-	if len(list) > RecentKeep {
-		list = list[len(list)-RecentKeep:]
+	rec := store.MessageRec{
+		ChatID: chatID, MessageID: strconv.FormatInt(m.MessageID, 10),
+		UserID: userID, Username: username, Content: m.Content(),
+		Kind: Classify(m), IsBot: isBot, State: "received", At: time.Now(),
 	}
-	b.recent[chatID] = list
+	if ref := MediaRefOf(m); ref != nil {
+		if raw, err := json.Marshal(ref); err == nil {
+			rec.MediaJSON = string(raw)
+		}
+	}
+	if err := b.st.SaveMessage(rec); err != nil {
+		log.Printf("[!] 保存消息失败 chat=%s msg=%d: %v", chatID, m.MessageID, err)
+	}
 }
 
 // RememberOutgoing 让「撤回机器人」能找到机器人自己刚发的消息。
 func (b *Bot) RememberOutgoing(chatID string, messageID int64, content string) {
-	if chatID == "" || messageID == 0 {
+	if chatID == "" || messageID == 0 || b.st == nil {
 		return
 	}
-	b.recentMu.Lock()
-	defer b.recentMu.Unlock()
-	list := append(b.recent[chatID], RecentMsg{
-		MessageID: messageID, Username: "机器人", Content: content,
-		Kind: "bot", IsBot: true, State: "sent", At: time.Now(),
-	})
-	if len(list) > RecentKeep {
-		list = list[len(list)-RecentKeep:]
+	rec := store.MessageRec{
+		ChatID: chatID, MessageID: strconv.FormatInt(messageID, 10),
+		Username: "机器人", Content: content, Kind: "bot", IsBot: true, State: "sent", At: time.Now(),
 	}
-	b.recent[chatID] = list
+	if err := b.st.SaveMessage(rec); err != nil {
+		log.Printf("[!] 保存机器人消息失败 chat=%s msg=%d: %v", chatID, messageID, err)
+	}
 }
 
-// RecentList 取最近 n 条（时间顺序），onlyWithin>0 时只看该时间窗内的。
+// RecentList 取最近 n 条（时间顺序），n<=0 表示全部；onlyWithin>0 时只看该时间窗内的。
 func (b *Bot) RecentList(chatID string, n int, onlyWithin time.Duration) []RecentMsg {
-	b.recentMu.Lock()
-	defer b.recentMu.Unlock()
-	list := b.recent[chatID]
-	var out []RecentMsg
-	for i := len(list) - 1; i >= 0 && len(out) < n; i-- {
-		if list[i].MessageID == 0 {
-			continue
-		}
-		if onlyWithin > 0 && time.Since(list[i].At) > onlyWithin {
-			continue
-		}
-		out = append(out, list[i])
+	if b.st == nil {
+		return nil
 	}
-	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
-		out[i], out[j] = out[j], out[i]
+	var since time.Time
+	if onlyWithin > 0 {
+		since = time.Now().Add(-onlyWithin)
+	}
+	recs, err := b.st.Messages(chatID, n, since)
+	if err != nil {
+		log.Printf("[!] 读取消息失败 chat=%s: %v", chatID, err)
+		return nil
+	}
+	out := make([]RecentMsg, 0, len(recs))
+	for _, rec := range recs {
+		out = append(out, recentFromRec(rec))
 	}
 	return out
 }
 
-// MarkRecalled 把已撤回的消息标记成墓碑：保留时间与发送者，清掉正文。
-// 撤回是消息的一个状态，不是「从没发生过」；但正文不该继续留在内存里。
+// MarkRecalled 把已撤回的消息标记成墓碑：保留时间与发送者，清掉正文与媒体引用。
+// 撤回是消息的一个状态，不是「从没发生过」。
 func (b *Bot) MarkRecalled(chatID string, ids ...int64) {
-	if len(ids) == 0 {
+	if b.st == nil {
 		return
 	}
-	drop := make(map[int64]struct{}, len(ids))
 	for _, id := range ids {
-		if id > 0 {
-			drop[id] = struct{}{}
+		if id <= 0 {
+			continue
 		}
-	}
-	if len(drop) == 0 {
-		return
-	}
-	b.recentMu.Lock()
-	defer b.recentMu.Unlock()
-	list := b.recent[chatID]
-	for i := range list {
-		if _, ok := drop[list[i].MessageID]; ok {
-			list[i].State = "recalled"
-			list[i].Content = ""
-			// 撤回后不再提供任何媒体：墓碑不保留取文件的引用。
-			list[i].Media = nil
+		if err := b.st.RecallMessage(chatID, strconv.FormatInt(id, 10)); err != nil {
+			log.Printf("[!] 标记撤回失败 chat=%s msg=%d: %v", chatID, id, err)
 		}
 	}
 }
 
-// LookupRecent 按消息 ID 查最近消息。
-func (b *Bot) LookupRecent(chatID string, messageID int64) (RecentMsg, bool) {
-	b.recentMu.Lock()
-	defer b.recentMu.Unlock()
-	list := b.recent[chatID]
-	for i := len(list) - 1; i >= 0; i-- {
-		if list[i].MessageID == messageID {
-			return list[i], true
+// recentFromRec 把存储记录还原成 runtime 视图。
+func recentFromRec(rec store.MessageRec) RecentMsg {
+	id, _ := strconv.ParseInt(rec.MessageID, 10, 64)
+	m := RecentMsg{
+		MessageID: id, UserID: rec.UserID, Username: rec.Username,
+		Content: rec.Content, Kind: rec.Kind, IsBot: rec.IsBot, State: rec.State, At: rec.At,
+	}
+	if strings.TrimSpace(rec.MediaJSON) != "" {
+		var ref media.Ref
+		if err := json.Unmarshal([]byte(rec.MediaJSON), &ref); err == nil && ref.Kind != "" {
+			m.Media = &ref
 		}
 	}
-	return RecentMsg{}, false
+	return m
+}
+
+// LookupRecent 按消息 ID 查历史消息。
+func (b *Bot) LookupRecent(chatID string, messageID int64) (RecentMsg, bool) {
+	if b.st == nil || messageID == 0 {
+		return RecentMsg{}, false
+	}
+	rec, ok := b.st.Message(chatID, strconv.FormatInt(messageID, 10))
+	if !ok {
+		return RecentMsg{}, false
+	}
+	return recentFromRec(rec), true
 }
 
 // LookupRecentByMember 找某人的最后一条消息。
 func (b *Bot) LookupRecentByMember(chatID, userID string) (RecentMsg, bool) {
-	b.recentMu.Lock()
-	defer b.recentMu.Unlock()
-	list := b.recent[chatID]
-	for i := len(list) - 1; i >= 0; i-- {
-		if list[i].UserID == userID {
-			return list[i], true
-		}
+	if b.st == nil {
+		return RecentMsg{}, false
 	}
-	return RecentMsg{}, false
+	rec, ok := b.st.LastMessageByMember(chatID, userID, time.Time{})
+	if !ok {
+		return RecentMsg{}, false
+	}
+	return recentFromRec(rec), true
 }
 
 // LookupBotRecent 机器人自己最近发的一条消息。
 func (b *Bot) LookupBotRecent(chatID string, onlyWithin time.Duration) (RecentMsg, bool) {
-	b.recentMu.Lock()
-	defer b.recentMu.Unlock()
-	list := b.recent[chatID]
-	for i := len(list) - 1; i >= 0; i-- {
-		if !list[i].IsBot || list[i].MessageID == 0 {
-			continue
-		}
-		if onlyWithin > 0 && time.Since(list[i].At) > onlyWithin {
-			return RecentMsg{}, false
-		}
-		return list[i], true
+	if b.st == nil {
+		return RecentMsg{}, false
 	}
-	return RecentMsg{}, false
+	var since time.Time
+	if onlyWithin > 0 {
+		since = time.Now().Add(-onlyWithin)
+	}
+	rec, ok := b.st.LastBotMessage(chatID, since)
+	if !ok {
+		return RecentMsg{}, false
+	}
+	return recentFromRec(rec), true
+}
+
+// MessagesSignature 是 SSE 用的会话快照签名，不必把整段历史读出来。
+func (b *Bot) MessagesSignature(chatID string) string {
+	if b.st == nil {
+		return ""
+	}
+	return b.st.MessageSignature(chatID)
 }
 
 // ---------------- 媒体 ----------------
 
 // LookupMedia 按「会话 + 消息 ID」查媒体引用。
-// 只能查最近消息缓存里存在的消息：管理端因此没法拿任意 file_id 取文件。
+// 只能查本地消息库里存在的消息：管理端因此没法拿任意 file_id 取文件。
 func (b *Bot) LookupMedia(chatID, msgID string) (media.Ref, bool) {
-	id, err := strconv.ParseInt(strings.TrimSpace(msgID), 10, 64)
-	if err != nil || id <= 0 {
+	if b.st == nil {
 		return media.Ref{}, false
 	}
-	b.recentMu.Lock()
-	defer b.recentMu.Unlock()
-	list := b.recent[chatID]
-	for i := len(list) - 1; i >= 0; i-- {
-		if list[i].MessageID != id {
-			continue
-		}
-		if list[i].State == "recalled" || list[i].Media == nil {
-			return media.Ref{}, false
-		}
-		return *list[i].Media, true
+	rec, ok := b.st.Message(chatID, strings.TrimSpace(msgID))
+	if !ok || rec.State == "recalled" || strings.TrimSpace(rec.MediaJSON) == "" {
+		return media.Ref{}, false
 	}
-	return media.Ref{}, false
+	var ref media.Ref
+	if err := json.Unmarshal([]byte(rec.MediaJSON), &ref); err != nil || ref.Kind == "" {
+		return media.Ref{}, false
+	}
+	return ref, true
 }
 
 // MarkMediaState 记下取回时确认到的状态（过期/不存在），下次投影会带上。
 func (b *Bot) MarkMediaState(chatID, msgID string, st media.State) {
-	id, err := strconv.ParseInt(strings.TrimSpace(msgID), 10, 64)
-	if err != nil || id <= 0 {
+	if b.st == nil {
 		return
 	}
-	b.recentMu.Lock()
-	defer b.recentMu.Unlock()
-	list := b.recent[chatID]
-	for i := len(list) - 1; i >= 0; i-- {
-		if list[i].MessageID == id && list[i].Media != nil {
-			list[i].Media.State = media.NormalizeState(st)
-			return
-		}
+	rec, ok := b.st.Message(chatID, strings.TrimSpace(msgID))
+	if !ok || strings.TrimSpace(rec.MediaJSON) == "" {
+		return
+	}
+	var ref media.Ref
+	if err := json.Unmarshal([]byte(rec.MediaJSON), &ref); err != nil {
+		return
+	}
+	next := media.NormalizeState(st)
+	if ref.State == next {
+		return
+	}
+	ref.State = next
+	raw, err := json.Marshal(ref)
+	if err != nil {
+		return
+	}
+	if err := b.st.SetMessageMedia(chatID, rec.MessageID, string(raw)); err != nil {
+		log.Printf("[!] 更新媒体状态失败 chat=%s msg=%s: %v", chatID, msgID, err)
 	}
 }
 

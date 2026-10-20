@@ -408,7 +408,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		return
 	}
 
-	// 媒体取回是平台无关的：按「会话 + 消息」在最近消息缓存里查引用，
+	// 媒体取回是平台无关的：按「会话 + 消息」在本地消息库里查引用，
 	// Telegram 走 getFile，QQ 代理附件直链。必须在平台能力检查之前处理，
 	// 否则 QQ 上会先被下面的「只支持 Telegram」拦掉。
 	if route == "media" {
@@ -1111,14 +1111,19 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 			ApiErr(w, 405, "不支持的方法")
 		}
 
-	// ---- 最近消息 ----
+	// ---- 聊天记录 ----
 	case "messages":
 		gid := strings.TrimSpace(q.Get("chat_id"))
 		if gid == "" {
 			ApiErr(w, 400, "需要 chat_id")
 			return
 		}
-		list := b.RecentList(gid, 60, 0)
+		// 默认返回全部历史；limit>0 时只取最近 N 条。
+		limit := 0
+		if n, err := strconv.Atoi(strings.TrimSpace(q.Get("limit"))); err == nil && n > 0 {
+			limit = n
+		}
+		list := b.RecentList(gid, limit, 0)
 		messages := make([]map[string]interface{}, 0, len(list))
 		for _, m := range list {
 			item := map[string]interface{}{
@@ -1505,28 +1510,15 @@ func (a *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-tick.C:
+			// 不再读取整段历史做快照：条数 + 最大序号 + 最后更新时间足够判断变化。
 			next := ""
 			if rt != nil && chatID != "" {
-				ids := make([]string, 0, 80)
 				if rt.Bot != nil {
-					for _, m := range rt.Bot.RecentList(chatID, 80, 0) {
-						entry := strconv.FormatInt(m.MessageID, 10) + ":" + m.State
-						if m.Media != nil {
-							entry += ":" + string(m.Media.State)
-						}
-						ids = append(ids, entry)
-					}
+					next = "tg:" + rt.Bot.MessagesSignature(chatID)
 				}
 				if rt.QQ != nil {
-					for _, m := range rt.QQ.RecentList(chatID, 80, 0) {
-						entry := m.ID + ":" + m.State
-						if m.Media != nil {
-							entry += ":" + string(m.Media.State)
-						}
-						ids = append(ids, entry)
-					}
+					next += "|qq:" + rt.QQ.MessagesSignature(chatID)
 				}
-				next = strings.Join(ids, "|")
 			}
 			if next == sig {
 				continue

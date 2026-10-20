@@ -251,15 +251,15 @@ func DispatchControl(req ipc.Request, mgr *manager.Manager) (ipc.Response, bool)
 		}
 		return ipc.Response{OK: true, Msg: "运行中", Data: data}, false
 
-	// chat：把 Service 侧的最近消息投影给 Manager/客户端。
-	// 只返回任务进程内存里现有的事实；不持久化、不补全、不猜状态。
+	// chat：把本地消息库里的历史投影给 Manager/客户端。
+	// 不补全、不猜状态；撤回只保留墓碑。
 	case "chat", "messages":
 		rt, ok := pickRuntime(mgr, req.Args["bot_id"])
 		if !ok {
 			return ipc.Response{OK: false, Msg: "没有运行中的 Bot"}, false
 		}
-		limit := 50
-		if n, err := strconv.Atoi(strings.TrimSpace(req.Args["limit"])); err == nil && n > 0 && n <= 500 {
+		limit := 0 // 0 = 全部消息
+		if n, err := strconv.Atoi(strings.TrimSpace(req.Args["limit"])); err == nil && n > 0 {
 			limit = n
 		}
 		chatID := strings.TrimSpace(req.Args["chat_id"])

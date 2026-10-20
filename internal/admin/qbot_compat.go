@@ -710,9 +710,14 @@ func (c *qctx) chatRecent(w http.ResponseWriter, r *http.Request) {
 	gid := r.URL.Query().Get("group")
 	if gid == "" { gid = r.URL.Query().Get("group_openid") }
 	if gid == "" { ApiErr(w, 400, "需要 group"); return }
+	// 默认返回全部历史；limit>0 时只取最近 N 条。
+	limit := 0
+	if n, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit"))); err == nil && n > 0 {
+		limit = n
+	}
 	out := make([]map[string]interface{}, 0, 60)
 	if c.isQQ() {
-		for _, m := range c.q.RecentList(gid, 60, 0) {
+		for _, m := range c.q.RecentList(gid, limit, 0) {
 			item := map[string]interface{}{
 				"id": m.ID, "username": m.Username, "member_openid": m.MemberOpenID,
 				"content": m.Content, "kind": m.Kind, "is_bot": m.IsBot, "state": m.State, "at": m.At.Format(time.RFC3339),
@@ -725,7 +730,7 @@ func (c *qctx) chatRecent(w http.ResponseWriter, r *http.Request) {
 		ApiOK(w, map[string]interface{}{"group": gid, "messages": out})
 		return
 	}
-	for _, m := range c.b.RecentList(gid, 60, 0) {
+	for _, m := range c.b.RecentList(gid, limit, 0) {
 		item := map[string]interface{}{
 			"id": m.MessageID, "username": m.Username, "member_openid": m.UserID,
 			"content": m.Content, "kind": m.Kind, "is_bot": m.IsBot, "state": m.State, "at": m.At.Format(time.RFC3339),

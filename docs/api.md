@@ -46,7 +46,7 @@
 | `200` | 成功 |
 | `400` | 参数 / JSON 不合法 |
 | `401` | 未授权 |
-| `404` | 资源不存在（如消息不在最近消息缓存里） |
+| `404` | 资源不存在（如消息不在本地库） |
 | `405` | 方法不对 |
 | `409` | 还没有可用 Bot，或该能力不支持当前平台 |
 | `410` | 媒体已失效 / 引用已过期 |
@@ -83,7 +83,7 @@
 | `/api/audit` | GET | 审计日志 |
 | `/api/audit/prune` | 任意 | 清理审计（`?keep=2000`） |
 | `/api/settings` | GET / POST | Bot 级设置 |
-| `/api/messages` | GET | 最近消息（`?chat_id=` 必填） |
+| `/api/messages` | GET | 聊天记录（`?chat_id=` 必填；默认全部，`?limit=` 可限制） |
 | `/api/media` | GET | 取回消息媒体（`?chat_id=&msg=`） |
 | `/api/send` | POST | 发消息（文本 / 媒体 / 按钮） |
 | `/api/broadcast` | POST | 群发 |
@@ -114,7 +114,7 @@ QQ Bot 上调用这些路由会返回 `409`，不会 500。
 | `/api/groups/sync-names` | 批量同步群名 |
 | `/api/admins`、`/api/members`、`/api/mutes`、`/api/blacklist` | 同上，兼容两种字段名 |
 | `/api/joins` | 入群审批（`approve` / `decline`） |
-| `/api/chat/groups`、`/api/chat/recent`、`/api/chat/send` | 会话、最近消息、发消息 |
+| `/api/chat/groups`、`/api/chat/recent`、`/api/chat/send` | 会话、聊天记录、发消息 |
 | `/api/qq/*` | QQ 专属：`botstate`、`groupinfo`、`members`、`mutestate`、`kick`、`recall` |
 
 字段对照：
@@ -131,7 +131,7 @@ QQ Bot 上调用这些路由会返回 `409`，不会 500。
 
 `GET /api/media?chat_id=<会话>&msg=<消息ID>&bot_id=<可选>`
 
-只在最近消息缓存里按「会话 + 消息」查引用，不能凭任意 `file_id` / URL 取文件：
+只在本地消息库（`bots/<id>.db`）里按「会话 + 消息」查引用，不能凭任意 `file_id` / URL 取文件：
 
 - **Telegram**：`getFile` 换临时 `file_path` 后由服务端流式转发；带 bot token 的
   `https://api.telegram.org/file/bot<token>/...` 不会出现在页面里。
@@ -144,7 +144,7 @@ QQ Bot 上调用这些路由会返回 `409`，不会 500。
 | 状态码 | 含义 |
 | --- | --- |
 | `400` | 缺 `chat_id` / `msg` |
-| `404` | 消息不在最近消息缓存里，或没有媒体 |
+| `404` | 消息不在本地库，或没有媒体 |
 | `409` | 这个媒体没有可下载内容（例如表情，按 emoji 显示） |
 | `410` | 平台文件已失效或引用已过期；同时把该消息的 `media.state` 标为 `gone` / `expired` |
 | `413` | 超过单次取回上限 |
@@ -154,6 +154,10 @@ QQ Bot 上调用这些路由会返回 `409`，不会 500。
 `Authorization: Bearer <token>`。不要把 token 拼进媒体 URL。
 
 ### 消息条目与状态
+
+聊天记录保存在每个 Bot 的 SQLite（`bots/<id>.db` 的 `messages` 表），默认**不设条数上限**；
+`/api/chat/recent`、`/api/messages` 默认返回该会话全部历史，`?limit=N` 可只取最近 N 条。
+撤回只清正文与媒体引用，条目本身保留为墓碑。
 
 `/api/chat/recent`、`/api/messages` 返回的每条消息：
 
@@ -207,7 +211,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
   -d '{"chat_id":"-1001234567890","content":"hello"}' \
   "$BASE/api/send?bot_id=1"
 
-# 取回一条最近消息的媒体（浏览器用 cookie；curl 用 Bearer）
+# 取回一条消息的媒体（浏览器用 cookie；curl 用 Bearer）
 curl -s -H "Authorization: Bearer $TOKEN" -o media.bin \
   "$BASE/api/media?bot_id=1&chat_id=-1001234567890&msg=42"
 

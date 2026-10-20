@@ -207,7 +207,7 @@ func cmdRestart() int {
 	return cmdStart()
 }
 
-// cmdChat 通过控制协议向任务进程要一份消息快照；不直连数据库、不落盘。
+// cmdChat 通过控制协议向任务进程要一份消息快照；不直连数据库。
 func cmdChat(args []string) int {
 	addr, ok := ipc.FindDaemonAddr()
 	if !ok {
@@ -264,14 +264,14 @@ func cmdChat(args []string) int {
 		}
 	}
 	if len(snap.Messages) == 0 {
-		fmt.Println("没有最近消息（消息只存在任务进程内存里，重启即清空）")
+		fmt.Println("没有消息记录（收到消息后会自动写入本地库）")
 		return 0
 	}
 	target := "全部会话"
 	if strings.TrimSpace(snap.ChatID) != "" {
 		target = snap.ChatID
 	}
-	fmt.Printf("Bot #%d · %s · %d 条（仅内存，不落盘）\n", snap.BotID, target, len(snap.Messages))
+	fmt.Printf("Bot #%d · %s · %d 条（保存在本地库）\n", snap.BotID, target, len(snap.Messages))
 	for _, m := range snap.Messages {
 		dir := "←"
 		if m.Outgoing {
@@ -436,12 +436,11 @@ func cmdDB() int {
 	admins, _ := st.Admins()
 	mutes, _ := st.Mutes(true)
 	bl, _ := st.Blacklists("")
-	recent, _ := st.Audit(1, "", "")
 	fmt.Printf("注册表: %s\n", config.DBPath)
 	fmt.Printf("Bot: #%d %s（%s）\n", rec.ID, rec.Name, rec.Platform)
 	fmt.Printf("业务库: %s\n", manager.BotDBPath(rec.ID))
-	fmt.Printf("  回复规则 %d 条 / 违禁词 %d 条 / 群 %d 个 / 管理员 %d 人 / 禁言中 %d 人 / 黑名单 %d 人 / 审计 %d 条\n",
-		len(Rules), len(words), len(groups), len(admins), len(mutes), len(bl), len(recent))
+	fmt.Printf("  聊天记录 %d 条 / 回复规则 %d 条 / 违禁词 %d 条 / 群 %d 个 / 管理员 %d 人 / 禁言中 %d 人 / 黑名单 %d 人\n",
+		st.MessageCount(), len(Rules), len(words), len(groups), len(admins), len(mutes), len(bl))
 	fmt.Println("  改这些请用网页后台（LianT admin 看地址），或直接在群里用中文指令。")
 	return 0
 }
@@ -1093,7 +1092,7 @@ func printUsage() {
   LianT status             查看任务进程、机器人、回复规则状态
   LianT logs [行数] [-f]    查看日志，默认 50 行，-f 持续跟随
   LianT chat [-b BotID] [-c 会话ID] [-n 条数]
-                           查看任务进程内存里的最近消息（不落盘，重启即清空）
+                           查看已保存的聊天记录（默认全部，-n 可限制）
   LianT admin              网页管理端地址 + token（以及反代示例）
   LianT db                 看数据库统计（规则/违禁词/群/管理员…）
   LianT reload             同步 SQLite Bot 注册表并请求重连（不重启进程）

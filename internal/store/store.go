@@ -18,7 +18,7 @@ import (
 // ============================================================================
 // 存储层：SQLite
 //
-// 全业务数据都在这里：群、管理员、回复规则、违禁词、禁言、黑名单、群名册、审计。
+// 全业务数据都在这里：群、管理员、回复规则、违禁词、禁言、黑名单、群名册、审计、聊天消息。
 //   * 驱动见 sqlitedriver.go（默认纯 Go 的 modernc.org/sqlite，不需要 cgo）
 //   * 单连接串行 + WAL：手机上的读写量很小，这样最不容易出 "database is locked"
 //   * rev 是进程内版本号，任何写操作 +1；热路径靠它判断要不要重载缓存，
@@ -27,7 +27,7 @@ import (
 // ============================================================================
 
 // SchemaVersion 每次改表结构都 +1，并在 migrations 里追加一段。
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 // SchemaStatements 是当前版本的全量建表语句（幂等，可重复执行）。
 var SchemaStatements = []string{
@@ -164,6 +164,26 @@ var SchemaStatements = []string{
 		result        TEXT NOT NULL DEFAULT '',
 		detail        TEXT NOT NULL DEFAULT ''
 	)`,
+	`CREATE TABLE IF NOT EXISTS messages (
+		seq        INTEGER PRIMARY KEY AUTOINCREMENT,
+		chat_id    TEXT NOT NULL,
+		message_id TEXT NOT NULL,
+		msg_idx    TEXT NOT NULL DEFAULT '',
+		user_id    TEXT NOT NULL DEFAULT '',
+		username   TEXT NOT NULL DEFAULT '',
+		content    TEXT NOT NULL DEFAULT '',
+		kind       TEXT NOT NULL DEFAULT '',
+		is_bot     INTEGER NOT NULL DEFAULT 0,
+		state      TEXT NOT NULL DEFAULT 'received',
+		media      TEXT NOT NULL DEFAULT '',
+		at         TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT '',
+		UNIQUE(chat_id, message_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_messages_chat_seq ON messages(chat_id, seq DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_messages_chat_idx ON messages(chat_id, msg_idx)`,
+	`CREATE INDEX IF NOT EXISTS idx_messages_chat_member ON messages(chat_id, user_id, seq DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_messages_chat_updated ON messages(chat_id, updated_at DESC)`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit(ts DESC)`,
 	`CREATE INDEX IF NOT EXISTS idx_rules_enabled ON reply_rules(enabled, priority)`,
 	`CREATE INDEX IF NOT EXISTS idx_words_enabled ON banned_words(enabled)`,

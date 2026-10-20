@@ -18,7 +18,7 @@ import (
 
 // ServeMedia 取回一条最近消息的媒体内容。
 //
-// 浏览器只给 chat_id + msg（可选 bot_id）；任务进程按最近消息缓存校验归属，
+// 浏览器只给 chat_id + msg（可选 bot_id）；任务进程按本地消息库校验归属，
 // 再换成平台的临时引用。Telegram 的 file_path/token、QQ 的签名直链都不会出现在
 // 响应里，接口也不能凭任意 file_id / URL 取文件。
 func (a *Server) ServeMedia(w http.ResponseWriter, r *http.Request, rt *manager.Runtime, b *bot.Bot, qb *qqbot.Bot) {
@@ -47,7 +47,7 @@ func (a *Server) ServeMedia(w http.ResponseWriter, r *http.Request, rt *manager.
 		ref, ok = qb.LookupMedia(chatID, msgID)
 	}
 	if !ok {
-		ApiErr(w, http.StatusNotFound, "消息不在最近消息缓存里，或这条消息没有可取的媒体")
+		ApiErr(w, http.StatusNotFound, "消息不在本地库里，或这条消息没有可取的媒体")
 		return
 	}
 	if !ref.Fetchable() {

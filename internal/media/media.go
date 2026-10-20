@@ -2,7 +2,7 @@
 //
 // 两个结构刻意分开：
 //
-//	Ref        任务进程内存里的引用：含 Telegram file_id、QQ 附件直链，不序列化、不落盘；
+//	Ref        任务进程持有的引用：含 Telegram file_id、QQ 附件直链；随消息落本机库，不进 API JSON；
 //	Descriptor 投影给客户端的事实：类型、名称、大小与可取回状态，不含任何地址。
 //
 // 取回统一走管理端 GET /api/media：由任务进程按「会话 + 消息」查引用，
@@ -70,21 +70,26 @@ var (
 )
 
 // Ref 是任务进程内部持有的媒体引用。
+//
+// 带 JSON tag 是为了持久化到每个 Bot 的本地 SQLite：重启后 Telegram 仍能用
+// file_id 取回；QQ 的签名直链过期后会由取回失败把状态改成 gone。
+// Ref 本身不进任何对外 JSON，客户端只看到 Descriptor。
 type Ref struct {
-	Kind          string
-	Name          string
-	MIME          string
-	Size          int64
-	Width, Height int
-	Duration      int // 秒
-	Emoji         string
+	Kind     string `json:"kind,omitempty"`
+	Name     string `json:"name,omitempty"`
+	MIME     string `json:"mime,omitempty"`
+	Size     int64  `json:"size,omitempty"`
+	Width    int    `json:"width,omitempty"`
+	Height   int    `json:"height,omitempty"`
+	Duration int    `json:"duration,omitempty"` // 秒
+	Emoji    string `json:"emoji,omitempty"`
 
-	// FileID 是 Telegram 的 file_id，只在进程内使用。
-	FileID string
-	// URL 是 QQ 附件的签名直链，只在进程内使用，且随时可能失效。
-	URL string
+	// FileID 是 Telegram 的 file_id，只在进程内与本地库使用。
+	FileID string `json:"file_id,omitempty"`
+	// URL 是 QQ 附件签名直链，只在进程内与本地库使用，且随时可能失效。
+	URL string `json:"url,omitempty"`
 
-	State State
+	State State `json:"state,omitempty"`
 }
 
 // Fetchable 表示是否真的有可取回的字节。

@@ -2019,7 +2019,7 @@
           ${current ? chatHeadHTML(current) : ""}
           ${timeline}
           <div class="chat-footnote">
-            <span>${icon("lock")}消息只留在任务进程内存里（每群最近 200 条），不写数据库，重启即清空</span>
+            <span>${icon("lock")}消息保存在本机 SQLite（bots/&lt;id&gt;.db），条数不设上限；媒体字节仍按需取回</span>
             <span>${icon("info")}「已发送」只代表平台受理，不代表已送达或已读</span>
           </div>
           ${current ? chatComposerHTML() : ""}
