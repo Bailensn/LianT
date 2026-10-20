@@ -408,6 +408,14 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		return
 	}
 
+	// 媒体取回是平台无关的：按「会话 + 消息」在最近消息缓存里查引用，
+	// Telegram 走 getFile，QQ 代理附件直链。必须在平台能力检查之前处理，
+	// 否则 QQ 上会先被下面的「只支持 Telegram」拦掉。
+	if route == "media" {
+		a.ServeMedia(w, r, rt, b, qb)
+		return
+	}
+
 	// 这些能力只有 Telegram 适配器实现；QQ Bot 上 b 为 nil，直接给明确错误，别让它 panic。
 	if b == nil {
 		switch route {
@@ -1113,7 +1121,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 		list := b.RecentList(gid, 60, 0)
 		messages := make([]map[string]interface{}, 0, len(list))
 		for _, m := range list {
-			messages = append(messages, map[string]interface{}{
+			item := map[string]interface{}{
 				"message_id": m.MessageID,
 				"user_id":    m.UserID,
 				"username":   m.Username,
@@ -1122,7 +1130,11 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 				"is_bot":     m.IsBot,
 				"state":      m.State,
 				"at":         m.At.Format(time.RFC3339),
-			})
+			}
+			if m.Media != nil {
+				item["media"] = m.Media.Descriptor()
+			}
+			messages = append(messages, item)
 		}
 		ApiOK(w, messages)
 
@@ -1498,12 +1510,20 @@ func (a *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 				ids := make([]string, 0, 80)
 				if rt.Bot != nil {
 					for _, m := range rt.Bot.RecentList(chatID, 80, 0) {
-						ids = append(ids, strconv.FormatInt(m.MessageID, 10)+":"+m.State)
+						entry := strconv.FormatInt(m.MessageID, 10) + ":" + m.State
+						if m.Media != nil {
+							entry += ":" + string(m.Media.State)
+						}
+						ids = append(ids, entry)
 					}
 				}
 				if rt.QQ != nil {
 					for _, m := range rt.QQ.RecentList(chatID, 80, 0) {
-						ids = append(ids, m.ID+":"+m.State)
+						entry := m.ID + ":" + m.State
+						if m.Media != nil {
+							entry += ":" + string(m.Media.State)
+						}
+						ids = append(ids, entry)
 					}
 				}
 				next = strings.Join(ids, "|")

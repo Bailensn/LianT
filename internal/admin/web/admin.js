@@ -52,6 +52,10 @@
     push: "群发", join: "入群", manual: "手动", admin: "管理", message: "消息",
     reply: "回复", word: "违禁词", blacklist: "黑名单"
   };
+  const MEDIA_KIND_LABEL = {
+    image: "图片", video: "视频", audio: "音频", voice: "语音",
+    file: "文件", sticker: "表情", animation: "动图", video_note: "视频留言"
+  };
   const ROLE_LABEL = { super: "超级管理员", admin: "管理员", owner: "群主", member: "成员" };
   const ACTION_LABEL = {
     kick: "踢出", recall: "撤回", mute: "禁言", unmute: "解禁", blacklist: "拉黑",
@@ -120,6 +124,13 @@
   const TIME_ONLY = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
 
   const fmtNum = value => NUM.format(Number(value) || 0);
+  const fmtBytes = value => {
+    const n = Number(value) || 0;
+    if (n <= 0) return "";
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(n < 10 * 1024 ? 1 : 0) + " KB";
+    return (n / 1024 / 1024).toFixed(n < 10 * 1024 * 1024 ? 1 : 0) + " MB";
+  };
   const truncate = (value, max = 48) => {
     const s = String(value == null ? "" : value);
     return s.length > max ? s.slice(0, Math.max(1, max - 1)) + "…" : s;
@@ -1745,6 +1756,71 @@
     </div>`;
   }
 
+  /* 媒体：只拿到类型、名称、大小与状态；字节由 /api/media 按需取回，
+     所以这里拼的是「取回地址」，不是平台直链。 */
+  function mediaSource(message) {
+    const gid = state.chat.group;
+    if (!message || !message.id || !gid) return "";
+    const params = new URLSearchParams();
+    if (state.botID) params.set("bot_id", state.botID);
+    params.set("chat_id", gid);
+    params.set("msg", String(message.id));
+    return BASE + "/api/media?" + params.toString();
+  }
+
+  function mediaStateNote(media) {
+    const s = String((media && media.state) || "");
+    if (s === "gone") return "平台侧文件已失效，或消息已被撤回";
+    if (s === "expired") return "引用已过期，刷新后重试";
+    if (media && media.fetchable === false) return "这条消息只有引用信息，没有可下载内容";
+    return "暂时取不到媒体";
+  }
+
+  function mediaNote(media) {
+    const label = MEDIA_KIND_LABEL[String((media && media.kind) || "")] || "附件";
+    return `<div class="msg-media msg-media-note">${icon("alert")}<span>${esc(label)}不可取回</span><small>${esc(mediaStateNote(media))}</small></div>`;
+  }
+
+  function mediaHTML(message) {
+    const media = message && message.media;
+    if (!media || !media.kind) return "";
+    const kind = String(media.kind);
+    const stateName = String(media.state || "unknown");
+    if (kind === "sticker") {
+      const emoji = String(media.emoji || "").trim();
+      return `<div class="msg-media msg-media-sticker" title="${esc(emoji ? "表情 " + emoji : "表情")}">${emoji ? esc(emoji) : icon("message")}</div>`;
+    }
+    const src = mediaSource(message);
+    if (stateName === "gone" || stateName === "expired" || media.fetchable === false || !src) return mediaNote(media);
+    const label = MEDIA_KIND_LABEL[kind] || "附件";
+    const size = fmtBytes(media.size);
+    const dims = media.width && media.height ? media.width + "×" + media.height : "";
+    const meta = [label, media.mime, size, dims].filter(Boolean).join(" · ");
+    if (kind === "image") {
+      return `<figure class="msg-media msg-media-image">
+        <button class="media-thumb" type="button" data-act="media-open" data-src="${esc(src)}" data-name="${esc(media.name || label)}" aria-label="放大图片">
+          <img src="${esc(src)}" alt="${esc(media.name || label)}" loading="lazy" decoding="async" data-media-img>
+        </button>
+      </figure>`;
+    }
+    if (kind === "video" || kind === "animation" || kind === "video_note") {
+      return `<figure class="msg-media msg-media-video">
+        <video src="${esc(src)}" controls preload="none" playsinline></video>
+        <figcaption>${esc(meta)}<a class="media-download" href="${esc(src)}" download="${esc(media.name || "")}">${icon("download")}下载</a></figcaption>
+      </figure>`;
+    }
+    if (kind === "audio" || kind === "voice") {
+      return `<figure class="msg-media msg-media-audio">
+        <audio src="${esc(src)}" controls preload="none"></audio>
+        <figcaption>${esc(meta)}<a class="media-download" href="${esc(src)}" download="${esc(media.name || "")}">${icon("download")}下载</a></figcaption>
+      </figure>`;
+    }
+    return `<a class="msg-media msg-media-file" href="${esc(src)}" download="${esc(media.name || "")}">
+      <span class="media-file-icon">${icon("download")}</span>
+      <span class="media-file-text"><strong>${esc(media.name || label)}</strong><small>${esc(meta)}</small></span>
+    </a>`;
+  }
+
   function chatMessageHTML(message) {
     const state = String(message.state || "");
     const recalled = state === "recalled";
@@ -1752,10 +1828,13 @@
     const card = !recalled && bot ? parseCard(message.content) : null;
     const kind = String(message.kind || "");
     const kindLabel = {
-      image: "图片", voice: "语音", video: "视频", file: "文件", markdown: "Markdown",
-      ark: "卡片", embed: "卡片", media: "富媒体", markup: "表情", other: "附件"
+      image: "图片", photo: "图片", voice: "语音", audio: "音频", video: "视频",
+      file: "文件", document: "文件", sticker: "表情", animation: "动图", video_note: "视频留言",
+      markdown: "Markdown", ark: "卡片", embed: "卡片", media: "富媒体", markup: "表情", other: "附件"
     }[kind] || "";
     const name = message.username || (bot ? "LianT" : "成员");
+    const media = !recalled ? mediaHTML(message) : "";
+    const text = String(message.content || "");
     let stateLabel = "";
     let stateTitle = "";
     if (recalled) {
@@ -1771,11 +1850,16 @@
       stateLabel = state;
       stateTitle = "未知状态，按原始值显示";
     }
-    const body = recalled
-      ? `<div class="msg-bubble msg-bubble-recalled"><span>已撤回</span><small>正文已清除</small></div>`
-      : card
-        ? cardBubble(card)
-        : `<div class="msg-bubble">${esc(message.content || kindLabel || "（空消息）")}</div>`;
+    let body;
+    if (recalled) {
+      body = `<div class="msg-bubble msg-bubble-recalled"><span>已撤回</span><small>正文已清除</small></div>`;
+    } else if (card) {
+      body = cardBubble(card);
+    } else if (media) {
+      body = `<div class="msg-media-wrap">${media}${text ? `<div class="msg-bubble msg-caption">${esc(text)}</div>` : ""}</div>`;
+    } else {
+      body = `<div class="msg-bubble">${esc(text || kindLabel || "（空消息）")}</div>`;
+    }
     return `<div class="msg ${bot ? "msg-bot" : "msg-user"}${recalled ? " is-recalled" : ""}" data-msg-id="${esc(message.id || "")}">
       <div class="msg-avatar${bot ? "" : " avatar " + avatarClass(message.username || message.member_openid)}">${bot ? icon("bot") : esc(initial(message.username))}</div>
       <div class="msg-main">
@@ -1812,7 +1896,7 @@
   }
 
   function chatSignature(messages) {
-    return (messages || []).map(m => String(m.id || "") + ":" + String(m.at || "") + ":" + String(m.content || "")).join("|");
+    return (messages || []).map(m => String(m.id || "") + ":" + String(m.at || "") + ":" + String(m.content || "") + ":" + String((m.media && m.media.state) || "")).join("|");
   }
 
   function chatHeadHTML(group) {
@@ -2070,6 +2154,17 @@
     form.elements.content.focus();
   }
 
+  function openMediaDialog(src, name) {
+    const dialog = document.getElementById("media-dialog");
+    const img = document.getElementById("media-dialog-img");
+    if (!dialog || !img || !src) return;
+    img.src = src;
+    img.alt = name || "图片";
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+    syncScrollLock();
+  }
+
   function quoteChatMessage(id) {
     const message = state.chat.messages.find(item => String(item.id) === String(id));
     if (!message) throw new Error("这条消息已经不在缓存里了");
@@ -2081,7 +2176,8 @@
       if (form.elements.title) form.elements.title.value = card.title;
       form.elements.content.value = card.body;
     } else {
-      form.elements.content.value = message.content || "";
+      const mediaLabel = message.media ? (MEDIA_KIND_LABEL[String(message.media.kind)] || "附件") : "";
+      form.elements.content.value = message.content || (mediaLabel ? "[" + mediaLabel + "]" : "");
     }
     updateChatComposerState();
     form.elements.content.focus();
@@ -2828,7 +2924,8 @@
     "chat-refresh": () => refreshChatMessages(true),
     "chat-format": el => setChatFormat(el.dataset.format),
     "chat-quote": el => quoteChatMessage(el.dataset.id),
-    "chat-recall": el => recallChatMessage(el.dataset.id)
+    "chat-recall": el => recallChatMessage(el.dataset.id),
+    "media-open": el => openMediaDialog(el.dataset.src, el.dataset.name)
   };
 
   const FORMS = {
@@ -2951,6 +3048,32 @@
     document.querySelectorAll("dialog").forEach(dialog => {
       dialog.addEventListener("close", () => syncScrollLock());
     });
+
+    const mediaDialog = document.getElementById("media-dialog");
+    const mediaDialogClose = document.getElementById("media-dialog-close");
+    if (mediaDialogClose && mediaDialog) {
+      mediaDialogClose.addEventListener("click", () => mediaDialog.close());
+    }
+    if (mediaDialog) {
+      mediaDialog.addEventListener("click", event => {
+        if (event.target === mediaDialog) mediaDialog.close();
+      });
+    }
+    // 图片是延迟加载的：取回失败时不要在气泡里留一个破图标。
+    view.addEventListener("error", event => {
+      const img = event.target;
+      if (!(img instanceof HTMLImageElement) || !img.hasAttribute("data-media-img")) return;
+      const figure = img.closest(".msg-media");
+      const button = img.closest("button");
+      img.hidden = true;
+      if (button) button.disabled = true;
+      if (figure && !figure.querySelector(".media-fallback")) {
+        const note = document.createElement("span");
+        note.className = "media-fallback";
+        note.textContent = "图片取回失败（可能已过期）";
+        (button || figure).appendChild(note);
+      }
+    }, true);
 
     view.addEventListener("click", event => {
       const target = event.target.closest("[data-act]");

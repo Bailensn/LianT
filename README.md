@@ -195,6 +195,12 @@ Telegram 普通 @username 不带用户 ID，所以 LianT 会用本地名册（�
 
 按钮回调支持 `del:<message_id>`、`mute:<user_id>:<seconds>`、`unmute:<user_id>`、`ban:<user_id>`、`unban:<user_id>`，执行前会校验操作者是不是管理员。
 
+收到消息时，媒体由服务端按需取回（`GET /api/media?chat_id=&msg=`）：
+
+- 图片懒加载显示，点击放大；文件显示名称/大小/类型并可下载；语音/视频用原生播放器；表情按 `emoji` 渲染；
+- 平台的 `file_id`、Telegram 带 token 的下载地址、QQ 的签名附件直链都只留在任务进程，不进浏览器；
+- 取不到（过期、已撤回、超过 32 MB）时明确标注「不可取回」，不伪造缩略图。
+
 内联模式：在「设置」里填 `inline_results`（每行 `标题|内容`），并到 @BotFather `/setinline` 开启内联；
 之后在任意聊天输入 `@你的机器人 关键词` 即可返回结果。
 

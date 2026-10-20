@@ -287,6 +287,9 @@ func cmdChat(args []string) int {
 		content := m.Content
 		if m.State == chat.StateRecalled {
 			content = "（已撤回，正文已清除）"
+		} else if content == "" && m.Media != nil {
+			// CLI 不下载媒体，只标出类型；取回走管理端 /api/media。
+			content = "[" + mediaKindLabel(m.Media.Kind) + "]"
 		}
 		fmt.Printf("%s %s %-12s %-9s %s\n",
 			m.At.Local().Format("15:04:05"), dir, clipRunes(who, 12),
@@ -294,6 +297,29 @@ func cmdChat(args []string) int {
 	}
 	fmt.Println("提示：sent 只代表平台受理，不代表送达或已读。")
 	return 0
+}
+
+// mediaKindLabel 给 CLI 的媒体类型一个短标签。
+func mediaKindLabel(kind string) string {
+	switch kind {
+	case "image":
+		return "图片"
+	case "video":
+		return "视频"
+	case "audio":
+		return "音频"
+	case "voice":
+		return "语音"
+	case "file":
+		return "文件"
+	case "sticker":
+		return "表情"
+	case "animation":
+		return "动图"
+	case "video_note":
+		return "视频留言"
+	}
+	return "媒体"
 }
 
 func clipRunes(s string, n int) string {

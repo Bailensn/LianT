@@ -90,6 +90,7 @@ type Identity struct {
 | `GET /api/joins`、`POST /api/joins` | 入群申请审批 |
 | `POST /api/send`、`POST /api/broadcast` | 发消息 / 群发 |
 | `POST /api/recall` | 撤回 |
+| `GET /api/media?chat_id=&msg=` | 最近消息的媒体取回（平台无关：Telegram `getFile` / QQ 附件代理） |
 | `GET /api/audit` | 审计 |
 | `GET/POST /api/settings` | Bot 级设置 |
 | `POST /api/botapi`、`POST /api/upload` | 平台原生 API 透传 |

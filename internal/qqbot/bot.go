@@ -4,17 +4,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"mime"
 	"net/http"
-	
-	"LianT/internal/platform/qq"
-	"LianT/internal/rules"
-	qqstore "LianT/internal/platform/qq/store"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"LianT/internal/media"
+	"LianT/internal/platform/qq"
+	qqstore "LianT/internal/platform/qq/store"
+	"LianT/internal/rules"
 
 	"github.com/gorilla/websocket"
 )
@@ -94,10 +98,82 @@ type RecentMsg struct {
 	MemberOpenID string
 	Username     string
 	Content      string
-	Kind         string // text/image/voice/video/file/markdown/ark/embed/other/bot
+	Kind         string // text/image/voice/video/audio/file/sticker/animation/...
 	IsBot        bool   // 机器人自己发的
 	State        string // received / sent / recalled
 	At           time.Time
+	// Media 是这条消息的主要附件引用（只在内存里；含签名直链，不序列化）。
+	Media *media.Ref
+}
+
+// ClassifyMessage 先看附件，再看 message_type/正文。
+// 附件类型比正文 URL 可靠：图片消息的 content 经常是空串。
+func ClassifyMessage(d qq.MessageData) string {
+	if kind := attachmentKind(d.Attachments); kind != "" {
+		return kind
+	}
+	return ClassifyMessageKind(d.MessageType, d.Content)
+}
+
+func attachmentKind(list []qq.Attachment) string {
+	for _, a := range list {
+		if strings.TrimSpace(a.URL) == "" {
+			continue
+		}
+		return attachmentKindOf(a)
+	}
+	return ""
+}
+
+func attachmentKindOf(a qq.Attachment) string {
+	ct := strings.ToLower(strings.TrimSpace(a.ContentType))
+	name := strings.ToLower(a.Filename)
+	switch {
+	case strings.HasPrefix(ct, "image/"), hasExt(name, ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"):
+		return media.KindImage
+	case strings.HasPrefix(ct, "video/"), hasExt(name, ".mp4", ".mov", ".m4v", ".webm"):
+		return media.KindVideo
+	case strings.HasPrefix(ct, "audio/"), strings.Contains(ct, "silk"), strings.Contains(ct, "amr"),
+		hasExt(name, ".silk", ".amr", ".mp3", ".m4a", ".ogg"):
+		if hasExt(name, ".silk", ".amr") || strings.Contains(ct, "silk") || strings.Contains(ct, "amr") {
+			return media.KindVoice
+		}
+		return media.KindAudio
+	default:
+		return media.KindFile
+	}
+}
+
+func hasExt(name string, exts ...string) bool {
+	for _, ext := range exts {
+		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// AttachmentRef 取消息里第一个带 URL 的主要附件。
+// 一条消息只投影一个媒体；多图消息先取第一张，够用且不伪造聚合。
+func AttachmentRef(d qq.MessageData) *media.Ref {
+	for _, a := range d.Attachments {
+		if strings.TrimSpace(a.URL) == "" {
+			continue
+		}
+		kind := attachmentKindOf(a)
+		mimeType := strings.TrimSpace(a.ContentType)
+		if mimeType == "" {
+			mimeType = mime.TypeByExtension(strings.ToLower(filepath.Ext(a.Filename)))
+		}
+		return &media.Ref{
+			Kind: kind, Name: strings.TrimSpace(a.Filename), MIME: mimeType,
+			Size: a.Size, Width: a.Width, Height: a.Height,
+			URL: a.URL,
+			// QQ 的附件直链是签名 URL，取回之前无法确认是否还有效。
+			State: media.StateUnknown,
+		}
+	}
+	return nil
 }
 
 // ClassifyMessageKind 把消息归类（QQ 的 message_type + 内容特征）。
@@ -140,14 +216,22 @@ func ClassifyMessageKind(messageType int, content string) string {
 // KindLabel 给日志/审计看的短标签。
 func KindLabel(kind string) string {
 	switch kind {
-	case "image":
+	case media.KindImage:
 		return "[图片]"
-	case "voice":
+	case media.KindVoice:
 		return "[语音]"
-	case "video":
+	case media.KindAudio:
+		return "[音频]"
+	case media.KindVideo:
 		return "[视频]"
-	case "file":
+	case media.KindFile:
 		return "[文件]"
+	case media.KindSticker:
+		return "[表情]"
+	case media.KindAnimation:
+		return "[动图]"
+	case media.KindVideoNote:
+		return "[视频留言]"
 	case "media":
 		return "[富媒体]"
 	case "markdown":
@@ -180,7 +264,8 @@ func (b *Bot) RememberMessage(d qq.MessageData) {
 	list := append(b.recent[d.GroupOpenID], RecentMsg{
 		MsgIdx: idx, ID: d.ID, MemberOpenID: d.Author.MemberOpenID,
 		Username: d.Author.Username, Content: d.Content,
-		Kind: ClassifyMessageKind(d.MessageType, d.Content), State: "received", At: time.Now(),
+		Kind: ClassifyMessage(d), State: "received", At: time.Now(),
+		Media: AttachmentRef(d),
 	})
 	if len(list) > RecentKeep {
 		list = list[len(list)-RecentKeep:]
@@ -251,6 +336,8 @@ func (b *Bot) MarkRecalled(groupOpenID string, ids ...string) {
 		if _, ok := drop[list[i].ID]; ok {
 			list[i].State = "recalled"
 			list[i].Content = ""
+			// 撤回后不再提供任何媒体：墓碑不保留附件直链。
+			list[i].Media = nil
 		}
 	}
 }
@@ -302,6 +389,57 @@ func (b *Bot) LookupRecentByMember(groupOpenID, memberOpenID string) (RecentMsg,
 		}
 	}
 	return RecentMsg{}, false
+}
+
+// LookupMedia 按「群 + 消息 ID」查附件引用。
+// 只能查最近消息缓存里存在的消息，管理端没法拿任意 URL 让服务端代理。
+func (b *Bot) LookupMedia(groupOpenID, msgID string) (media.Ref, bool) {
+	msgID = strings.TrimSpace(msgID)
+	if msgID == "" {
+		return media.Ref{}, false
+	}
+	b.recentMu.Lock()
+	defer b.recentMu.Unlock()
+	list := b.recent[groupOpenID]
+	for i := len(list) - 1; i >= 0; i-- {
+		if list[i].ID != msgID {
+			continue
+		}
+		if list[i].State == "recalled" || list[i].Media == nil {
+			return media.Ref{}, false
+		}
+		return *list[i].Media, true
+	}
+	return media.Ref{}, false
+}
+
+// MarkMediaState 记下取回附件时确认到的状态，下次投影会带上。
+func (b *Bot) MarkMediaState(groupOpenID, msgID string, st media.State) {
+	msgID = strings.TrimSpace(msgID)
+	if msgID == "" {
+		return
+	}
+	b.recentMu.Lock()
+	defer b.recentMu.Unlock()
+	list := b.recent[groupOpenID]
+	for i := len(list) - 1; i >= 0; i-- {
+		if list[i].ID == msgID && list[i].Media != nil {
+			list[i].Media.State = media.NormalizeState(st)
+			return
+		}
+	}
+}
+
+// OpenMedia 代理 QQ 附件下载。
+// 附件直链由平台签名，可能随时失效；失效时返回 ErrGone，让界面明说而不是留白。
+func (b *Bot) OpenMedia(ref media.Ref) (io.ReadCloser, int64, error) {
+	if strings.TrimSpace(ref.URL) == "" {
+		return nil, 0, media.ErrGone
+	}
+	if ref.Size > media.MaxBytes {
+		return nil, 0, media.ErrTooLarge
+	}
+	return media.OpenHTTP(ref.URL, media.MaxBytes)
 }
 
 func credentialsError() string {

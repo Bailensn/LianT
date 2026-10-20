@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"LianT/internal/config"
+	"LianT/internal/media"
 	"LianT/internal/store"
 	"LianT/internal/telegram"
 )
@@ -109,32 +110,35 @@ type RecentMsg struct {
 	IsBot     bool
 	State     string // received / sent / recalled
 	At        time.Time
+	// Media 是这条消息的媒体引用（只在内存里；含 file_id，不序列化）。
+	Media *media.Ref
 }
 
 const RecentKeep = 200
 
-// Classify 把 Telegram 消息归类（只用于日志/审计/撤回提示）。
+// Classify 把 Telegram 消息归类（用于日志/审计/撤回提示）。
+// 返回 media.Kind* 这套跨平台归一化的类型。
 func Classify(m *telegram.Message) string {
 	if m == nil {
 		return "other"
 	}
 	switch {
 	case len(m.Photo) > 0:
-		return "photo"
-	case m.Video != nil:
-		return "video"
-	case m.Voice != nil:
-		return "voice"
-	case m.Audio != nil:
-		return "audio"
-	case m.Document != nil:
-		return "document"
+		return media.KindImage
 	case m.Sticker != nil:
-		return "sticker"
+		return media.KindSticker
 	case m.Animation != nil:
-		return "animation"
+		return media.KindAnimation
+	case m.Video != nil:
+		return media.KindVideo
 	case m.VideoNote != nil:
-		return "video_note"
+		return media.KindVideoNote
+	case m.Voice != nil:
+		return media.KindVoice
+	case m.Audio != nil:
+		return media.KindAudio
+	case m.Document != nil:
+		return media.KindFile
 	case m.Poll != nil:
 		return "poll"
 	case m.Location != nil:
@@ -149,24 +153,92 @@ func Classify(m *telegram.Message) string {
 	return "other"
 }
 
+// MediaRefOf 把 Telegram 的媒体字段转成内部引用。
+// 只收能确认的事实：拿不到尺寸/名称就留空，不猜。
+func MediaRefOf(m *telegram.Message) *media.Ref {
+	if m == nil {
+		return nil
+	}
+	switch {
+	case len(m.Photo) > 0:
+		// Telegram 按尺寸升序排列，最后一个最大。
+		p := m.Photo[len(m.Photo)-1]
+		return &media.Ref{
+			Kind: media.KindImage, MIME: "image/jpeg", Size: p.FileSize,
+			Width: p.Width, Height: p.Height, FileID: p.FileID, State: media.StateAvailable,
+		}
+	case m.Sticker != nil:
+		s := m.Sticker
+		return &media.Ref{
+			Kind: media.KindSticker, MIME: s.MimeType, Size: s.FileSize,
+			Width: s.Width, Height: s.Height, Emoji: s.Emoji,
+			State: media.StateAvailable,
+		}
+	case m.Animation != nil:
+		a := m.Animation
+		return &media.Ref{
+			Kind: media.KindAnimation, Name: a.FileName, MIME: a.MimeType, Size: a.FileSize,
+			Width: a.Width, Height: a.Height, Duration: a.Duration,
+			FileID: a.FileID, State: media.StateAvailable,
+		}
+	case m.Video != nil:
+		v := m.Video
+		return &media.Ref{
+			Kind: media.KindVideo, Name: v.FileName, MIME: v.MimeType, Size: v.FileSize,
+			Width: v.Width, Height: v.Height, Duration: v.Duration,
+			FileID: v.FileID, State: media.StateAvailable,
+		}
+	case m.VideoNote != nil:
+		v := m.VideoNote
+		return &media.Ref{
+			Kind: media.KindVideoNote, MIME: "video/mp4", Size: v.FileSize,
+			Width: v.Length, Height: v.Length, Duration: v.Duration,
+			FileID: v.FileID, State: media.StateAvailable,
+		}
+	case m.Voice != nil:
+		v := m.Voice
+		mimeType := v.MimeType
+		if mimeType == "" {
+			mimeType = "audio/ogg"
+		}
+		return &media.Ref{
+			Kind: media.KindVoice, MIME: mimeType, Size: v.FileSize,
+			Duration: v.Duration, FileID: v.FileID, State: media.StateAvailable,
+		}
+	case m.Audio != nil:
+		a := m.Audio
+		return &media.Ref{
+			Kind: media.KindAudio, Name: a.FileName, MIME: a.MimeType, Size: a.FileSize,
+			Duration: a.Duration, FileID: a.FileID, State: media.StateAvailable,
+		}
+	case m.Document != nil:
+		d := m.Document
+		return &media.Ref{
+			Kind: media.KindFile, Name: d.FileName, MIME: d.MimeType, Size: d.FileSize,
+			FileID: d.FileID, State: media.StateAvailable,
+		}
+	}
+	return nil
+}
+
 // KindLabel 给日志/审计看的短标签。
 func KindLabel(kind string) string {
 	switch kind {
-	case "photo":
+	case media.KindImage, "photo":
 		return "[图片]"
-	case "video":
+	case media.KindVideo:
 		return "[视频]"
-	case "voice":
+	case media.KindVoice:
 		return "[语音]"
-	case "audio":
+	case media.KindAudio:
 		return "[音频]"
-	case "document":
+	case media.KindFile, "document":
 		return "[文件]"
-	case "sticker":
+	case media.KindSticker:
 		return "[贴纸]"
-	case "animation":
+	case media.KindAnimation:
 		return "[动图]"
-	case "video_note":
+	case media.KindVideoNote:
 		return "[圆头视频]"
 	case "poll":
 		return "[投票]"
@@ -196,6 +268,7 @@ func (b *Bot) remember(m *telegram.Message) {
 	list := append(b.recent[chatID], RecentMsg{
 		MessageID: m.MessageID, UserID: userID, Username: username,
 		Content: m.Content(), Kind: Classify(m), IsBot: isBot, State: "received", At: time.Now(),
+		Media: MediaRefOf(m),
 	})
 	if len(list) > RecentKeep {
 		list = list[len(list)-RecentKeep:]
@@ -263,6 +336,8 @@ func (b *Bot) MarkRecalled(chatID string, ids ...int64) {
 		if _, ok := drop[list[i].MessageID]; ok {
 			list[i].State = "recalled"
 			list[i].Content = ""
+			// 撤回后不再提供任何媒体：墓碑不保留取文件的引用。
+			list[i].Media = nil
 		}
 	}
 }
@@ -308,6 +383,81 @@ func (b *Bot) LookupBotRecent(chatID string, onlyWithin time.Duration) (RecentMs
 		return list[i], true
 	}
 	return RecentMsg{}, false
+}
+
+// ---------------- 媒体 ----------------
+
+// LookupMedia 按「会话 + 消息 ID」查媒体引用。
+// 只能查最近消息缓存里存在的消息：管理端因此没法拿任意 file_id 取文件。
+func (b *Bot) LookupMedia(chatID, msgID string) (media.Ref, bool) {
+	id, err := strconv.ParseInt(strings.TrimSpace(msgID), 10, 64)
+	if err != nil || id <= 0 {
+		return media.Ref{}, false
+	}
+	b.recentMu.Lock()
+	defer b.recentMu.Unlock()
+	list := b.recent[chatID]
+	for i := len(list) - 1; i >= 0; i-- {
+		if list[i].MessageID != id {
+			continue
+		}
+		if list[i].State == "recalled" || list[i].Media == nil {
+			return media.Ref{}, false
+		}
+		return *list[i].Media, true
+	}
+	return media.Ref{}, false
+}
+
+// MarkMediaState 记下取回时确认到的状态（过期/不存在），下次投影会带上。
+func (b *Bot) MarkMediaState(chatID, msgID string, st media.State) {
+	id, err := strconv.ParseInt(strings.TrimSpace(msgID), 10, 64)
+	if err != nil || id <= 0 {
+		return
+	}
+	b.recentMu.Lock()
+	defer b.recentMu.Unlock()
+	list := b.recent[chatID]
+	for i := len(list) - 1; i >= 0; i-- {
+		if list[i].MessageID == id && list[i].Media != nil {
+			list[i].Media.State = media.NormalizeState(st)
+			return
+		}
+	}
+}
+
+// OpenMedia 打开一条 Telegram 消息的媒体流。
+// getFile 每次现取（file_path 约 1 小时过期），token 只在请求内部使用。
+func (b *Bot) OpenMedia(ref media.Ref) (io.ReadCloser, int64, error) {
+	if strings.TrimSpace(ref.FileID) == "" {
+		return nil, 0, media.ErrNotFetchable
+	}
+	c := b.Client()
+	if c == nil {
+		return nil, 0, errors.New("机器人尚未连接 Telegram")
+	}
+	f, err := c.GetFile(ref.FileID)
+	if err != nil {
+		switch {
+		case errors.Is(err, telegram.ErrFileTooLarge):
+			return nil, 0, media.ErrTooLarge
+		case errors.Is(err, telegram.ErrFileGone):
+			return nil, 0, media.ErrGone
+		}
+		return nil, 0, err
+	}
+	if f.FileSize > media.MaxBytes {
+		return nil, 0, media.ErrTooLarge
+	}
+	rc, size, err := c.OpenFile(f.FilePath)
+	if err != nil {
+		if errors.Is(err, telegram.ErrFileGone) {
+			// 刚换到的 file_path 也失效：下一次取回会重新 getFile。
+			return nil, 0, media.ErrExpired
+		}
+		return nil, 0, err
+	}
+	return rc, size, nil
 }
 
 // ---------------- 生命周期 ----------------
@@ -1075,12 +1225,12 @@ func (b *Bot) SendCardNow(chatID, title, content string) (int64, error) {
 }
 
 // SendMediaNow 发媒体消息（网页后台用）。
-func (b *Bot) SendMediaNow(chatID, kind, media, caption string, opt telegram.SendOptions) (int64, error) {
+func (b *Bot) SendMediaNow(chatID, kind, mediaRef, caption string, opt telegram.SendOptions) (int64, error) {
 	c := b.clientOrNil()
 	if c == nil {
 		return 0, errors.New("机器人尚未连接")
 	}
-	out, err := c.SendMedia(chatID, kind, media, caption, opt)
+	out, err := c.SendMedia(chatID, kind, mediaRef, caption, opt)
 	if err != nil {
 		return 0, err
 	}

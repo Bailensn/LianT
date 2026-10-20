@@ -266,20 +266,28 @@ func DispatchControl(req ipc.Request, mgr *manager.Manager) (ipc.Response, bool)
 		snap := chat.Snapshot{BotID: rt.Rec.ID, ChatID: chatID, Messages: make([]chat.Message, 0, limit)}
 		if rt.Bot != nil {
 			for _, m := range rt.Bot.RecentList(chatID, limit, 0) {
-				snap.Messages = append(snap.Messages, chat.Message{
+				msg := chat.Message{
 					ID: strconv.FormatInt(m.MessageID, 10), ChatID: chatID,
 					UserID: m.UserID, Username: m.Username, Content: m.Content,
 					Kind: m.Kind, Outgoing: m.IsBot, State: chat.Normalize(chat.State(m.State)), At: m.At,
-				})
+				}
+				if m.Media != nil {
+					msg.Media = m.Media.Descriptor()
+				}
+				snap.Messages = append(snap.Messages, msg)
 			}
 		}
 		if rt.QQ != nil {
 			for _, m := range rt.QQ.RecentList(chatID, limit, 0) {
-				snap.Messages = append(snap.Messages, chat.Message{
+				msg := chat.Message{
 					ID: m.ID, ChatID: chatID, UserID: m.MemberOpenID,
 					Username: m.Username, Content: m.Content, Kind: m.Kind,
 					Outgoing: m.IsBot, State: chat.Normalize(chat.State(m.State)), At: m.At,
-				})
+				}
+				if m.Media != nil {
+					msg.Media = m.Media.Descriptor()
+				}
+				snap.Messages = append(snap.Messages, msg)
 			}
 		}
 		payload, err := json.Marshal(snap)

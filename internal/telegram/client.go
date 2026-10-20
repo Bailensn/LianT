@@ -35,6 +35,8 @@ type Client struct {
 	token string
 	base  string
 	hc    *http.Client
+	// dl 只用于下载文件：文件可能几十 MB，60 秒的总超时不够用。
+	dl *http.Client
 
 	mu sync.RWMutex
 	me User
@@ -68,6 +70,7 @@ func New(token, baseURL, proxyURL string) (*Client, error) {
 		token: token,
 		base:  base,
 		hc:    &http.Client{Timeout: 60 * time.Second, Transport: tr},
+		dl:    &http.Client{Timeout: 5 * time.Minute, Transport: tr},
 	}, nil
 }
 
@@ -822,6 +825,96 @@ func (c *Client) CallMultipart(method string, params map[string]interface{}, fil
 		return nil, ae
 	}
 	return r.Result, nil
+}
+
+// ---------------- 文件下载 ----------------
+
+// 下载文件时的可判定错误。管理端据此把「过期/太大」翻成明确的 HTTP 状态，
+// 而不是把 Telegram 的原文（可能带临时路径）直接转给浏览器。
+var (
+	ErrFileGone     = errors.New("Telegram 文件已过期或不存在")
+	ErrFileTooLarge = errors.New("文件超过 Telegram Bot API 的下载上限")
+)
+
+// FileError 是下载文件时非 200 的 HTTP 响应。
+type FileError struct {
+	Status int
+	Body   string
+}
+
+func (e *FileError) Error() string {
+	return fmt.Sprintf("下载 Telegram 文件失败(HTTP %d)", e.Status)
+}
+
+// GetFile 用 file_id 换临时 file_path。每次取回都重新换一次，
+// 不把 file_path 当永久链接缓存。
+func (c *Client) GetFile(fileID string) (File, error) {
+	if strings.TrimSpace(fileID) == "" {
+		return File{}, errors.New("缺少 file_id")
+	}
+	var f File
+	if err := c.Call("getFile", map[string]interface{}{"file_id": fileID}, &f); err != nil {
+		return File{}, wrapFileErr(err)
+	}
+	if strings.TrimSpace(f.FilePath) == "" {
+		return File{}, errors.New("Telegram 没有返回 file_path")
+	}
+	return f, nil
+}
+
+// OpenFile 打开 /file/bot<token>/<file_path> 的流。URL 带 token，
+// 只能在本进程内使用，绝不能交给浏览器。
+func (c *Client) OpenFile(filePath string) (io.ReadCloser, int64, error) {
+	filePath = strings.TrimLeft(strings.TrimSpace(filePath), "/")
+	if filePath == "" {
+		return nil, 0, errors.New("缺少 file_path")
+	}
+	req, err := http.NewRequest("GET", c.base+"/file/bot"+c.token+"/"+escapeFilePath(filePath), nil)
+	if err != nil {
+		return nil, 0, c.redact(err)
+	}
+	resp, err := c.dl.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("下载 Telegram 文件失败: %w", c.redact(err))
+	}
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusNotFound, http.StatusGone:
+		_ = resp.Body.Close()
+		return nil, 0, ErrFileGone
+	default:
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		_ = resp.Body.Close()
+		return nil, 0, &FileError{Status: resp.StatusCode, Body: truncate(string(raw), 300)}
+	}
+	return resp.Body, resp.ContentLength, nil
+}
+
+// wrapFileErr 把 getFile 的业务错误翻成可判定的哨兵错误。
+func wrapFileErr(err error) error {
+	var ae *APIError
+	if errors.As(err, &ae) {
+		d := strings.ToLower(ae.Description)
+		switch {
+		case strings.Contains(d, "too big"), strings.Contains(d, "file size"):
+			return fmt.Errorf("%w: %s", ErrFileTooLarge, ae.Description)
+		case ae.Code == http.StatusNotFound,
+			strings.Contains(d, "not found"),
+			strings.Contains(d, "wrong file identifier"),
+			strings.Contains(d, "file is gone"):
+			return fmt.Errorf("%w: %s", ErrFileGone, ae.Description)
+		}
+	}
+	return err
+}
+
+// escapeFilePath 逐段转义 file_path，保留路径分隔符。
+func escapeFilePath(p string) string {
+	parts := strings.Split(p, "/")
+	for i, s := range parts {
+		parts[i] = url.PathEscape(s)
+	}
+	return strings.Join(parts, "/")
 }
 
 // ---------------- helpers ----------------

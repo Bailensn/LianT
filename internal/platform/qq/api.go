@@ -102,6 +102,18 @@ func (m MessageScene) Get(key string) string {
 	return ""
 }
 
+// Attachment 是群/单聊消息里的附件（图片、语音、视频、文件）。
+// url 是平台给的签名直链，会过期；只在任务进程内使用，不投影给浏览器。
+type Attachment struct {
+	ContentType string `json:"content_type"`
+	Filename    string `json:"filename"`
+	Height      int    `json:"height"`
+	Width       int    `json:"width"`
+	Size        int64  `json:"size"`
+	URL         string `json:"url"`
+	ID          string `json:"id"`
+}
+
 type MessageData struct {
 	ID           string          `json:"id"`
 	Content      string          `json:"content"`
@@ -111,6 +123,7 @@ type MessageData struct {
 	MessageType  int             `json:"message_type"`
 	Author       Author          `json:"author"`
 	Mentions     []MentionedUser `json:"mentions"`
+	Attachments  []Attachment    `json:"attachments"`
 	MessageScene MessageScene    `json:"message_scene"`
 	MsgElements  []MsgElement    `json:"msg_elements"`
 }

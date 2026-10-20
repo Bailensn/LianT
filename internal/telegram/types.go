@@ -119,38 +119,80 @@ type Message struct {
 	PinnedMessage *Message        `json:"pinned_message"`
 }
 
-// 下面是最小化的媒体类型（只用于分类/展示，不处理下载）。
+// 下面是最小化的媒体类型：只保留分类与「取回一条消息的媒体」需要的字段。
 type PhotoSize struct {
-	FileID string `json:"file_id"`
+	FileID   string `json:"file_id"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	FileSize int64  `json:"file_size"`
 }
 
 type Video struct {
-	FileID string `json:"file_id"`
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name"`
+	MimeType string `json:"mime_type"`
+	FileSize int64  `json:"file_size"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	Duration int    `json:"duration"`
 }
 
 type Voice struct {
-	FileID string `json:"file_id"`
+	FileID   string `json:"file_id"`
+	MimeType string `json:"mime_type"`
+	FileSize int64  `json:"file_size"`
+	Duration int    `json:"duration"`
 }
 
 type Audio struct {
-	FileID string `json:"file_id"`
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name"`
+	MimeType string `json:"mime_type"`
+	FileSize int64  `json:"file_size"`
+	Duration int    `json:"duration"`
 }
 
 type Document struct {
 	FileID   string `json:"file_id"`
 	FileName string `json:"file_name"`
+	MimeType string `json:"mime_type"`
+	FileSize int64  `json:"file_size"`
 }
 
 type Sticker struct {
-	FileID string `json:"file_id"`
+	FileID    string `json:"file_id"`
+	MimeType  string `json:"mime_type"`
+	FileSize  int64  `json:"file_size"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Emoji     string `json:"emoji"`
+	IsAnimated bool  `json:"is_animated"`
+	IsVideo    bool  `json:"is_video"`
 }
 
 type Animation struct {
-	FileID string `json:"file_id"`
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name"`
+	MimeType string `json:"mime_type"`
+	FileSize int64  `json:"file_size"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	Duration int    `json:"duration"`
 }
 
 type VideoNote struct {
-	FileID string `json:"file_id"`
+	FileID   string `json:"file_id"`
+	FileSize int64  `json:"file_size"`
+	Length   int    `json:"length"`
+	Duration int    `json:"duration"`
+}
+
+// File 是 getFile 的返回。file_path 只在短时间内有效，不落盘、不缓存。
+type File struct {
+	FileID       string `json:"file_id"`
+	FileUniqueID string `json:"file_unique_id"`
+	FileSize     int64  `json:"file_size"`
+	FilePath     string `json:"file_path"`
 }
 
 type Poll struct {

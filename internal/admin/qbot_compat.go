@@ -713,19 +713,27 @@ func (c *qctx) chatRecent(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]interface{}, 0, 60)
 	if c.isQQ() {
 		for _, m := range c.q.RecentList(gid, 60, 0) {
-			out = append(out, map[string]interface{}{
+			item := map[string]interface{}{
 				"id": m.ID, "username": m.Username, "member_openid": m.MemberOpenID,
 				"content": m.Content, "kind": m.Kind, "is_bot": m.IsBot, "state": m.State, "at": m.At.Format(time.RFC3339),
-			})
+			}
+			if m.Media != nil {
+				item["media"] = m.Media.Descriptor()
+			}
+			out = append(out, item)
 		}
 		ApiOK(w, map[string]interface{}{"group": gid, "messages": out})
 		return
 	}
 	for _, m := range c.b.RecentList(gid, 60, 0) {
-		out = append(out, map[string]interface{}{
+		item := map[string]interface{}{
 			"id": m.MessageID, "username": m.Username, "member_openid": m.UserID,
 			"content": m.Content, "kind": m.Kind, "is_bot": m.IsBot, "state": m.State, "at": m.At.Format(time.RFC3339),
-		})
+		}
+		if m.Media != nil {
+			item["media"] = m.Media.Descriptor()
+		}
+		out = append(out, item)
 	}
 	ApiOK(w, map[string]interface{}{"group": gid, "messages": out})
 }

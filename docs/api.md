@@ -46,8 +46,11 @@
 | `200` | 成功 |
 | `400` | 参数 / JSON 不合法 |
 | `401` | 未授权 |
+| `404` | 资源不存在（如消息不在最近消息缓存里） |
 | `405` | 方法不对 |
 | `409` | 还没有可用 Bot，或该能力不支持当前平台 |
+| `410` | 媒体已失效 / 引用已过期 |
+| `413` | 媒体超过单次取回上限 |
 | `500` | 存储 / 内部错误 |
 | `502` | 平台 API 返回错误 |
 | `503` | Bot 尚未连接（如 Telegram 客户端未就绪） |
@@ -81,6 +84,7 @@
 | `/api/audit/prune` | 任意 | 清理审计（`?keep=2000`） |
 | `/api/settings` | GET / POST | Bot 级设置 |
 | `/api/messages` | GET | 最近消息（`?chat_id=` 必填） |
+| `/api/media` | GET | 取回消息媒体（`?chat_id=&msg=`） |
 | `/api/send` | POST | 发消息（文本 / 媒体 / 按钮） |
 | `/api/broadcast` | POST | 群发 |
 | `/api/recall` | POST | 撤回 |
@@ -123,6 +127,32 @@ QQ Bot 上调用这些路由会返回 `409`，不会 500。
 
 响应里两套 key 都会给，旧页面不用改。
 
+### 4.4 媒体
+
+`GET /api/media?chat_id=<会话>&msg=<消息ID>&bot_id=<可选>`
+
+只在最近消息缓存里按「会话 + 消息」查引用，不能凭任意 `file_id` / URL 取文件：
+
+- **Telegram**：`getFile` 换临时 `file_path` 后由服务端流式转发；带 bot token 的
+  `https://api.telegram.org/file/bot<token>/...` 不会出现在页面里。
+- **QQ**：服务端代理平台附件直链；签名 URL 会过期，但不会暴露给浏览器。
+- 响应是字节流，`Content-Type` 来自消息元数据；`file` 走 `attachment`，
+  图片/音视频走 `inline`，并带 `nosniff` 与只读 CSP。
+- 单次上限 32 MB；Telegram Bot API 自身只允许下载 20 MB。
+- 撤回的消息不提供媒体：墓碑不保留附件引用。
+
+| 状态码 | 含义 |
+| --- | --- |
+| `400` | 缺 `chat_id` / `msg` |
+| `404` | 消息不在最近消息缓存里，或没有媒体 |
+| `409` | 这个媒体没有可下载内容（例如表情，按 emoji 显示） |
+| `410` | 平台文件已失效或引用已过期；同时把该消息的 `media.state` 标为 `gone` / `expired` |
+| `413` | 超过单次取回上限 |
+| `502` | 平台请求失败；原因只写任务进程日志，不回传平台地址 |
+
+网页里的 `<img>` / `<video>` 用 cookie 鉴权；API 客户端用
+`Authorization: Bearer <token>`。不要把 token 拼进媒体 URL。
+
 ### 消息条目与状态
 
 `/api/chat/recent`、`/api/messages` 返回的每条消息：
@@ -131,10 +161,24 @@ QQ Bot 上调用这些路由会返回 `409`，不会 500。
 | --- | --- |
 | `id` / `message_id` | 平台消息 ID |
 | `username`、`member_openid` / `user_id` | 发送者 |
-| `content`、`kind` | 正文与类型（text/image/…） |
+| `content`、`kind` | 正文与类型（text/image/video/voice/file/sticker/…） |
 | `is_bot` | 是否机器人自己发出 |
 | `state` | `received` 群内收到 / `sent` 平台已受理 / `recalled` 已撤回（正文已清空） |
 | `at` | RFC3339 时间 |
+| `media` | 可选。媒体描述；没有媒体时不出现 |
+
+`media` 只给事实，不含平台地址：
+
+| 字段 | 说明 |
+| --- | --- |
+| `kind` | `image` / `video` / `audio` / `voice` / `file` / `sticker` / `animation` / `video_note` |
+| `name`、`mime`、`size`、`width`、`height`、`duration` | 平台提供时才出现 |
+| `emoji` | 表情对应的 emoji（`kind=sticker`） |
+| `state` | `available` 引用可用 / `expired` 引用过期 / `gone` 平台已无此文件 / `unknown` 尚未验证（QQ 签名直链） |
+| `fetchable` | 是否有可取回的字节；表情为 `false`，界面按 emoji 渲染 |
+
+`available` 只表示引用可用，不代表已经下载；取回失败时接口会把状态改成
+`expired` / `gone`，下一次消息查询就能看到，界面据此显示「不可取回」，而不是伪造缩略图。
 
 `sent` 只代表平台受理了发送请求，**不代表送达或已读**；平台不提供回执时，界面不会伪造「已送达」。
 `recalled` 是墓碑：条目保留发送者与时间，正文为空，不可再引用或撤回。
@@ -162,6 +206,10 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"chat_id":"-1001234567890","content":"hello"}' \
   "$BASE/api/send?bot_id=1"
+
+# 取回一条最近消息的媒体（浏览器用 cookie；curl 用 Bearer）
+curl -s -H "Authorization: Bearer $TOKEN" -o media.bin \
+  "$BASE/api/media?bot_id=1&chat_id=-1001234567890&msg=42"
 
 # 上传文件并调用 Bot API（method / file_field / params / file）
 curl -s -X POST -H "Authorization: Bearer $TOKEN" \

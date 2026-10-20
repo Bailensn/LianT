@@ -588,6 +588,34 @@ details[open] > summary .chev{ transform:rotate(90deg); }
 .qq-card-title{ margin-bottom:4px; font-size:13.5px; font-weight:650; letter-spacing:-.01em; }
 .qq-card-body{ font-size:12.5px; line-height:1.55; color:var(--text-2); white-space:pre-wrap; overflow-wrap:anywhere; }
 .qq-card-foot{ display:flex; justify-content:space-between; gap:8px; margin-top:9px; padding-top:7px; border-top:1px solid var(--border); font-size:9.5px; color:var(--text-3); }
+
+/* ---------------- 消息媒体 ---------------- */
+.msg-media-wrap{ display:flex; flex-direction:column; gap:4px; align-items:flex-start; max-width:100%; }
+.msg-bot .msg-media-wrap{ align-items:flex-end; }
+.msg-media{
+  margin:0; max-width:100%; overflow:hidden;
+  border-radius:12px; border:1px solid var(--border); background:var(--surface-solid);
+}
+.msg-media-image{ padding:0; line-height:0; }
+.media-thumb{ display:block; padding:0; border:0; background:none; cursor:zoom-in; }
+.msg-media img{ display:block; width:auto; height:auto; max-width:min(420px,100%); max-height:320px; object-fit:contain; background:var(--surface-2); }
+.msg-media-video video{ display:block; max-width:min(420px,100%); max-height:320px; background:#000; }
+.msg-media-audio{ width:min(340px,100%); padding:8px 10px; }
+.msg-media-audio audio{ width:100%; }
+.msg-media figcaption{ display:flex; align-items:center; gap:8px; padding:6px 9px; font-size:10px; line-height:1.4; color:var(--text-3); }
+.media-download{ margin-left:auto; display:inline-flex; align-items:center; gap:3px; color:var(--accent-strong); font-size:10px; white-space:nowrap; }
+.media-download .i{ width:12px; height:12px; }
+.msg-media-file{ display:flex; align-items:center; gap:9px; width:min(340px,100%); padding:9px 11px; color:var(--text); text-decoration:none; }
+.media-file-icon{ width:30px; height:30px; flex:0 0 auto; border-radius:8px; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent-strong); }
+.media-file-icon .i{ width:15px; height:15px; }
+.media-file-text{ min-width:0; display:flex; flex-direction:column; gap:2px; }
+.media-file-text strong{ max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:550; }
+.media-file-text small{ font-size:10px; color:var(--text-3); }
+.msg-media-sticker{ display:grid; place-items:center; min-width:48px; min-height:48px; padding:6px 10px; font-size:34px; line-height:1.15; background:transparent; border:0; }
+.msg-media-note{ display:flex; align-items:center; gap:7px; padding:10px 12px; border-style:dashed; color:var(--text-3); font-size:12px; }
+.msg-media-note .i{ width:15px; height:15px; flex:0 0 auto; }
+.msg-media-note small{ font-size:10px; }
+.media-fallback{ display:block; padding:12px; font-size:11px; color:var(--text-3); }
 .chat-composer form{ display:flex; flex-direction:column; gap:8px; }
 .chat-empty strong{ font-size:12.5px; color:var(--text-2); font-weight:600; }
 .chat-empty span{ max-width:34ch; line-height:1.5; }
@@ -660,6 +688,18 @@ details[open] > summary .chev{ transform:rotate(90deg); }
 .confirm h2{ margin:0; font-size:16px; font-weight:620; letter-spacing:-.02em; }
 .confirm p{ margin:6px 0 0; font-size:12.5px; color:var(--text-2); }
 .modal-body .field-hint{ margin-top:10px; }
+
+/* 图片放大：没有现成缩略图库，仍不伪造预览，直接用 /api/media 的字节。 */
+.media-dialog{
+  margin:auto; padding:0; border:0; background:transparent; color:#fff;
+  width:min(92vw,1100px); max-width:none; max-height:92dvh; overflow:visible;
+}
+.media-dialog::backdrop{ background:rgba(5,6,10,.82); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+.media-dialog img{ display:block; margin:auto; max-width:92vw; max-height:88dvh; border-radius:10px; background:#111; box-shadow:0 24px 70px rgba(0,0,0,.5); }
+.media-dialog-close{
+  position:fixed; top:max(12px,env(safe-area-inset-top)); right:max(12px,env(safe-area-inset-right));
+  z-index:2; background:rgba(20,22,30,.72); border:1px solid rgba(255,255,255,.16); color:#fff;
+}
 
 /* ---------------- skeleton / boot ---------------- */
 .boot{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:50vh; color:var(--text-3); font-size:12px; }

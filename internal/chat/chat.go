@@ -4,7 +4,11 @@
 // 只声明客户端能确认的事实，确认不了就写 unknown，不猜。
 package chat
 
-import "time"
+import (
+	"time"
+
+	"LianT/internal/media"
+)
 
 // State 是消息生命周期里客户端能确认的状态。
 type State string
@@ -43,6 +47,9 @@ type Message struct {
 	Outgoing bool      `json:"outgoing"`
 	State    State     `json:"state"`
 	At       time.Time `json:"at"`
+	// Media 只给事实：类型、名称、大小、能否取回。
+	// 平台 file_id / 附件直链不在这里，取回走管理端 /api/media。
+	Media *media.Descriptor `json:"media,omitempty"`
 }
 
 // Snapshot 是一次消息查询的结果。
