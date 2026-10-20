@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"LianT/internal/admin"
+	"LianT/internal/chat"
 	"LianT/internal/config"
 	"LianT/internal/ipc"
 	"LianT/internal/logging"
@@ -232,12 +233,60 @@ func DispatchControl(req ipc.Request, mgr *manager.Manager) (ipc.Response, bool)
 			data["exe"] = exe
 		}
 		if rt, ok := pickRuntime(mgr, req.Args["bot_id"]); ok {
-			for k, v := range rt.Bot.Status() { data[k] = v }
-			for k, v := range rt.Bot.ReplyInfo() { data[k] = v }
+			if rt.Bot != nil {
+				for k, v := range rt.Bot.Status() {
+					data[k] = v
+				}
+				for k, v := range rt.Bot.ReplyInfo() {
+					data[k] = v
+				}
+			}
+			if rt.QQ != nil {
+				for k, v := range rt.QQ.Status() {
+					data[k] = v
+				}
+			}
 			data["bot_db"] = manager.BotDBPath(rt.Rec.ID)
 			data["bot_id"] = strconv.FormatInt(rt.Rec.ID, 10)
 		}
 		return ipc.Response{OK: true, Msg: "运行中", Data: data}, false
+
+	// chat：把 Service 侧的最近消息投影给 Manager/客户端。
+	// 只返回任务进程内存里现有的事实；不持久化、不补全、不猜状态。
+	case "chat", "messages":
+		rt, ok := pickRuntime(mgr, req.Args["bot_id"])
+		if !ok {
+			return ipc.Response{OK: false, Msg: "没有运行中的 Bot"}, false
+		}
+		limit := 50
+		if n, err := strconv.Atoi(strings.TrimSpace(req.Args["limit"])); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+		chatID := strings.TrimSpace(req.Args["chat_id"])
+		snap := chat.Snapshot{BotID: rt.Rec.ID, ChatID: chatID, Messages: make([]chat.Message, 0, limit)}
+		if rt.Bot != nil {
+			for _, m := range rt.Bot.RecentList(chatID, limit, 0) {
+				snap.Messages = append(snap.Messages, chat.Message{
+					ID: strconv.FormatInt(m.MessageID, 10), ChatID: chatID,
+					UserID: m.UserID, Username: m.Username, Content: m.Content,
+					Kind: m.Kind, Outgoing: m.IsBot, State: chat.Normalize(chat.State(m.State)), At: m.At,
+				})
+			}
+		}
+		if rt.QQ != nil {
+			for _, m := range rt.QQ.RecentList(chatID, limit, 0) {
+				snap.Messages = append(snap.Messages, chat.Message{
+					ID: m.ID, ChatID: chatID, UserID: m.MemberOpenID,
+					Username: m.Username, Content: m.Content, Kind: m.Kind,
+					Outgoing: m.IsBot, State: chat.Normalize(chat.State(m.State)), At: m.At,
+				})
+			}
+		}
+		payload, err := json.Marshal(snap)
+		if err != nil {
+			return ipc.Response{OK: false, Msg: err.Error()}, false
+		}
+		return ipc.Response{OK: true, Msg: "ok", Payload: payload}, false
 
 	case "reload", "reconnect":
 		errs := mgr.Reconcile()

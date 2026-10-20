@@ -3,13 +3,13 @@
 > **这个项目是 AI 写的。** 需求、方向与验收由开发者负责；代码、文档和提交信息由 AI Agent 生成。
 > 请按「AI 辅助产出」对待，上生产前自己审一遍，尤其是鉴权、SQL 和平台接口部分。
 
-**自托管的多平台群管理后台与机器人**（当前接入 Telegram、QQ，其他平台按 adapter 扩展）。
+**自托管的跨平台聊天软件** —— Service 负责接入与消息中继，Manager 负责管理与交互，机器人只是辅助能力。
 
 **许可证：AGPL-3.0**（[LICENSE](LICENSE)）——改过的版本对外提供网络服务时，必须公开源码，详见[许可证](#许可证)一节。
 
-单文件 Go 程序：平台接入走各自的官方 API / 网关，不需要公网 IP、域名或 HTTPS 回调；
-Bot 凭据存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个 Bot 有独立业务库。
-网页后台用同一套 UI 管理所有 Bot —— 平台差异收在 `platform.Adapter` 里，当前已接入 `telegram` 和 `qq`。
+单文件 Go 程序：Service 自己连平台、自己存数据，不依赖中心化基础设施；Manager 只发指令、看界面。
+聊天是主体——消息的发送、确认、撤回都有明确状态；机器人、回复规则和审计是围绕聊天的辅助功能。
+平台差异收在 `platform.Adapter` 里，当前已接入 `telegram` 和 `qq`，新平台按 adapter 扩展。
 
 设计取向上参考了 [LensnTeam/LianT](https://github.com/LensnTeam/LianT)：Bot 管理、自托管、SQLite、网页后台。
 

@@ -25,6 +25,9 @@ type Response struct {
 	OK   bool              `json:"ok"`
 	Msg  string            `json:"msg,omitempty"`
 	Data map[string]string `json:"data,omitempty"`
+	// Payload 是结构化结果（例如 chat 指令返回的消息快照）。
+	// 老客户端会忽略未知字段，老服务端也不会返回它——调用方必须容忍两边为空。
+	Payload json.RawMessage `json:"payload,omitempty"`
 }
 
 // CallAt 向指定控制地址发一条指令，timeout 内拿到回复。
