@@ -19,7 +19,7 @@
   `is_topic_message` / `Chat.IsForum`；并支持从 `reply_to_message` 兜底取 thread。
 - **验证**：mock 中两位私聊用户显示为两行；话题单独一行；390×844 与 1920 视口检查。
 
-**提交**：本次 commit。
+**提交**：`fd4ddfe`。
 
 ## 2026-10-20 · 私聊 / 话题 / 消息操作 / 附件发送
 
