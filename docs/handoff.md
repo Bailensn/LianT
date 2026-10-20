@@ -9,6 +9,7 @@ Manager（主进程/管理端/CLI）负责管理与交互；机器人、规则�
 
 | 提交 | 内容 |
 | --- | --- |
+| `9cb8d9a` | 聊天记录持久化：`messages` 表（schema v4），取消 200 条上限，历史全量读取 |
 | `65629b7` | 聊天媒体：引用采集、`/api/media` 取回、媒体状态与前端渲染 |
 | `c71a23e` | 消息状态语义：`received` / `sent` / `recalled`；撤回变墓碑（正文清空）；UI 显示状态 |
 | `4ef9e15` | `internal/chat` 投影模型；IPC `Payload`；任务进程 `chat` 指令 |
