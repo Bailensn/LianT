@@ -249,8 +249,13 @@ func KindLabel(kind string) string {
 func telegramConversation(m *telegram.Message) (threadID, kind, title string, titleFinal bool) {
 	chatTitle := strings.TrimSpace(m.Chat.Display())
 	threadID = ""
-	if m.MessageThreadID > 0 && (m.IsTopicMessage || m.Chat.IsForum) {
-		threadID = strconv.FormatInt(m.MessageThreadID, 10)
+	topicID := m.MessageThreadID
+	// 有的更新只在 reply_to_message 里带 thread；论坛话题以顶层字段优先。
+	if topicID == 0 && m.ReplyToMessage != nil {
+		topicID = m.ReplyToMessage.MessageThreadID
+	}
+	if topicID > 0 {
+		threadID = strconv.FormatInt(topicID, 10)
 	}
 	switch {
 	case threadID != "":

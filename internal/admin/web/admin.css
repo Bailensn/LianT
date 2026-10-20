@@ -634,10 +634,10 @@ details[open] > summary .chev{ transform:rotate(90deg); }
 .msg-avatar-btn{ display:block; padding:0; border:0; border-radius:10px; }
 
 /* 媒体气泡 */
-.msg-bubble.has-media{ padding:4px; background:var(--surface-solid); border-color:var(--border); color:var(--text); }
+.msg-bubble.has-media{ padding:4px; background:var(--surface-solid); border-color:var(--border); color:var(--text); white-space:normal; }
 .msg-out .msg-bubble.has-media{ background:var(--surface-solid); }
 .msg-bubble.is-sticker{ padding:0; background:transparent; border:0; box-shadow:none; }
-.msg-bubble.is-card{ padding:0; background:transparent; border:0; box-shadow:none; }
+.msg-bubble.is-card{ padding:0; background:transparent; border:0; box-shadow:none; white-space:normal; }
 .msg-caption{ padding:6px 8px 4px; font-size:13.5px; line-height:1.5; color:var(--text); }
 .msg-media{ margin:0; max-width:100%; overflow:hidden; border-radius:12px; background:var(--surface-2); }
 .msg-media-image{ padding:0; line-height:0; }
@@ -663,13 +663,14 @@ details[open] > summary .chev{ transform:rotate(90deg); }
 
 /* 卡片消息（内容卡片，不是页面容器） */
 .qq-card{
-  width:min(340px,100%); padding:12px 14px;
-  border-radius:14px; background:var(--surface-solid); border:1px solid var(--border);
+  width:fit-content; max-width:min(320px,100%); min-width:min(160px,100%);
+  padding:10px 12px; border-radius:13px; white-space:normal;
+  background:var(--surface-solid); border:1px solid var(--border);
 }
 .msg-out .qq-card{ background:var(--surface-solid); }
-.qq-card-title{ margin-bottom:5px; font-size:14px; font-weight:650; letter-spacing:-.01em; color:var(--text); }
-.qq-card-body{ font-size:12.5px; line-height:1.55; color:var(--text-2); white-space:pre-wrap; overflow-wrap:anywhere; }
-.qq-card-foot{ display:flex; justify-content:space-between; gap:8px; margin-top:9px; padding-top:7px; border-top:1px solid var(--border); font-size:9.5px; color:var(--text-3); }
+.qq-card-title{ margin-bottom:4px; font-size:13.5px; font-weight:650; letter-spacing:-.01em; color:var(--text); overflow-wrap:anywhere; }
+.qq-card-body{ font-size:12.5px; line-height:1.5; color:var(--text-2); white-space:normal; overflow-wrap:anywhere; }
+.qq-card-foot{ display:flex; justify-content:space-between; gap:8px; margin-top:7px; padding-top:6px; border-top:1px solid var(--border); font-size:9px; color:var(--text-3); }
 
 /* 输入区：一条圆角输入条，不再是一整块表单卡片 */
 .chat-composer{

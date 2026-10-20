@@ -727,6 +727,23 @@ func (c *qctx) chatGroups(w http.ResponseWriter, r *http.Request) {
 		conv := store.ConversationRec{Key: g.ChatID, ChatID: g.ChatID, Kind: "group", Title: g.Name}
 		out = append(out, c.conversationItem(conv, g))
 	}
+	// 两个私聊同名时带上 ID 后缀，避免看起来像是同一个"私聊"。
+	privateNames := map[string]int{}
+	for _, item := range out {
+		if fmt.Sprint(item["kind"]) == "private" {
+			privateNames[fmt.Sprint(item["name"])]++
+		}
+	}
+	for _, item := range out {
+		if fmt.Sprint(item["kind"]) != "private" || privateNames[fmt.Sprint(item["name"])] < 2 {
+			continue
+		}
+		id := fmt.Sprint(item["chat_id"])
+		if len(id) > 6 {
+			id = id[len(id)-6:]
+		}
+		item["name"] = fmt.Sprintf("%s · %s", item["name"], id)
+	}
 	sort.SliceStable(out, func(i, j int) bool {
 		ti, _ := time.Parse(time.RFC3339, fmt.Sprint(out[i]["last_at"]))
 		tj, _ := time.Parse(time.RFC3339, fmt.Sprint(out[j]["last_at"]))
@@ -764,13 +781,20 @@ func (c *qctx) conversationItem(conv store.ConversationRec, g store.GroupRec) ma
 			title = "会话"
 		}
 	}
+	// 私聊是"一个用户一个会话"，标题里带上对方，避免看起来像一个叫"私聊"的群。
+	if kind == "private" && title == "私聊" {
+		if id := strings.TrimSpace(conv.ChatID); id != "" {
+			if len(id) > 6 {
+				id = id[len(id)-6:]
+			}
+			title += " · " + id
+		}
+	}
 	if note == "" && g.ChatID != "" {
 		note = strings.TrimSpace(g.Note)
 	}
-	if note == "" {
+	if note == "" && kind != "private" {
 		switch kind {
-		case "private":
-			note = "私聊"
 		case "topic":
 			note = "话题"
 		default:

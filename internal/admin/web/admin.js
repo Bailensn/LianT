@@ -1755,7 +1755,7 @@
 
   function cardBodyHTML(text) {
     // 先转义，再加最小的展示标签；绝不把用户内容当 HTML 解析。
-    let out = esc(text || "（无正文）");
+    let out = esc(text || "（无正文）").replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n");
     out = out.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
     out = out.replace(/__([^_\n]+)__/g, "<strong>$1</strong>");
     out = out.replace(/^[-*]\s+/gm, "• ");
@@ -1934,7 +1934,7 @@
 
   function chatTopHTML(group) {
     const name = group.name || "未命名群";
-    const sub = group.note || (group.bot_is_admin ? "机器人是管理员" : "机器人已加入");
+    const sub = group.note || (group.kind === "private" ? "私聊" : (group.bot_is_admin ? "机器人是管理员" : "机器人已加入"));
     return `<header class="chat-top">
       <button class="icon-btn chat-groups-btn" type="button" data-act="chat-groups-toggle" aria-label="会话列表">${icon("menu")}</button>
       <div class="chat-peer">
