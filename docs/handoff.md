@@ -1,121 +1,131 @@
-# 现状与下一轮交接
+# 当前状态与下一轮交接
 
-## 项目定位
+> 这不是更新日志。每次任务的目标、过程、验证和遗留写在 [task-log.md](task-log.md)；
+> 提交历史看 `git log`。本文件只回答：现在是什么样、哪些能用、哪里还有坑、下一步动哪里。
 
-LianT 是**自托管的跨平台聊天软件**：Service（任务进程）负责平台接入、消息中继与临时存储；
-Manager（主进程/管理端/CLI）负责管理与交互；机器人、规则、审计是辅助能力。详见 [design.md](design.md)。
+## 1. 项目定位
 
-## 已完成（最近提交）
+LianT 是**自托管的跨平台聊天软件**：
 
-| 提交 | 内容 |
+- **Manager**：主进程、管理端 Web、CLI、配置与 Bot 管理；
+- **Service**：任务进程，负责平台接入、消息中继、规则、审计与临时状态；
+- **Bot**：Telegram / QQ 两个平台的业务适配层。
+
+设计原则见 [design.md](design.md)，接口契约见 [api.md](api.md)，平台差异见 [platforms.md](platforms.md)。
+
+## 2. 当前可用能力
+
+### 平台接入
+
+- **Telegram**：群聊、私聊、论坛话题；文本/卡片/图片/视频/音频/文件发送；
+  `getFile` 取回媒体；撤回；群管理、入群审批、禁言、黑名单等。
+- **QQ**：群聊与 C2C 单聊；文本、群聊 Markdown 卡片；群管理、入群审批、禁言、黑名单；
+  媒体取回走服务端代理。
+- **QQ 频道（guild）**：尚未接入。会话模型保留了 `kind=channel`，但 QQ adapter
+  目前只订阅群聊/C2C 事件，没有频道网关、频道列表或发送接口。
+
+### 聊天页
+
+- 全屏会话布局：会话列表 + 消息流 + 输入条；移动端会话列表是抽屉。
+- 会话按上下文拆开：
+  - 普通群：`chat_id`
+  - 私聊：每个用户一个 `chat_id`，一人一个会话
+  - Telegram 论坛话题：`chat_id::thread_id`
+  - 未来的频道：`channel_id`（模型已留位）
+- 会话列表显示群名/人名/话题名、最近一条消息和相对时间；同名私聊会带 ID 后缀。
+- 消息气泡：日期胶囊、同一发送者短时间合并、入站/出站区分；
+  文字、卡片、图片、文件、视频、音频、语音、贴纸都有对应展示。
+- 每条消息的「⋯」按钮，或直接点头像，打开统一操作菜单：
+  查看图片 / 引用 / 复制文本 / 下载附件 / 撤回。**没有长按菜单。**
+- 输入条：默认文本，Enter 发送、Shift+Enter 换行、自动增高；可切换卡片并填标题。
+- 附件按钮：图片/视频/音频/文件，Telegram 走 multipart 上传：
+  `sendPhoto` / `sendVideo` / `sendAudio` / `sendDocument`，发出的消息写回会话历史。
+- 附件下载：按钮触发带鉴权的 `fetch` → Blob → 下载；失败显示平台错误，不跳空白页。
+- `⋯` 菜单和附件按钮均为显式按钮；卡片宽度按内容收缩，最大 320px。
+
+### 数据与状态
+
+- 每个 Bot 独立 SQLite：`LianT-data/bots/<botID>.db`（实际根目录由 `LIANT_DATA_DIR` 等决定）。
+- schema **v5**：
+  - `messages`：`chat_id + message_id` 唯一，`seq` 排序；新增 `conv_key`、`thread_id`；
+    默认不设条数上限；撤回写 `state=recalled` 并清空正文/媒体引用。
+  - `conversations`：`key / chat_id / thread_id / kind / title / title_final / note / updated_at`。
+  - 旧 v4 消息回填为 `conv_key=chat_id`；v4 没有 `thread_id`，无法回溯拆话题。
+- 媒体引用只存在本机库，前端只拿 `/api/media?bot_id=&chat_id=&msg=` 的代理地址。
+- 媒体状态：`available` / `expired` / `gone` / `unknown`；取回失败会写回状态。
+- SSE 不推 runtime 事件，而是按会话签名（最大 seq + 最新更新时间）变化后让浏览器重拉。
+
+## 3. 关键约定
+
+- **会话键**：`chat_id`（群/私聊）或 `chat_id::thread_id`（话题）。
+  `/api/chat/groups` 返回的 `openid` 是会话键；`/api/chat/recent`、`/api/chat/send`、
+  `/api/chat/upload` 都用它。
+- 发消息时平台的真实 `chat_id` 与 `thread_id` 由后端从 `conversations` 解析，
+  前端不要自己拼。
+- 私聊不是“一个总私聊”：每个用户独立一条会话；不要把私聊聚成一个桶。
+- Telegram 论坛话题判断以 `message_thread_id > 0` 为准，不依赖单一布尔字段；
+  顶层缺失时从 `reply_to_message.message_thread_id` 兜底。
+- 上传单文件上限 32MB；QQ 富媒体上传未接入，接口返回 `409`，前端隐藏附件按钮。
+- 网页上传的 Telegram 媒体会写回 `messages.media`；
+  旧的 `SendMediaNow` 等路径仍只记文本，没有媒体引用。
+
+## 4. 验证状态（重要）
+
+⚠️ **所有 Go 改动都没有项目内 `go build` 验证**。本机 Go 工具链损坏：
+
+- Android 拒绝执行实验性 PIE 版 `go`；
+- Termux 的 Go 1.27 经 `libtermux-exec` + `linker64` 启动时会把程序路径塞进 `argv[1]`，
+  `go`/`gofmt` 会把自身路径当子命令。
+
+本轮实际做过的替代验证：
+
+- tree-sitter-go 全项目 41 个文件，0 语法错误；
+- `node --check` 管理端 JS；CSS 括号平衡；
+- Go Playground 单文件类型检查：`store/messages`、bot/qqbot 的新增函数、媒体函数通过；
+  没有覆盖完整的 `internal/admin`（`qbot_compat.go` 很大，只能逐段复核）；
+- sql.js 实际跑过 v4→v5 迁移、会话回填、按 `conv_key` 查询、标题 `title_final` 语义；
+- 应用内 AI 浏览器 + mock API 实测：群/话题/私聊切换、两人私聊分行、操作菜单、
+  卡片尺寸、文件下载按钮、附件按钮；隐藏 WebView 截图有合成残影时以 DOM 尺寸为准。
+
+**这些不能替代真机构建。** 改完后必须重新编译/重启 LianT；管理页资源是嵌入二进制的，
+只刷新浏览器不会加载新 Go 代码。
+
+## 5. 已知限制与坑
+
+- QQ 频道 runtime 未接入（模型留了 `kind=channel`，但事件/发送都没接）。
+- QQ 私聊撤回、QQ 富媒体上传需要平台接口/权限，目前分别返回 `409` / 隐藏按钮。
+- v5 之前的消息没有 `thread_id`，旧话题消息无法自动拆开，只能从新消息开始分。
+- 命令引擎的历史窗口仍是群级（`RecentList` 不按话题拆）；管理端聊天页是会话级。
+- 一条消息只投影第一个媒体；相册/多图只显示第一张。
+- `/api/media` 不支持 Range，视频拖动进度受限；下载走完整 Blob。
+- 历史仍是一次性全量返回，暂无分页；库会持续增长。
+- SSE 仍是数据库签名轮询式重拉，不是真正的 runtime 事件推送。
+- `qbot_compat.go` 与 `admin.go` 原生路由存在重复，compat 会抢占若干路由，后续需要二选一。
+- `qctx` 的 `b`/`q` 双指针还没抽成平台无关接口，这是接 Discord/QQ 频道的前置。
+- 全项目没有测试；`internal/rules`、`internal/chat` 最适合先补。
+- 本机 `go` 不可用，验证方式和证据要按上面第 4 节写清楚。
+
+## 6. 下一轮优先级
+
+1. **QQ 频道 adapter**：若确实要支持，先补 guild 事件的 intent/路由、频道列表与发送 API；
+   否则从文档和 UI 里明确标注“未支持”，不要只留一个 `channel` 类型。
+2. **合并管理端路由**：`admin/qbot_compat.go` 与 `admin.go` 选一套，避免字段/行为继续分叉。
+3. **真事件推送**：在 `remember` / `MarkRecalled` / 媒体状态变化处加 notifier，
+   替换 SSE 的数据库轮询式重拉。
+4. **补测试**：优先 `internal/rules`、`internal/chat`、store 的迁移/upsert/会话键。
+5. 清理剩余体验问题：媒体 Range、分页、旧 `SendMediaNow` 的媒体引用、QQ 私聊撤回。
+
+## 7. 代码地图
+
+| 路径 | 内容 |
 | --- | --- |
-| `08c85f4` | 聊天页面重做：全屏会话、气泡流、单条输入、会话预览与移动端抽屉 |
-| `9cb8d9a` | 聊天记录持久化：`messages` 表（schema v4），取消 200 条上限，历史全量读取 |
-| `65629b7` | 聊天媒体：引用采集、`/api/media` 取回、媒体状态与前端渲染 |
-| `c71a23e` | 消息状态语义：`received` / `sent` / `recalled`；撤回变墓碑（正文清空）；UI 显示状态 |
-| `4ef9e15` | `internal/chat` 投影模型；IPC `Payload`；任务进程 `chat` 指令 |
-| `acfde02` | 会话优先（默认 #chat、导航重排）；`LianT chat` CLI |
-| `b088326` | `/api/events` SSE 推送消息变化（服务端快照比对，非 runtime 事件） |
-| `ccc300a` | 管理端配色统一（冷灰白 + 靛蓝，单一变量集） |
-| `7c47d22` | Bot 列表显示真实连接状态（`state` / `online`），不再一律「运行中」 |
-
-更早：死代码清理、admin 页面拆 html/css/js、AGPL-3.0、文档扩充、平台校验走注册表、路径容错。
-
-## 验证状态
-
-⚠️ **所有 Go 改动都没有编译验证**。本机 Go 工具链损坏（`~/goroot/bin/go` 是实验性 PIE 版，Android 拒绝执行）；
-Termux 的 Go 1.27 走 `libtermux-exec` + `linker64` 启动时会把程序路径塞进 argv[1]，
-`go`/`gofmt` 因此把自身路径当成子命令，无法运行；QEMU 方式可跑但会让手机满载发热，已停用。
-本轮改动做了：tree-sitter-go 全项目语法解析（41 个文件 0 错误）、JS `node --check`、逐行复核；
-另外把 `internal/media`、`internal/telegram` 以及 bot/qqbot 的媒体函数、`admin/media.go`
-拼成单文件交给 Go Playground 编译（类型检查通过）；`messages` 建表与 upsert 用 sql.js 实际跑过（含 v3→v4 迁移、撤回墓碑、重复投递）。
-这些仍不是项目内 `go build`，不能替代真机构建。
-
-## 聊天媒体（已完成）
-
-1. **采集**：`RecentMsg.Media *media.Ref`（含平台引用；随消息落到本机库，不进 API JSON）。
-   - Telegram：取最大的 `Photo`、`Document`/`Video`/`Animation`/`Audio`/`Voice`/`VideoNote`、
-     `Sticker`（只取 `emoji`）；`Kind` 统一成跨平台值（`image`/`file`/`sticker`/…）。
-   - QQ：`attachments[]` 的 `url`/`filename`/`size`/`content_type`/`width`/`height`，
-     一条消息只投影第一个带 URL 的附件。
-2. **取回**：`GET /api/media?bot_id=&chat_id=&msg=`（`internal/admin/media.go`）。
-   - 只按「会话 + 消息」查本地消息库，不能凭任意 `file_id`/URL 取文件；
-   - Telegram：每次现调 `getFile`，再用带 token 的 `/file/bot…` 流式转发，token 不落前端；
-   - QQ：服务端代理签名直链，限制协议与内网地址（尽力而为的 SSRF 防护）；
-   - 32 MB 上限、撤回消息不提供媒体、`file` 类型走 attachment，其余 inline。
-3. **状态**：`available` / `expired` / `gone` / `unknown`（`internal/media`）。
-   取回失败会写回该消息的 `media.state`，SSE 签名能看到变化，界面显示「不可取回」而不是伪造预览。
-4. **前端**：图片懒加载 + `<dialog>` 放大；文件显示名称/大小/类型与下载；表情按 `emoji` 渲染；
-   视频/音频用原生控件；图片 404 时替换为明确的失败提示。
-
-## 聊天记录持久化（已完成）
-
-- 每个 Bot 的业务库新增 `messages` 表（`internal/store/messages.go`，schema v5）：
-  `chat_id + message_id` 唯一，按 `seq` 排序；正文、类型、发送者、状态、媒体引用、时间都在里面。
-- 消息默认**不设条数上限**：`RecentList` / `/api/chat/recent` / `/api/messages` 读库，
-  `limit<=0` 返回全部；CLI 与 daemon 默认也是全部，`-n` 可限制。
-- 撤回写 `state=recalled` 并清空 `content`/`media`；媒体状态变化只更新 `media` 列。
-- SSE 不再读取 80 条消息做快照，改用 `MessageSignature`（最大 seq + 最后更新时间，都走索引）。
-- 内存里的 `recent` map 已删除；历史完全以 SQLite 为准，重启不丢。
-
-已知取舍：
-
-- 机器人自己发出的媒体（`RememberOutgoing`）还没带媒体引用，只显示卡片/文本；
-- 一条消息只投影一个媒体，相册/多图消息只显示第一张；
-- `/api/media` 不支持 Range，视频拖动进度可能受限；
-- QQ 签名直链的 `unknown` 在取回成功后仍保持 `unknown`（成功只证明当时可用，不下“长期有效”的结论）；
-- 历史一次性全量返回，暂无分页；库会随聊天持续增长，需要使用者自己备份/归档。
-
-## 聊天页面重做（已完成）
-
-- **全屏聊天应用**：`#chat` 不再套 `page-head` / `card`，`.app.chat-mode` 下由
-  `.chat-app`（会话列表 + 对话区）直接占满应用区，只靠底色和 1px 分隔线分区。
-- **会话列表**：平面行 + 头像 + 最近一条消息预览 + 相对时间；预览来自 `messages` 表
-  （新增 `store.LastMessage`），不再是群表的 `updated_at`。
-- **消息流**：日期胶囊、同人 5 分钟内合并、入站左侧气泡 / 出站右侧渐变气泡、
-  引用/撤回图标悬停浮现；撤回改为居中的系统消息，不再留一个虚线气泡。
-- **媒体/卡片**：图片圆角懒加载 + dialog 放大；文件、语音、视频、贴纸都在气泡里；
-  卡片消息仍是内容卡片，不再把整个页面塞进卡片。
-- **输入区**：一条圆角输入条；默认文本模式，Enter 发送、Shift+Enter 换行、自动增高；
-  `卡片` 切换后才出现标题输入，模板/字数在工具条里。
-- **移动端**：会话列表变成左侧抽屉（hamburger 打开、遮罩/选群关闭）；
-  消息操作改为长按 420ms 浮出，避免每条消息下面常驻图标。
-- **验证**：用 mock API 在应用内 AI 浏览器按 1920×1080 和 390×844 实际打开截图，
-  检查了消息气泡、媒体、撤回、卡片模式、发送后状态；隐藏 WebView 的截图偶有合成残影，
-  以 DOM 尺寸复核为准。
-
-## 私聊 / 话题 / 发送（已完成）
-
-- **会话模型**：新增 `conversations` 表与 `messages.conv_key/thread_id`（schema v5）。
-  会话键：普通群/私聊 = `chat_id`，Telegram 论坛话题 = `chat_id::thread_id`。
-- **私聊**：Telegram 私聊消息直接落库；QQ C2C 新增 `RememberDirectMessage`，
-  群聊/单聊各有独立会话与历史。管理端可以向私聊发文本（QQ 用 C2C 接口）。
-- **话题**：Telegram `is_topic_message` / `forum_topic_created` 映射成独立会话；
-  发文本、卡片、上传媒体都带 `message_thread_id`；话题创建服务消息不生成空气泡。
-- **QQ 频道**：会话模型已保留 `kind=channel`，但当前 QQ adapter 只订阅群聊/C2C 事件，
-  频道网关与发送接口尚未接入。
-- **消息操作**：去掉长按；每条消息和头像都有「⋯」按钮，点开统一菜单：
-  查看图片 / 引用 / 复制文本 / 下载附件 / 撤回。
-- **发送**：输入条加附件按钮，支持图片/视频/音频/文件（Telegram multipart）；
-  文件按 MIME/扩展名走 `sendPhoto/sendVideo/sendAudio/sendDocument`，发出的消息写回历史。
-  QQ 富媒体上传返回 `409` 并在界面隐藏附件按钮。
-- **下载**：附件卡片改为按钮，走带鉴权的 `fetch` → Blob → `download`，
-  失败显示平台错误；不再依赖 WebView 对 `<a download>` 的支持。
-
-已知限制：QQ 频道 runtime、QQ 私聊撤回/富媒体仍待平台接口；命令引擎的历史窗口仍是群级；
-v4 之前的历史消息没有 `thread_id`，无法回溯拆成话题，只能从新消息开始分。
-
-## 提交记录
-
-| 提交 | 内容 |
-| --- | --- |
-| `4e43de0` | 私聊/话题独立会话、消息操作菜单、附件上传与下载 |
-| `fd4ddfe` | 修正卡片拉伸、私聊标题与话题 thread 识别 |
-
-## 其他待办
-
-- SSE 仍是"数据库签名变化后让浏览器重拉"；下一步给 `bot`/`qqbot` 的 `remember`、`MarkRecalled`
-  加 notifier，走真事件；
-- `admin/qbot_compat.go` 与 `admin.go` 原生路由重复（compat 会抢占多个路由），需要二选一；
-- 全项目无测试；`internal/rules`、`internal/chat` 最适合先补；
-- `qctx` 的 `b`/`q` 双指针待抽成平台无关接口（Discord 接入前置）。
+| `internal/bot` | Telegram 运行时：收发、命令、规则、持久化、媒体引用 |
+| `internal/qqbot` | QQ 运行时：群/C2C、命令、规则、持久化 |
+| `internal/platform/qq` | QQ 开放平台 API 封装与 URL |
+| `internal/telegram` | Telegram Bot API 客户端与类型 |
+| `internal/store` | SQLite schema、迁移、消息/会话/群/规则/审计 |
+| `internal/media` | 媒体引用、状态、SSRF 防护、HTTP 取回 |
+| `internal/admin` | 管理端 HTTP、鉴权、媒体代理、qbot 兼容路由 |
+| `internal/admin/web` | 管理端 HTML/CSS/JS（聊天页、表单、导航） |
+| `internal/chat` | 会话投影模型与 CLI `chat` |
+| `docs/task-log.md` | 每次任务的过程记录，按时间倒序 |

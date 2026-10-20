@@ -25,6 +25,7 @@
 | [docs/platforms.md](docs/platforms.md) | 平台兼容层：Adapter、能力声明、qbot 合并、接入 Discord |
 | [docs/reverse-proxy.md](docs/reverse-proxy.md) | Nginx / Caddy 反代、前缀、Webhook、静态资源、排错 |
 | [docs/task-log.md](docs/task-log.md) | 每次任务的目标、完成、验证与遗留 |
+| [docs/handoff.md](docs/handoff.md) | 当前状态与下一轮交接（不是更新日志） |
 
 ## 功能
 
