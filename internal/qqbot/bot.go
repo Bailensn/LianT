@@ -1026,3 +1026,11 @@ func (b *Bot) CloseConn() {
 		_ = c.Close()
 	}
 }
+
+// ConversationsSignature 让 SSE 能感知其他会话的变化。
+func (b *Bot) ConversationsSignature() string {
+	if b.st == nil || b.st.L == nil {
+		return ""
+	}
+	return b.st.L.ConversationsSignature()
+}

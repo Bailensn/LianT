@@ -2,6 +2,7 @@ package admin
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -781,7 +782,7 @@ func (c *qctx) conversationItem(conv store.ConversationRec, g store.GroupRec) ma
 			title = "会话"
 		}
 	}
-	// 私聊是"一个用户一个会话"，标题里带上对方，避免看起来像一个叫"私聊"的群。
+	// 私聊是"一个用户一个会话"；没有名字时才用 ID 后缀区分。
 	if kind == "private" && title == "私聊" {
 		if id := strings.TrimSpace(conv.ChatID); id != "" {
 			if len(id) > 6 {
@@ -801,9 +802,14 @@ func (c *qctx) conversationItem(conv store.ConversationRec, g store.GroupRec) ma
 			note = "群聊"
 		}
 	}
+	platform := "telegram"
+	if c.isQQ() {
+		platform = "qq"
+	}
 	item := map[string]interface{}{
 		"openid": conv.Key, "chat_id": conv.ChatID, "thread_id": conv.ThreadID,
 		"kind": kind, "name": title, "note": note, "upload": !c.isQQ(),
+		"platform": platform, "bot_is_admin": g.BotIsAdmin,
 	}
 	if rec, ok := c.st.LastMessageByConversation(conv.Key); ok {
 		item["last_at"] = rec.At.Format(time.RFC3339)
@@ -887,6 +893,8 @@ func (c *qctx) chatSend(w http.ResponseWriter, r *http.Request, method string) {
 		Format      string `json:"format"`
 		Title       string `json:"title"`
 		Content     string `json:"content"`
+		ReplyTo     string `json:"reply_to"`
+		ReplyToID   string `json:"reply_to_message_id"`
 	}
 	if err := DecodeBody(r, &in); err != nil {
 		ApiErr(w, 400, "请求体不是合法 JSON: "+err.Error())
@@ -907,6 +915,11 @@ func (c *qctx) chatSend(w http.ResponseWriter, r *http.Request, method string) {
 	if ok {
 		chatID, threadID, kind, title = conv.ChatID, conv.ThreadID, conv.Kind, conv.Title
 	}
+	replyKey := strings.TrimSpace(in.ReplyTo)
+	if replyKey == "" {
+		replyKey = strings.TrimSpace(in.ReplyToID)
+	}
+	replyID, _ := strconv.ParseInt(replyKey, 10, 64)
 	format := strings.ToLower(strings.TrimSpace(in.Format))
 	if format != "text" {
 		cardTitle := strings.TrimSpace(in.Title)
@@ -923,20 +936,20 @@ func (c *qctx) chatSend(w http.ResponseWriter, r *http.Request, method string) {
 				return
 			}
 			markdown := "## " + cardTitle + "\n\n" + content
-			id, err := c.q.SendGroupCardNow(chatID, markdown)
+			id, err := c.q.SendGroupCardNow(chatID, markdown, replyKey)
 			if err != nil {
 				ApiErr(w, 502, err.Error())
 				return
 			}
-			ApiOK(w, map[string]interface{}{"id": id, "group_openid": key, "chat_id": chatID, "format": "card", "markdown": markdown})
+			ApiOK(w, map[string]interface{}{"id": id, "group_openid": key, "chat_id": chatID, "format": "card", "markdown": markdown, "reply_to": replyKey})
 			return
 		}
-		id, err := c.b.SendCardIn(chatID, threadID, kind, title, cardTitle, content)
+		id, err := c.b.SendCardIn(chatID, threadID, kind, title, cardTitle, content, replyID)
 		if err != nil {
 			ApiErr(w, 502, err.Error())
 			return
 		}
-		ApiOK(w, map[string]interface{}{"id": id, "group_openid": key, "chat_id": chatID, "format": "card", "markdown": bot.CardDisplay(cardTitle, content)})
+		ApiOK(w, map[string]interface{}{"id": id, "group_openid": key, "chat_id": chatID, "format": "card", "markdown": bot.CardDisplay(cardTitle, content), "reply_to": replyKey})
 		return
 	}
 	if len([]rune(content)) > 4000 {
@@ -949,23 +962,23 @@ func (c *qctx) chatSend(w http.ResponseWriter, r *http.Request, method string) {
 			err error
 		)
 		if kind == "private" {
-			id, err = c.q.SendC2CTextNow(chatID, content)
+			id, err = c.q.SendC2CTextNow(chatID, content, replyKey)
 		} else {
-			id, err = c.q.SendGroupTextNow(chatID, content)
+			id, err = c.q.SendGroupTextNow(chatID, content, replyKey)
 		}
 		if err != nil {
 			ApiErr(w, 502, err.Error())
 			return
 		}
-		ApiOK(w, map[string]interface{}{"id": id, "group_openid": key, "chat_id": chatID, "format": "text"})
+		ApiOK(w, map[string]interface{}{"id": id, "group_openid": key, "chat_id": chatID, "format": "text", "reply_to": replyKey})
 		return
 	}
-	id, err := c.b.SendMessageIn(chatID, threadID, kind, title, content, telegram.SendOptions{})
+	id, err := c.b.SendMessageIn(chatID, threadID, kind, title, content, telegram.SendOptions{ReplyTo: replyID})
 	if err != nil {
 		ApiErr(w, 502, err.Error())
 		return
 	}
-	ApiOK(w, map[string]interface{}{"id": id, "group_openid": key, "chat_id": chatID, "format": "text"})
+	ApiOK(w, map[string]interface{}{"id": id, "group_openid": key, "chat_id": chatID, "format": "text", "reply_to": replyKey})
 }
 
 func (c *qctx) qqBotState(w http.ResponseWriter, r *http.Request) {
@@ -1101,7 +1114,17 @@ func (c *qctx) qqRecall(w http.ResponseWriter, r *http.Request, method string) {
 	}
 	if in.MessageID != "" {
 		id, _ := strconv.ParseInt(in.MessageID, 10, 64)
-		if err := c.b.RecallMessage(chatID, id); err != nil { ApiErr(w, 502, err.Error()); return }
+		if err := c.b.RecallMessage(chatID, id); err != nil {
+			var ae *telegram.APIError
+			if errors.As(err, &ae) && strings.Contains(strings.ToLower(ae.Description), "message to delete not found") {
+				// 平台已经不存在这条消息：本地补墓碑，避免界面一直显示旧消息。
+				c.b.MarkRecalled(chatID, id)
+				ApiOK(w, map[string]interface{}{"ok": true, "result": "消息在平台已不存在，本地已标记撤回"})
+				return
+			}
+			ApiErr(w, 502, telegramRecallError(err))
+			return
+		}
 		ApiOK(w, map[string]interface{}{"ok": true, "result": "已撤回"})
 		return
 	}
@@ -1111,7 +1134,14 @@ func (c *qctx) qqRecall(w http.ResponseWriter, r *http.Request, method string) {
 	ids := make([]int64, 0, len(list))
 	for _, m := range list { ids = append(ids, m.MessageID) }
 	n, err := c.b.RecallMessages(chatID, ids)
-	if err != nil { ApiErr(w, 502, err.Error()); return }
+	if err != nil {
+		if n > 0 {
+			ApiOK(w, map[string]interface{}{"ok": true, "result": fmt.Sprintf("已撤回 %d 条；其余失败：%s", n, telegramRecallError(err))})
+			return
+		}
+		ApiErr(w, 502, telegramRecallError(err))
+		return
+	}
 	ApiOK(w, map[string]interface{}{"ok": true, "result": fmt.Sprintf("已撤回 %d 条", n)})
 }
 
@@ -1129,6 +1159,8 @@ func (c *qctx) chatUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	key := strings.TrimSpace(r.FormValue("conversation"))
 	caption := strings.TrimSpace(r.FormValue("caption"))
+	replyKey := strings.TrimSpace(r.FormValue("reply_to"))
+	replyID, _ := strconv.ParseInt(replyKey, 10, 64)
 	if key == "" {
 		ApiErr(w, 400, "需要会话")
 		return
@@ -1197,6 +1229,11 @@ func (c *qctx) chatUpload(w http.ResponseWriter, r *http.Request) {
 			params["message_thread_id"] = n
 		}
 	}
+	if replyID > 0 {
+		params["reply_parameters"] = map[string]interface{}{
+			"message_id": replyID, "allow_sending_without_reply": true,
+		}
+	}
 	raw, err := client.CallMultipart(method, params, field, tmpName)
 	if err != nil {
 		ApiErr(w, 502, tgErr(err))
@@ -1221,4 +1258,18 @@ func (c *qctx) chatUpload(w http.ResponseWriter, r *http.Request) {
 		"id": out.MessageID, "chat_id": chatID, "group_openid": key,
 		"kind": method, "file": header.Filename,
 	})
+}
+
+// telegramRecallError 把 Telegram 删除消息的常见失败翻成可操作的中文。
+func telegramRecallError(err error) string {
+	var ae *telegram.APIError
+	if errors.As(err, &ae) {
+		if h := ae.Hint(); h != "" {
+			return h
+		}
+		if ae.Description != "" {
+			return ae.Description
+		}
+	}
+	return err.Error()
 }

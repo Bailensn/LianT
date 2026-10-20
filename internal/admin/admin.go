@@ -1510,14 +1510,16 @@ func (a *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-tick.C:
-			// 不再读取整段历史做快照：条数 + 最大序号 + 最后更新时间足够判断变化。
+			// 当前会话签名 + 全局会话目录签名，既能刷新消息，也能发现别的会话的变化。
 			next := ""
 			if rt != nil && chatID != "" {
 				if rt.Bot != nil {
-					next = "tg:" + rt.Bot.MessagesSignatureByConversation(chatID)
+					next = "tg:" + rt.Bot.MessagesSignatureByConversation(chatID) +
+						"|tgall:" + rt.Bot.ConversationsSignature()
 				}
 				if rt.QQ != nil {
-					next += "|qq:" + rt.QQ.MessagesSignatureByConversation(chatID)
+					next += "|qq:" + rt.QQ.MessagesSignatureByConversation(chatID) +
+						"|qqall:" + rt.QQ.ConversationsSignature()
 				}
 			}
 			if next == sig {

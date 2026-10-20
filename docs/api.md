@@ -116,7 +116,7 @@ QQ Bot 上调用这些路由会返回 `409`，不会 500。
 | `/api/joins` | 入群审批（`approve` / `decline`） |
 | `/api/chat/groups` | 会话列表：群、Telegram 论坛话题、私聊、未来的频道 |
 | `/api/chat/recent` | 某个会话的聊天记录（`?group=<会话键>`） |
-| `/api/chat/send` | 发文本/卡片（`group_openid` 传会话键） |
+| `/api/chat/send` | 发文本/卡片（`group_openid` 传会话键；`reply_to` 可带消息 ID） |
 | `/api/chat/upload` | 上传图片/文件并发送（multipart，Telegram） |
 | `/api/qq/*` | QQ 专属：`botstate`、`groupinfo`、`members`、`mutestate`、`kick`、`recall` |
 
@@ -154,11 +154,13 @@ POST /api/chat/upload
 Content-Type: multipart/form-data
 conversation=<会话键>
 caption=<可选说明>
+reply_to=<可选，回复的消息 ID>
 file=<文件>
 ```
 
-Telegram 会按 MIME/扩展名选择 `sendPhoto` / `sendVideo` / `sendAudio` / `sendDocument`，
-并把发出的媒体写回该会话历史；QQ 富媒体上传需要额外权限，当前返回 `409`。
+Telegram 会按 MIME/扩展名选择 `sendPhoto` / `sendVideo` / `sendAudio` / `sendDocument`；
+带 `reply_to` 时传 `reply_parameters`。发送成功会把媒体写回该会话历史。
+QQ 群消息可走被动回复 `msg_id`，但富媒体上传需要额外权限，当前返回 `409`。
 单文件上限 32MB。
 
 ### 4.4 媒体

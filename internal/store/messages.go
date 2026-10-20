@@ -291,6 +291,9 @@ func (s *Store) RecallMessage(chatID, messageID string) error {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n > 0 {
+		_, _ = s.db.Exec(`UPDATE conversations SET updated_at = ? WHERE key =
+			(SELECT conv_key FROM messages WHERE chat_id = ? AND message_id = ?)`,
+			messageTime(time.Now()), chatID, messageID)
 		s.bump()
 	}
 	return nil
@@ -306,6 +309,9 @@ func (s *Store) SetMessageMedia(chatID, messageID, mediaJSON string) error {
 	_, err := s.db.Exec(`UPDATE messages SET media = ?, updated_at = ?
 		WHERE chat_id = ? AND message_id = ?`, mediaJSON, messageTime(time.Now()), chatID, messageID)
 	if err == nil {
+		_, _ = s.db.Exec(`UPDATE conversations SET updated_at = ? WHERE key =
+			(SELECT conv_key FROM messages WHERE chat_id = ? AND message_id = ?)`,
+			messageTime(time.Now()), chatID, messageID)
 		s.bump()
 	}
 	return err
@@ -491,4 +497,23 @@ func (s *Store) EnsureConversation(c ConversationRec) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.saveConversationLocked(m, time.Now())
+}
+
+// ConversationsSignature 是 Bot 级会话目录签名：会话数量 + 最近更新时间。
+// 新增消息、撤回、媒体状态变化都会 touch 会话，SSE 据此刷新会话列表。
+func (s *Store) ConversationsSignature() string {
+	if s == nil || s.db == nil {
+		return ""
+	}
+	var (
+		n       int64
+		maxConv string
+	)
+	err := s.db.QueryRow(`SELECT
+		COALESCE((SELECT COUNT(*) FROM conversations), 0),
+		COALESCE((SELECT MAX(updated_at) FROM conversations), '')`).Scan(&n, &maxConv)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%d:%s", n, maxConv)
 }

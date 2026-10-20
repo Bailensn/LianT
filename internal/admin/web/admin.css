@@ -1195,3 +1195,17 @@ body::before{ background:radial-gradient(45% 70% at 84% -10%,var(--glow-a),trans
   .msg-menu-cancel{ display:block; min-height:42px; margin-top:6px; }
   .msg-menu-scrim{ background:rgba(8,10,16,.4); }
 }
+
+.chat-reply{ padding:8px 12px 0; }
+.chat-reply[hidden]{ display:none; }
+.chat-reply-inner{
+  display:flex; align-items:flex-start; gap:8px; min-width:0;
+  padding:7px 9px; border-radius:9px; background:var(--surface-2);
+}
+.chat-reply-bar{ width:2px; align-self:stretch; flex:0 0 2px; border-radius:2px; background:var(--accent); }
+.chat-reply-text{ flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.chat-reply-text strong{ font-size:11px; font-weight:600; color:var(--accent-strong); }
+.chat-reply-text span{ font-size:11px; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.chat-reply-clear{ display:grid; place-items:center; width:22px; height:22px; flex:0 0 auto; border-radius:6px; color:var(--text-3); }
+.chat-reply-clear .i{ width:12px; height:12px; }
+@media (hover:hover) and (pointer:fine){ .chat-reply-clear:hover{ background:var(--surface-solid); color:var(--text); } }

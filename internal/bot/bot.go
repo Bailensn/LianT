@@ -1370,12 +1370,12 @@ func (b *Bot) SendMessageIn(chatID, threadID, kind, title, text string, opt tele
 }
 
 // SendCardIn 发卡片到指定会话（支持话题）。
-func (b *Bot) SendCardIn(chatID, threadID, kind, title, cardTitle, content string) (int64, error) {
+func (b *Bot) SendCardIn(chatID, threadID, kind, title, cardTitle, content string, replyTo int64) (int64, error) {
 	c := b.clientOrNil()
 	if c == nil {
 		return 0, errors.New("机器人尚未连接")
 	}
-	opt := telegram.SendOptions{ParseMode: "HTML", DisablePreview: true}
+	opt := telegram.SendOptions{ParseMode: "HTML", DisablePreview: true, ReplyTo: replyTo}
 	if threadID != "" {
 		if n, err := strconv.ParseInt(threadID, 10, 64); err == nil && n > 0 {
 			opt.ThreadID = n
@@ -1685,3 +1685,11 @@ func (b *Bot) RefreshAllGroups(pause time.Duration) {
 
 // Client 返回当前 Telegram 客户端（未连接时为 nil），供管理端查询群信息用。
 func (b *Bot) Client() *telegram.Client { return b.clientOrNil() }
+
+// ConversationsSignature 让 SSE 能感知其他会话的变化。
+func (b *Bot) ConversationsSignature() string {
+	if b.st == nil {
+		return ""
+	}
+	return b.st.ConversationsSignature()
+}

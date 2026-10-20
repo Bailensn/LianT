@@ -37,6 +37,8 @@ LianT 是**自托管的跨平台聊天软件**：
   文字、卡片、图片、文件、视频、音频、语音、贴纸都有对应展示。
 - 每条消息的「⋯」按钮，或直接点头像，打开统一操作菜单：
   查看图片 / 引用 / 复制文本 / 下载附件 / 撤回。**没有长按菜单。**
+- **引用是平台原生回复**：Telegram 走 `reply_parameters.message_id`，QQ 走被动消息
+  `msg_id`；输入框只显示回复对象预览，不再把原文塞进输入框。附件上传也支持回复。
 - 输入条：默认文本，Enter 发送、Shift+Enter 换行、自动增高；可切换卡片并填标题。
 - 附件按钮：图片/视频/音频/文件，Telegram 走 multipart 上传：
   `sendPhoto` / `sendVideo` / `sendAudio` / `sendDocument`，发出的消息写回会话历史。
@@ -53,7 +55,10 @@ LianT 是**自托管的跨平台聊天软件**：
   - 旧 v4 消息回填为 `conv_key=chat_id`；v4 没有 `thread_id`，无法回溯拆话题。
 - 媒体引用只存在本机库，前端只拿 `/api/media?bot_id=&chat_id=&msg=` 的代理地址。
 - 媒体状态：`available` / `expired` / `gone` / `unknown`；取回失败会写回状态。
-- SSE 不推 runtime 事件，而是按会话签名（最大 seq + 最新更新时间）变化后让浏览器重拉。
+- SSE 不推 runtime 事件，而是按签名变化后让浏览器重拉：
+  当前会话用 `ConversationSignature`，会话列表用 `ConversationsSignature`；
+  `EventSource` 连接带 token（兼容只用 localStorage、没有 cookie 的登录），
+  另有 15 秒兜底刷新和 `visibilitychange` 恢复刷新。
 
 ## 3. 关键约定
 
@@ -89,6 +94,9 @@ LianT 是**自托管的跨平台聊天软件**：
 
 **这些不能替代真机构建。** 改完后必须重新编译/重启 LianT；管理页资源是嵌入二进制的，
 只刷新浏览器不会加载新 Go 代码。
+
+本轮另外验证了：引用后发送的请求体带 `reply_to`（mock 实测），
+SSE 的 token/全局会话签名路径已逐行复核；仍未跑完整 `go build`。
 
 ## 5. 已知限制与坑
 

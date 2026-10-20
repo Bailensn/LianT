@@ -258,7 +258,7 @@ func sendResultError(r qq.SendResult) error {
 }
 
 // SendGroupTextNow 同步发一条群文本消息（网页后台需要确切的成功/失败）。
-func (b *Bot) SendGroupTextNow(groupOpenID, content string) (string, error) {
+func (b *Bot) SendGroupTextNow(groupOpenID, content, replyTo string) (string, error) {
 	if strings.TrimSpace(groupOpenID) == "" {
 		return "", fmt.Errorf("缺少群 openid")
 	}
@@ -270,7 +270,7 @@ func (b *Bot) SendGroupTextNow(groupOpenID, content string) (string, error) {
 		return "", err
 	}
 	msgSeq := int(time.Now().UnixNano()/1e6) % 100000
-	result := qq.SendGroupText(token, groupOpenID, content, "", msgSeq)
+	result := qq.SendGroupText(token, groupOpenID, content, replyTo, msgSeq)
 	if !result.Ok() {
 		return "", sendResultError(result)
 	}
@@ -279,7 +279,7 @@ func (b *Bot) SendGroupTextNow(groupOpenID, content string) (string, error) {
 }
 
 // SendGroupCardNow 同步发一张 Markdown 卡片（网页后台群发用）。
-func (b *Bot) SendGroupCardNow(groupOpenID, markdown string) (string, error) {
+func (b *Bot) SendGroupCardNow(groupOpenID, markdown, replyTo string) (string, error) {
 	if strings.TrimSpace(groupOpenID) == "" {
 		return "", fmt.Errorf("缺少群 openid")
 	}
@@ -291,7 +291,7 @@ func (b *Bot) SendGroupCardNow(groupOpenID, markdown string) (string, error) {
 		return "", err
 	}
 	msgSeq := int(time.Now().UnixNano()/1e6) % 100000
-	result := qq.SendGroupMarkdown(token, groupOpenID, markdown, "", msgSeq)
+	result := qq.SendGroupMarkdown(token, groupOpenID, markdown, replyTo, msgSeq)
 	if !result.Ok() {
 		return "", sendResultError(result)
 	}
@@ -307,7 +307,7 @@ func (b *Bot) DescribeCounts() string {
 }
 
 // SendC2CTextNow 同步发一条单聊文本（网页后台需要确切的成功/失败）。
-func (b *Bot) SendC2CTextNow(userOpenID, content string) (string, error) {
+func (b *Bot) SendC2CTextNow(userOpenID, content, replyTo string) (string, error) {
 	if strings.TrimSpace(userOpenID) == "" {
 		return "", fmt.Errorf("缺少用户 openid")
 	}
@@ -319,7 +319,7 @@ func (b *Bot) SendC2CTextNow(userOpenID, content string) (string, error) {
 		return "", err
 	}
 	msgSeq := int(time.Now().UnixNano()/1e6) % 100000
-	result := qq.SendC2CText(token, userOpenID, content, "", msgSeq)
+	result := qq.SendC2CText(token, userOpenID, content, replyTo, msgSeq)
 	if !result.Ok() {
 		return "", sendResultError(result)
 	}

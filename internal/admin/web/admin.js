@@ -103,9 +103,11 @@
       format: store.get(CHAT_FORMAT_KEY, "text") === "card" ? "card" : "text",
       draft: { title: "", content: "" },
       file: null,
+      replyTo: null,
       menuId: "",
       error: "",
       timer: 0,
+      groupsTimer: 0,
       refreshing: false
     }
   };
@@ -538,6 +540,7 @@
           if (state.tab === "chat" && state.chat.group) timeline.scrollTop = timeline.scrollHeight;
         }, 260);
       }
+      updateChatReply();
       updateChatAttachment();
       updateChatComposerState();
       startChatPoll();
@@ -1956,6 +1959,7 @@
     return `<div class="chat-composer">
       <form data-form="chat-send" id="chat-form">
         <div class="composer-box">
+          <div class="chat-reply" data-chat-reply hidden></div>
           <div class="chat-attachment" data-chat-attachment hidden></div>
           <div class="composer-title" data-chat-title-wrap${format === "text" ? " hidden" : ""}>
             <input class="input chat-title" name="title" maxlength="60" placeholder="卡片标题（可选）" value="${esc(draft.title)}" autocomplete="off">
@@ -2069,6 +2073,25 @@
       clearInterval(state.chat.timer);
       state.chat.timer = 0;
     }
+    if (state.chat.groupsTimer) {
+      clearInterval(state.chat.groupsTimer);
+      state.chat.groupsTimer = 0;
+    }
+  }
+
+  async function refreshChatGroups() {
+    if (state.tab !== "chat") return;
+    try {
+      const data = await api("chat/groups");
+      if (!Array.isArray(data) || state.tab !== "chat") return;
+      state.chat.groups = data.slice().sort((a, b) => (Date.parse(b.last_at) || 0) - (Date.parse(a.last_at) || 0));
+      const list = document.getElementById("chat-group-list");
+      if (list) {
+        list.innerHTML = chatGroupsHTML();
+        const search = document.querySelector("[data-chat-search]");
+        if (search && search.value) filterChatGroups(search.value);
+      }
+    } catch {}
   }
 
   let chatSSE = null;
@@ -2081,10 +2104,13 @@
   function startChatSSE() {
     stopChatSSE();
     if (typeof EventSource === "undefined" || !state.botID || !state.chat.group) return;
-    const url = BASE + "/api/events?bot_id=" + encodeURIComponent(state.botID) + "&chat_id=" + encodeURIComponent(state.chat.group);
+    let url = BASE + "/api/events?bot_id=" + encodeURIComponent(state.botID) + "&chat_id=" + encodeURIComponent(state.chat.group);
+    if (state.token) url += "&token=" + encodeURIComponent(state.token);
     chatSSE = new EventSource(url);
     chatSSE.addEventListener("message", () => {
-      if (state.tab === "chat") refreshChatMessages(false).catch(() => {});
+      if (state.tab !== "chat") return;
+      refreshChatGroups().catch(() => {});
+      refreshChatMessages(false).catch(() => {});
     });
   }
   function startChatPoll() {
@@ -2095,7 +2121,12 @@
     }
     // 有推送就不轮询；EventSource 不可用时退回 8 秒轮询。
     startChatSSE();
-    if (!chatSSE) state.chat.timer = setInterval(() => refreshChatMessages(false), 8000);
+    // SSE 是主通道；保留低频兜底，EventSource 被代理/鉴权拦住时也不至于完全不动。
+    state.chat.timer = setInterval(() => refreshChatMessages(false), chatSSE ? 15000 : 8000);
+    // SSE 只负责当前会话的消息；会话列表每 15 秒兜底同步一次（也覆盖 EventSource 断线）。
+    state.chat.groupsTimer = setInterval(() => {
+      if (!document.hidden) refreshChatGroups().catch(() => {});
+    }, 15000);
   }
 
   async function refreshChatMessages(force) {
@@ -2183,6 +2214,7 @@
     if (!gid || gid === state.chat.group) return;
     captureChatDraft();
     state.chat.file = null;
+    state.chat.replyTo = null;
     state.chat.group = gid;
     store.set(CHAT_GROUP_KEY, gid);
     state.chat.error = "";
@@ -2283,7 +2315,12 @@
     items.push(["quote", "引用", "message"]);
     if (message.content) items.push(["copy", "复制文本", "copy"]);
     if (media && media.fetchable) items.push(["download", isImage ? "保存图片" : "下载附件", "download"]);
-    items.push(["recall", "撤回", "trash", "danger"]);
+    const conv = currentConversation();
+    const isQQPrivate = conv && conv.platform === "qq" && conv.kind === "private";
+    let canRecall = Boolean(message.is_bot);
+    if (!canRecall && conv && conv.kind !== "private" && conv.bot_is_admin) canRecall = true;
+    if (isQQPrivate) canRecall = false;
+    if (canRecall) items.push(["recall", "撤回", "trash", "danger"]);
     actions.innerHTML = items.map(([key, label, ico, tone]) =>
       `<button class="msg-menu-item${tone ? " " + tone : ""}" type="button" role="menuitem" data-act="menu-action" data-key="${key}">${icon(ico)}<span>${esc(label)}</span></button>`
     ).join("");
@@ -2349,23 +2386,44 @@
     syncScrollLock();
   }
 
-  function quoteChatMessage(id) {
-    const message = state.chat.messages.find(item => String(item.id) === String(id));
-    if (!message) throw new Error("这条消息已经不在缓存里了");
-    const form = document.querySelector('form[data-form="chat-send"]');
-    if (!form) return;
-    const card = parseCard(message.content);
-    if (card) {
-      setChatFormat("card");
-      if (form.elements.title) form.elements.title.value = card.title;
-      form.elements.content.value = card.body;
-    } else {
-      const mediaLabel = message.media ? (MEDIA_KIND_LABEL[String(message.media.kind)] || "附件") : "";
-      form.elements.content.value = message.content || (mediaLabel ? "[" + mediaLabel + "]" : "");
+  function updateChatReply() {
+    const box = document.querySelector("[data-chat-reply]");
+    if (!box) return;
+    const reply = state.chat.replyTo;
+    if (!reply || !reply.id) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
     }
-    updateChatComposerState();
-    form.elements.content.focus();
-    toast("已填入输入框", { type: "info" });
+    const name = reply.username || (reply.is_bot ? "LianT" : "成员");
+    const snippet = reply.preview || "消息";
+    box.hidden = false;
+    box.innerHTML = `<div class="chat-reply-inner">
+      <span class="chat-reply-bar"></span>
+      <div class="chat-reply-text"><strong>回复 ${esc(name)}</strong><span>${esc(snippet)}</span></div>
+      <button class="chat-reply-clear" type="button" data-act="chat-reply-clear" aria-label="取消回复">${icon("x")}</button>
+    </div>`;
+  }
+
+  function clearChatReply() {
+    state.chat.replyTo = null;
+    updateChatReply();
+  }
+
+  function quoteChatMessage(id) {
+    const message = findChatMessage(id);
+    if (!message) throw new Error("这条消息已经不在缓存里了");
+    const card = parseCard(message.content);
+    state.chat.replyTo = {
+      id: String(message.id || ""),
+      username: message.username || "",
+      is_bot: Boolean(message.is_bot),
+      preview: card ? card.title : recentMessagePreview(message),
+    };
+    updateChatReply();
+    const form = document.querySelector('form[data-form="chat-send"]');
+    if (form && form.elements.content) form.elements.content.focus();
+    toast("已设为回复，发送时会引用这条消息", { type: "info" });
   }
 
   async function recallChatMessage(id) {
@@ -2400,6 +2458,7 @@
     const body = new FormData();
     body.append("conversation", gid);
     if (content) body.append("caption", content);
+    if (state.chat.replyTo && state.chat.replyTo.id) body.append("reply_to", state.chat.replyTo.id);
     body.append("file", file, file.name);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 120000);
@@ -2434,11 +2493,13 @@
     if (state.chat.file) {
       await uploadChatFile(gid, content);
       state.chat.file = null;
+      state.chat.replyTo = null;
       state.chat.draft = { title: "", content: "" };
       if (form.elements.title) form.elements.title.value = "";
       if (form.elements.content) form.elements.content.value = "";
       const input = document.getElementById("chat-file-input");
       if (input) input.value = "";
+      updateChatReply();
       updateChatAttachment();
       updateChatComposerState();
       toast.success("已发送到「" + (group && group.name ? group.name : "会话") + "」");
@@ -2449,9 +2510,11 @@
     const data = await api("chat/send", {
       method: "POST",
       timeout: 30000,
-      body: { group_openid: gid, format, title, content }
+      body: { group_openid: gid, format, title, content, reply_to: state.chat.replyTo ? state.chat.replyTo.id : "" }
     });
     toast.success("已发送到「" + (group && group.name ? group.name : "会话") + "」");
+    state.chat.replyTo = null;
+    updateChatReply();
     state.chat.draft = { title: "", content: "" };
     if (form.elements.title) form.elements.title.value = "";
     form.elements.content.value = "";
@@ -3161,6 +3224,7 @@
       const input = document.getElementById("chat-file-input");
       if (input) input.click();
     },
+    "chat-reply-clear": () => clearChatReply(),
     "chat-attach-clear": () => {
       state.chat.file = null;
       const input = document.getElementById("chat-file-input");
@@ -3253,6 +3317,12 @@
       loadCurrent();
       closeNav();
     });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden || state.tab !== "chat") return;
+      refreshChatGroups().catch(() => {});
+      refreshChatMessages(true).catch(() => {});
+    });
+
     window.addEventListener("keydown", event => {
       if (event.key === "Escape") {
         closeNav();
