@@ -295,7 +295,7 @@ func (b *Bot) RecallMessage(chatID string, messageID int64) error {
 	if err := c.DeleteMessage(chatID, messageID); err != nil {
 		return err
 	}
-	b.ForgetRecent(chatID, messageID)
+	b.MarkRecalled(chatID, messageID)
 	return nil
 }
 

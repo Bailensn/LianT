@@ -715,7 +715,7 @@ func (c *qctx) chatRecent(w http.ResponseWriter, r *http.Request) {
 		for _, m := range c.q.RecentList(gid, 60, 0) {
 			out = append(out, map[string]interface{}{
 				"id": m.ID, "username": m.Username, "member_openid": m.MemberOpenID,
-				"content": m.Content, "kind": m.Kind, "is_bot": m.IsBot, "at": m.At.Format(time.RFC3339),
+				"content": m.Content, "kind": m.Kind, "is_bot": m.IsBot, "state": m.State, "at": m.At.Format(time.RFC3339),
 			})
 		}
 		ApiOK(w, map[string]interface{}{"group": gid, "messages": out})
@@ -724,7 +724,7 @@ func (c *qctx) chatRecent(w http.ResponseWriter, r *http.Request) {
 	for _, m := range c.b.RecentList(gid, 60, 0) {
 		out = append(out, map[string]interface{}{
 			"id": m.MessageID, "username": m.Username, "member_openid": m.UserID,
-			"content": m.Content, "kind": m.Kind, "is_bot": m.IsBot, "at": m.At.Format(time.RFC3339),
+			"content": m.Content, "kind": m.Kind, "is_bot": m.IsBot, "state": m.State, "at": m.At.Format(time.RFC3339),
 		})
 	}
 	ApiOK(w, map[string]interface{}{"group": gid, "messages": out})

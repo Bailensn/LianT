@@ -192,7 +192,7 @@ func (b *Bot) QqRecallMessage(groupOpenID, messageID string) QqResp {
 	}
 	resp := b.QqAPI("DELETE", qq.GroupRecallURL(groupOpenID, messageID), nil, nil)
 	if resp.Ok() {
-		b.ForgetRecent(groupOpenID, messageID)
+		b.MarkRecalled(groupOpenID, messageID)
 	}
 	return resp
 }

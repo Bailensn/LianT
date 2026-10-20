@@ -96,6 +96,7 @@ type RecentMsg struct {
 	Content      string
 	Kind         string // text/image/voice/video/file/markdown/ark/embed/other/bot
 	IsBot        bool   // 机器人自己发的
+	State        string // received / sent / recalled
 	At           time.Time
 }
 
@@ -179,7 +180,7 @@ func (b *Bot) RememberMessage(d qq.MessageData) {
 	list := append(b.recent[d.GroupOpenID], RecentMsg{
 		MsgIdx: idx, ID: d.ID, MemberOpenID: d.Author.MemberOpenID,
 		Username: d.Author.Username, Content: d.Content,
-		Kind: ClassifyMessageKind(d.MessageType, d.Content), At: time.Now(),
+		Kind: ClassifyMessageKind(d.MessageType, d.Content), State: "received", At: time.Now(),
 	})
 	if len(list) > RecentKeep {
 		list = list[len(list)-RecentKeep:]
@@ -198,7 +199,7 @@ func (b *Bot) RememberOutgoing(groupOpenID, messageID, content string) {
 		b.recent = map[string][]RecentMsg{}
 	}
 	list := append(b.recent[groupOpenID], RecentMsg{
-		ID: messageID, Username: "机器人", Content: content, Kind: "bot", IsBot: true, At: time.Now(),
+		ID: messageID, Username: "机器人", Content: content, Kind: "bot", IsBot: true, State: "sent", At: time.Now(),
 	})
 	if len(list) > RecentKeep {
 		list = list[len(list)-RecentKeep:]
@@ -228,8 +229,9 @@ func (b *Bot) RecentList(groupOpenID string, n int, onlyWithin time.Duration) []
 	return out
 }
 
-// ForgetRecent 撤回成功后把消息从最近消息里移除，网页的消息列表才不会留着已撤回的消息。
-func (b *Bot) ForgetRecent(groupOpenID string, ids ...string) {
+// MarkRecalled 把已撤回的消息标记成墓碑：保留时间与发送者，清掉正文。
+// 撤回是消息的一个状态，不是「从没发生过」；但正文不该继续留在内存里。
+func (b *Bot) MarkRecalled(groupOpenID string, ids ...string) {
 	if len(ids) == 0 {
 		return
 	}
@@ -245,17 +247,12 @@ func (b *Bot) ForgetRecent(groupOpenID string, ids ...string) {
 	b.recentMu.Lock()
 	defer b.recentMu.Unlock()
 	list := b.recent[groupOpenID]
-	if len(list) == 0 {
-		return
-	}
-	kept := make([]RecentMsg, 0, len(list))
-	for _, m := range list {
-		if _, ok := drop[m.ID]; ok {
-			continue
+	for i := range list {
+		if _, ok := drop[list[i].ID]; ok {
+			list[i].State = "recalled"
+			list[i].Content = ""
 		}
-		kept = append(kept, m)
 	}
-	b.recent[groupOpenID] = kept
 }
 
 // LookupBotRecent 机器人自己最近发的一条消息。

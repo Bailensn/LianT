@@ -107,6 +107,7 @@ type RecentMsg struct {
 	Content   string
 	Kind      string
 	IsBot     bool
+	State     string // received / sent / recalled
 	At        time.Time
 }
 
@@ -194,7 +195,7 @@ func (b *Bot) remember(m *telegram.Message) {
 	defer b.recentMu.Unlock()
 	list := append(b.recent[chatID], RecentMsg{
 		MessageID: m.MessageID, UserID: userID, Username: username,
-		Content: m.Content(), Kind: Classify(m), IsBot: isBot, At: time.Now(),
+		Content: m.Content(), Kind: Classify(m), IsBot: isBot, State: "received", At: time.Now(),
 	})
 	if len(list) > RecentKeep {
 		list = list[len(list)-RecentKeep:]
@@ -211,7 +212,7 @@ func (b *Bot) RememberOutgoing(chatID string, messageID int64, content string) {
 	defer b.recentMu.Unlock()
 	list := append(b.recent[chatID], RecentMsg{
 		MessageID: messageID, Username: "机器人", Content: content,
-		Kind: "bot", IsBot: true, At: time.Now(),
+		Kind: "bot", IsBot: true, State: "sent", At: time.Now(),
 	})
 	if len(list) > RecentKeep {
 		list = list[len(list)-RecentKeep:]
@@ -240,9 +241,9 @@ func (b *Bot) RecentList(chatID string, n int, onlyWithin time.Duration) []Recen
 	return out
 }
 
-// ForgetRecent 把已经撤回的消息从最近消息里移除，
-// 否则网页的「最近消息」和「撤回机器人」还会看到它们。
-func (b *Bot) ForgetRecent(chatID string, ids ...int64) {
+// MarkRecalled 把已撤回的消息标记成墓碑：保留时间与发送者，清掉正文。
+// 撤回是消息的一个状态，不是「从没发生过」；但正文不该继续留在内存里。
+func (b *Bot) MarkRecalled(chatID string, ids ...int64) {
 	if len(ids) == 0 {
 		return
 	}
@@ -258,17 +259,12 @@ func (b *Bot) ForgetRecent(chatID string, ids ...int64) {
 	b.recentMu.Lock()
 	defer b.recentMu.Unlock()
 	list := b.recent[chatID]
-	if len(list) == 0 {
-		return
-	}
-	kept := make([]RecentMsg, 0, len(list))
-	for _, m := range list {
-		if _, ok := drop[m.MessageID]; ok {
-			continue
+	for i := range list {
+		if _, ok := drop[list[i].MessageID]; ok {
+			list[i].State = "recalled"
+			list[i].Content = ""
 		}
-		kept = append(kept, m)
 	}
-	b.recent[chatID] = kept
 }
 
 // LookupRecent 按消息 ID 查最近消息。
@@ -605,7 +601,7 @@ func (b *Bot) handleCallbackQuery(c *telegram.Client, q *telegram.CallbackQuery)
 			answer = errText(err)
 			return
 		}
-		b.ForgetRecent(chatID, id)
+		b.MarkRecalled(chatID, id)
 		answer = "已撤回"
 	case "mute":
 		if len(parts) < 3 {
@@ -838,7 +834,7 @@ func (b *Bot) handleGroupMessage(c *telegram.Client, m *telegram.Message, chatID
 
 	if b.st.IsBlacklisted(chatID, userID) {
 		_ = c.DeleteMessage(chatID, m.MessageID)
-		b.ForgetRecent(chatID, m.MessageID)
+		b.MarkRecalled(chatID, m.MessageID)
 		log.Printf("[blacklist] %s(%s) 被拦截并撤回", m.From.Display(), userID)
 		return
 	}

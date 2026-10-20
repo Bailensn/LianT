@@ -20,6 +20,7 @@ Bot 凭据存在 **SQLite 注册表**里，可以同时运行多个 Bot，每个
 | 文档 | 内容 |
 | --- | --- |
 | 本页 | 功能、部署、配置、CLI、数据库 |
+| [docs/design.md](docs/design.md) | 设计宗旨：服务自主、隐私最小化、消息状态语义、平台适配 |
 | [docs/api.md](docs/api.md) | 管理端 HTTP API：鉴权、返回格式、路由表、示例 |
 | [docs/platforms.md](docs/platforms.md) | 平台兼容层：Adapter、能力声明、qbot 合并、接入 Discord |
 | [docs/reverse-proxy.md](docs/reverse-proxy.md) | Nginx / Caddy 反代、前缀、Webhook、静态资源、排错 |
@@ -422,6 +423,7 @@ LianT/
 │   └── process/            独立会话拉起
 ├── config/.env.example
 └── docs/
+    ├── design.md          设计宗旨与状态语义
     ├── api.md              管理端 API 参考
     ├── platforms.md        平台兼容层与 qbot 合并
     └── reverse-proxy.md    反代配置与排错

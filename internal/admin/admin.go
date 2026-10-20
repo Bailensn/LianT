@@ -1116,6 +1116,7 @@ func (a *Server) Api(w http.ResponseWriter, r *http.Request, route string) {
 				"content":    m.Content,
 				"kind":       m.Kind,
 				"is_bot":     m.IsBot,
+				"state":      m.State,
 				"at":         m.At.Format(time.RFC3339),
 			})
 		}

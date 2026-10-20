@@ -1745,30 +1745,50 @@
   }
 
   function chatMessageHTML(message) {
+    const state = String(message.state || "");
+    const recalled = state === "recalled";
     const bot = Boolean(message.is_bot);
-    const card = bot ? parseCard(message.content) : null;
+    const card = !recalled && bot ? parseCard(message.content) : null;
     const kind = String(message.kind || "");
     const kindLabel = {
       image: "图片", voice: "语音", video: "视频", file: "文件", markdown: "Markdown",
       ark: "卡片", embed: "卡片", media: "富媒体", markup: "表情", other: "附件"
     }[kind] || "";
     const name = message.username || (bot ? "LianT" : "成员");
-    const body = card
-      ? cardBubble(card)
-      : `<div class="msg-bubble">${esc(message.content || kindLabel || "（空消息）")}</div>`;
-    return `<div class="msg ${bot ? "msg-bot" : "msg-user"}" data-msg-id="${esc(message.id || "")}">
+    let stateLabel = "";
+    let stateTitle = "";
+    if (recalled) {
+      stateLabel = "已撤回";
+      stateTitle = "消息已在平台上撤回，正文不再保留";
+    } else if (state === "sent") {
+      stateLabel = "已发送";
+      stateTitle = "平台已受理这条消息；是否送达、对方是否已读，平台不提供回执";
+    } else if (state === "received") {
+      stateLabel = "已收到";
+      stateTitle = "群内收到这条消息的时间";
+    } else if (state) {
+      stateLabel = state;
+      stateTitle = "未知状态，按原始值显示";
+    }
+    const body = recalled
+      ? `<div class="msg-bubble msg-bubble-recalled"><span>已撤回</span><small>正文已清除</small></div>`
+      : card
+        ? cardBubble(card)
+        : `<div class="msg-bubble">${esc(message.content || kindLabel || "（空消息）")}</div>`;
+    return `<div class="msg ${bot ? "msg-bot" : "msg-user"}${recalled ? " is-recalled" : ""}" data-msg-id="${esc(message.id || "")}">
       <div class="msg-avatar${bot ? "" : " avatar " + avatarClass(message.username || message.member_openid)}">${bot ? icon("bot") : esc(initial(message.username))}</div>
       <div class="msg-main">
         <div class="msg-meta">
           <span class="msg-name">${esc(name)}</span>
           <span>${esc(fmtTime(message.at))}</span>
-          ${card ? '<span class="badge accent">卡片</span>' : kindLabel ? `<span class="badge">${esc(kindLabel)}</span>` : ""}
+          ${stateLabel ? `<span class="msg-state msg-state-${esc(state || "unknown")}" title="${esc(stateTitle)}">${esc(stateLabel)}</span>` : ""}
+          ${recalled ? "" : card ? '<span class="badge accent">卡片</span>' : kindLabel ? `<span class="badge">${esc(kindLabel)}</span>` : ""}
         </div>
         ${body}
-        <div class="msg-actions">
+        ${recalled ? "" : `<div class="msg-actions">
           <button class="msg-action" type="button" data-act="chat-quote" data-id="${esc(message.id || "")}">引用</button>
           ${message.id ? `<button class="msg-action" type="button" data-act="chat-recall" data-id="${esc(message.id)}">撤回</button>` : ""}
-        </div>
+        </div>`}
       </div>
     </div>`;
   }
@@ -1913,6 +1933,10 @@
           </div>
           ${current ? chatHeadHTML(current) : ""}
           ${timeline}
+          <div class="chat-footnote">
+            <span>${icon("lock")}消息只留在任务进程内存里（每群最近 200 条），不写数据库，重启即清空</span>
+            <span>${icon("info")}「已发送」只代表平台受理，不代表已送达或已读</span>
+          </div>
           ${current ? chatComposerHTML() : ""}
         </section>
       </div>`;

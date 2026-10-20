@@ -123,6 +123,22 @@ QQ Bot 上调用这些路由会返回 `409`，不会 500。
 
 响应里两套 key 都会给，旧页面不用改。
 
+### 消息条目与状态
+
+`/api/chat/recent`、`/api/messages` 返回的每条消息：
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` / `message_id` | 平台消息 ID |
+| `username`、`member_openid` / `user_id` | 发送者 |
+| `content`、`kind` | 正文与类型（text/image/…） |
+| `is_bot` | 是否机器人自己发出 |
+| `state` | `received` 群内收到 / `sent` 平台已受理 / `recalled` 已撤回（正文已清空） |
+| `at` | RFC3339 时间 |
+
+`sent` 只代表平台受理了发送请求，**不代表送达或已读**；平台不提供回执时，界面不会伪造「已送达」。
+`recalled` 是墓碑：条目保留发送者与时间，正文为空，不可再引用或撤回。
+
 ## 5. 示例
 
 ```bash
