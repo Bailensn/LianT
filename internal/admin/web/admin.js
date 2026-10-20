@@ -1950,10 +1950,31 @@
     }
   }
 
+  let chatSSE = null;
+  function stopChatSSE() {
+    if (chatSSE) {
+      try { chatSSE.close(); } catch {}
+      chatSSE = null;
+    }
+  }
+  function startChatSSE() {
+    stopChatSSE();
+    if (typeof EventSource === "undefined" || !state.botID || !state.chat.group) return;
+    const url = BASE + "/api/events?bot_id=" + encodeURIComponent(state.botID) + "&chat_id=" + encodeURIComponent(state.chat.group);
+    chatSSE = new EventSource(url);
+    chatSSE.addEventListener("message", () => {
+      if (state.tab === "chat") refreshChatMessages(false).catch(() => {});
+    });
+  }
   function startChatPoll() {
     stopChatPoll();
-    if (state.tab !== "chat" || !state.chat.group) return;
-    state.chat.timer = setInterval(() => refreshChatMessages(false), 8000);
+    if (state.tab !== "chat" || !state.chat.group) {
+      stopChatSSE();
+      return;
+    }
+    // 有推送就不轮询；EventSource 不可用时退回 8 秒轮询。
+    startChatSSE();
+    if (!chatSSE) state.chat.timer = setInterval(() => refreshChatMessages(false), 8000);
   }
 
   async function refreshChatMessages(force) {

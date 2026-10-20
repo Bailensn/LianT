@@ -262,6 +262,10 @@ func (a *Server) Handler() http.Handler {
 			WriteJSON(w, http.StatusUnauthorized, map[string]interface{}{"ok": false, "error": "未授权：请带上 token（Authorization: Bearer <token> 或 ?token=）"})
 			return
 		}
+		if p == "/api/events" {
+			a.ServeEvents(w, r)
+			return
+		}
 		a.Api(w, r, strings.TrimPrefix(p, "/api/"))
 	})
 }
@@ -1460,6 +1464,59 @@ func (a *Server) ServeUI(w http.ResponseWriter, r *http.Request) {
 	html, _ := LoadAdminHTML()
 	page := strings.ReplaceAll(html, "__BASE_PATH__", jsString(a.BasePath(r)))
 	_, _ = w.Write([]byte(page))
+}
+
+// ServeEvents 用 Server-Sent Events 把「这个 Bot 的消息有变化」推给浏览器。
+// 目前是服务端比对快照后推送（浏览器不再自己轮询）；等 runtime 提供事件钩子后换成真事件源。
+func (a *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	id, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("bot_id")), 10, 64)
+	chatID := strings.TrimSpace(r.URL.Query().Get("chat_id"))
+	rt, _ := a.m.Get(id)
+	if rt == nil {
+		rt, _ = a.m.First()
+	}
+	sig := ""
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Accel-Buffering", "no")
+	fmt.Fprint(w, "event: ready\ndata: {}\n\n")
+	flusher.Flush()
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-tick.C:
+			next := ""
+			if rt != nil && chatID != "" {
+				ids := make([]string, 0, 80)
+				if rt.Bot != nil {
+					for _, m := range rt.Bot.RecentList(chatID, 80, 0) {
+						ids = append(ids, strconv.FormatInt(m.MessageID, 10)+":"+m.State)
+					}
+				}
+				if rt.QQ != nil {
+					for _, m := range rt.QQ.RecentList(chatID, 80, 0) {
+						ids = append(ids, m.ID+":"+m.State)
+					}
+				}
+				next = strings.Join(ids, "|")
+			}
+			if next == sig {
+				continue
+			}
+			sig = next
+			payload, _ := json.Marshal(map[string]interface{}{"bot_id": id, "chat_id": chatID})
+			fmt.Fprintf(w, "event: message\ndata: %s\n\n", payload)
+			flusher.Flush()
+		}
+	}
 }
 
 // ServeAsset 输出管理页面的 css/js；和 HTML 一样优先读磁盘（改完刷新即生效）。
