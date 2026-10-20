@@ -27,8 +27,9 @@
   ];
   const TAB_MAP = Object.fromEntries(TABS.map(t => [t.id, t]));
   const NAV_GROUPS = [
+    ["会话", ["chat"]],
     ["控制台", ["overview"]],
-    ["运营", ["chat", "rules", "words", "joins"]],
+    ["运营", ["rules", "words", "joins"]],
     ["社群", ["groups", "admins", "mutes", "blacklist"]],
     ["系统", ["audit", "qq", "settings"]]
   ];
@@ -459,10 +460,10 @@
     if (bot && !bot.running) toast("这个 Bot 未运行；可在工作台里重启或编辑配置", { type: "info", duration: 5000 });
     state.botID = String(id || "");
     if (state.botID) store.set("liant_bot", state.botID);
-    state.tab = "overview";
+    state.tab = "chat";
     updateBotSelect();
-    if (location.hash === "#overview") await loadCurrent();
-    else location.hash = "#overview";
+    if (location.hash === "#chat") await loadCurrent();
+    else location.hash = "#chat";
   }
 
   /* ======================================================================

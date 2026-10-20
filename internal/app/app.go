@@ -17,6 +17,7 @@ package app
 
 import (
 	"LianT/internal/admin"
+	"LianT/internal/chat"
 	"LianT/internal/config"
 	"LianT/internal/daemon"
 	"LianT/internal/ipc"
@@ -28,6 +29,7 @@ import (
 	"LianT/internal/secret"
 	"LianT/internal/store"
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -90,6 +92,8 @@ func runController(args []string) int {
 		return cmdStatus()
 	case "logs", "log", "tail":
 		return cmdLogs(rest)
+	case "chat", "messages":
+		return cmdChat(rest)
 	case "admin", "web":
 		return cmdAdmin()
 	case "bot", "bots":
@@ -201,6 +205,103 @@ func cmdRestart() int {
 		}
 	}
 	return cmdStart()
+}
+
+// cmdChat 通过控制协议向任务进程要一份消息快照；不直连数据库、不落盘。
+func cmdChat(args []string) int {
+	addr, ok := ipc.FindDaemonAddr()
+	if !ok {
+		fmt.Println("任务进程没在跑：先 ./LianT start")
+		return 1
+	}
+	reqArgs := map[string]string{}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		take := func() (string, bool) {
+			if i+1 < len(args) {
+				i++
+				return args[i], true
+			}
+			return "", false
+		}
+		switch a {
+		case "--bot", "-b":
+			if v, ok := take(); ok {
+				reqArgs["bot_id"] = v
+			}
+		case "--chat", "-c":
+			if v, ok := take(); ok {
+				reqArgs["chat_id"] = v
+			}
+		case "--limit", "-n":
+			if v, ok := take(); ok {
+				reqArgs["limit"] = v
+			}
+		default:
+			if reqArgs["chat_id"] == "" && !strings.HasPrefix(a, "-") {
+				reqArgs["chat_id"] = a
+			}
+		}
+	}
+	resp, err := ipc.CallAt(addr, "chat", reqArgs, 5*time.Second)
+	if err != nil {
+		fmt.Printf("查询失败: %v\n", err)
+		return 1
+	}
+	if resp == nil || !resp.OK {
+		msg := "任务进程没有返回结果"
+		if resp != nil && resp.Msg != "" {
+			msg = resp.Msg
+		}
+		fmt.Printf("查询失败: %s\n", msg)
+		return 1
+	}
+	var snap chat.Snapshot
+	if len(resp.Payload) > 0 {
+		if err := json.Unmarshal(resp.Payload, &snap); err != nil {
+			fmt.Printf("解析消息失败: %v\n", err)
+			return 1
+		}
+	}
+	if len(snap.Messages) == 0 {
+		fmt.Println("没有最近消息（消息只存在任务进程内存里，重启即清空）")
+		return 0
+	}
+	target := "全部会话"
+	if strings.TrimSpace(snap.ChatID) != "" {
+		target = snap.ChatID
+	}
+	fmt.Printf("Bot #%d · %s · %d 条（仅内存，不落盘）\n", snap.BotID, target, len(snap.Messages))
+	for _, m := range snap.Messages {
+		dir := "←"
+		if m.Outgoing {
+			dir = "→"
+		}
+		who := m.Username
+		if who == "" {
+			who = m.UserID
+		}
+		if who == "" {
+			who = "未知"
+		}
+		content := m.Content
+		if m.State == chat.StateRecalled {
+			content = "（已撤回，正文已清除）"
+		}
+		fmt.Printf("%s %s %-12s %-9s %s\n",
+			m.At.Local().Format("15:04:05"), dir, clipRunes(who, 12),
+			string(chat.Normalize(m.State)), clipRunes(content, 80))
+	}
+	fmt.Println("提示：sent 只代表平台受理，不代表送达或已读。")
+	return 0
+}
+
+func clipRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
 
 func cmdStatus() int {
@@ -927,6 +1028,8 @@ func interactive() int {
 			cmdStatus()
 		case "logs", "log", "tail":
 			cmdLogs(rest)
+		case "chat", "messages":
+			cmdChat(rest)
 		case "reload":
 			cmdReload()
 		case "reply":
@@ -963,6 +1066,8 @@ func printUsage() {
   LianT restart            重启任务进程（先 stop 再 start）
   LianT status             查看任务进程、机器人、回复规则状态
   LianT logs [行数] [-f]    查看日志，默认 50 行，-f 持续跟随
+  LianT chat [-b BotID] [-c 会话ID] [-n 条数]
+                           查看任务进程内存里的最近消息（不落盘，重启即清空）
   LianT admin              网页管理端地址 + token（以及反代示例）
   LianT db                 看数据库统计（规则/违禁词/群/管理员…）
   LianT reload             同步 SQLite Bot 注册表并请求重连（不重启进程）
