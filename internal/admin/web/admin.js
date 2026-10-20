@@ -102,6 +102,8 @@
       group: store.get(CHAT_GROUP_KEY, ""),
       format: store.get(CHAT_FORMAT_KEY, "text") === "card" ? "card" : "text",
       draft: { title: "", content: "" },
+      file: null,
+      menuId: "",
       error: "",
       timer: 0,
       refreshing: false
@@ -493,6 +495,7 @@
     const meta = TAB_MAP[tab] || TAB_MAP.overview;
     const my = ++state.seq;
     stopChatPoll();
+    closeMessageMenu();
     const home = tab === "bots";
     document.getElementById("app").classList.toggle("is-home", home);
     document.getElementById("app").classList.toggle("chat-mode", tab === "chat");
@@ -535,6 +538,8 @@
           if (state.tab === "chat" && state.chat.group) timeline.scrollTop = timeline.scrollHeight;
         }, 260);
       }
+      updateChatAttachment();
+      updateChatComposerState();
       startChatPoll();
     }
     if ((tab === "groups" || tab === "chat") && !state.groupSyncTried && !state.groupSyncDenied) {
@@ -1768,8 +1773,13 @@
 
   /* 媒体：只拿到类型、名称、大小与状态；字节由 /api/media 按需取回，
      所以这里拼的是「取回地址」，不是平台直链。 */
+  function currentConversation() {
+    return state.chat.groups.find(g => g.openid === state.chat.group) || null;
+  }
+
   function mediaSource(message) {
-    const gid = state.chat.group;
+    const conv = currentConversation();
+    const gid = conv ? conv.chat_id : state.chat.group;
     if (!message || !message.id || !gid) return "";
     const params = new URLSearchParams();
     if (state.botID) params.set("bot_id", state.botID);
@@ -1816,19 +1826,19 @@
     if (kind === "video" || kind === "animation" || kind === "video_note") {
       return `<figure class="msg-media msg-media-video">
         <video src="${esc(src)}" controls preload="none" playsinline></video>
-        <figcaption>${esc(meta)}<a class="media-download" href="${esc(src)}" download="${esc(media.name || "")}">${icon("download")}下载</a></figcaption>
+        <figcaption>${esc(meta)}<button class="media-download" type="button" data-act="chat-download" data-src="${esc(src)}" data-name="${esc(media.name || "")}">${icon("download")}下载</button></figcaption>
       </figure>`;
     }
     if (kind === "audio" || kind === "voice") {
       return `<figure class="msg-media msg-media-audio">
         <audio src="${esc(src)}" controls preload="none"></audio>
-        <figcaption>${esc(meta)}<a class="media-download" href="${esc(src)}" download="${esc(media.name || "")}">${icon("download")}下载</a></figcaption>
+        <figcaption>${esc(meta)}<button class="media-download" type="button" data-act="chat-download" data-src="${esc(src)}" data-name="${esc(media.name || "")}">${icon("download")}下载</button></figcaption>
       </figure>`;
     }
-    return `<a class="msg-media msg-media-file" href="${esc(src)}" download="${esc(media.name || "")}">
+    return `<button class="msg-media msg-media-file" type="button" data-act="chat-download" data-src="${esc(src)}" data-name="${esc(media.name || "")}">
       <span class="media-file-icon">${icon("download")}</span>
       <span class="media-file-text"><strong>${esc(media.name || label)}</strong><small>${esc(meta)}</small></span>
-    </a>`;
+    </button>`;
   }
 
   function recentMessagePreview(message) {
@@ -1873,19 +1883,17 @@
     } else {
       inner = `<div class="msg-text">${esc(text || "（空消息）")}</div>`;
     }
-    const actions = message.id ? `<span class="msg-actions">
-      <button class="msg-action" type="button" data-act="chat-quote" data-id="${esc(message.id)}" aria-label="引用" title="引用">${icon("message")}</button>
-      <button class="msg-action" type="button" data-act="chat-recall" data-id="${esc(message.id)}" aria-label="撤回" title="撤回">${icon("trash")}</button>
-    </span>` : "";
-    const avatar = bot ? "" : `<div class="msg-avatar-slot">${opts.grouped ? "" : `<span class="avatar msg-avatar ${avatarClass(message.username || message.member_openid)}">${esc(initial(message.username))}</span>`}</div>`;
+    const more = message.id ? `<button class="msg-more" type="button" data-act="chat-menu" data-id="${esc(message.id)}" aria-label="消息操作" title="更多操作">${icon("more")}</button>` : "";
+    const avatar = bot ? "" : `<div class="msg-avatar-slot">${opts.grouped ? "" : `<button class="msg-avatar-btn" type="button" data-act="chat-menu" data-id="${esc(message.id)}" aria-label="消息操作"><span class="avatar msg-avatar ${avatarClass(message.username || message.member_openid)}">${esc(initial(message.username))}</span></button>`}</div>`;
     const author = !bot && !opts.grouped ? `<div class="msg-author">${esc(message.username || "成员")}</div>` : "";
-    const meta = opts.lastOfRun ? `<div class="msg-meta">
-      <span class="msg-time">${esc(fmtTime(message.at))}</span>
-      ${bot && message.state === "sent" ? `<span class="msg-tick" title="平台已受理；不代表已送达或已读">${icon("check")}</span>` : ""}
-    </div>` : "";
+    const meta = `<div class="msg-meta">
+      ${opts.lastOfRun ? `<span class="msg-time">${esc(fmtTime(message.at))}</span>
+      ${bot && message.state === "sent" ? `<span class="msg-tick" title="平台已受理；不代表已送达或已读">${icon("check")}</span>` : ""}` : ""}
+      ${more}
+    </div>`;
     return `<div class="msg ${bot ? "msg-out" : "msg-in"}${opts.grouped ? " is-grouped" : ""}" data-msg-id="${esc(message.id || "")}">
       ${avatar}
-      <div class="msg-body">${author}<div class="${bubbleClass}">${inner}</div>${meta}${actions}</div>
+      <div class="msg-body">${author}<div class="${bubbleClass}">${inner}</div>${meta}</div>
     </div>`;
   }
 
@@ -1894,7 +1902,7 @@
       return `<div class="chat-empty">
         <div class="empty-icon">${icon("message")}</div>
         <strong>还没有消息</strong>
-        <span>群里的新消息会自动出现在这里，并保存在本机。</span>
+        <span>新消息会自动出现在这里，并保存在本机。</span>
       </div>`;
     }
     const out = [];
@@ -1942,16 +1950,21 @@
   function chatComposerHTML() {
     const format = state.chat.format;
     const draft = state.chat.draft;
-    const disabled = draft.content.trim() ? "" : " disabled";
+    const conv = currentConversation();
+    const canUpload = !conv || conv.upload !== false;
+    const disabled = draft.content.trim() || state.chat.file ? "" : " disabled";
     return `<div class="chat-composer">
       <form data-form="chat-send" id="chat-form">
         <div class="composer-box">
+          <div class="chat-attachment" data-chat-attachment hidden></div>
           <div class="composer-title" data-chat-title-wrap${format === "text" ? " hidden" : ""}>
             <input class="input chat-title" name="title" maxlength="60" placeholder="卡片标题（可选）" value="${esc(draft.title)}" autocomplete="off">
           </div>
           <textarea class="input chat-textarea" name="content" rows="1" maxlength="1800" placeholder="${format === "card" ? "输入卡片内容，支持 **加粗**、列表和链接…" : "发消息…"}" aria-label="消息内容">${esc(draft.content)}</textarea>
           <div class="composer-bar">
             <div class="composer-tools">
+              ${canUpload ? `<input type="file" id="chat-file-input" class="chat-file-input" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt,.md" hidden>
+              <button class="composer-attach" type="button" data-act="chat-attach" aria-label="发送图片或文件" title="发送图片或文件">${icon("paperclip")}</button>` : ""}
               <div class="segmented composer-seg" role="group" aria-label="消息格式">
                 <button class="seg" type="button" data-act="chat-format" data-format="text" aria-pressed="${format === "text"}">文本</button>
                 <button class="seg" type="button" data-act="chat-format" data-format="card" aria-pressed="${format === "card"}">卡片</button>
@@ -1971,7 +1984,7 @@
   }
 
   function chatGroupsHTML() {
-    if (!state.chat.groups.length) return `<p class="chat-side-empty">还没有已启用的群</p>`;
+    if (!state.chat.groups.length) return `<p class="chat-side-empty">还没有会话</p>`;
     return state.chat.groups.map(group => {
       const active = group.openid === state.chat.group;
       const preview = group.last_text
@@ -2099,6 +2112,20 @@
       const hadError = Boolean(state.chat.error);
       state.chat.messages = messages;
       state.chat.error = "";
+      const current = state.chat.groups.find(g => g.openid === gid);
+      if (current && messages.length) {
+        const last = messages[messages.length - 1];
+        current.last_text = recentMessagePreview(last);
+        current.last_user = last.username || "";
+        current.last_at = last.at;
+        state.chat.groups.sort((a, b) => (Date.parse(b.last_at) || 0) - (Date.parse(a.last_at) || 0));
+        const list = document.getElementById("chat-group-list");
+        if (list) {
+          list.innerHTML = chatGroupsHTML();
+          const search = document.querySelector("[data-chat-search]");
+          if (search && search.value) filterChatGroups(search.value);
+        }
+      }
       if (signature === state.chat.signature && !force && !hadError) return;
       state.chat.signature = signature;
       const timeline = document.getElementById("chat-timeline");
@@ -2128,7 +2155,7 @@
     const count = form.querySelector("[data-chat-count]");
     if (count) count.textContent = content.length + " / 1800";
     const send = form.querySelector("[data-chat-send]");
-    if (send) send.disabled = !content.trim();
+    if (send) send.disabled = !content.trim() && !state.chat.file;
     const area = form.elements.content;
     if (area) {
       area.style.height = "auto";
@@ -2137,9 +2164,25 @@
     captureChatDraft();
   }
 
+  function updateChatAttachment() {
+    const box = document.querySelector("[data-chat-attachment]");
+    if (!box) return;
+    const file = state.chat.file;
+    if (!file) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    box.hidden = false;
+    box.innerHTML = `<span class="chat-attachment-icon">${icon("paperclip")}</span>
+      <span class="chat-attachment-text"><strong>${esc(file.name)}</strong><small>${esc(fmtBytes(file.size) || "文件")}</small></span>
+      <button class="chat-attachment-remove" type="button" data-act="chat-attach-clear" aria-label="移除附件">${icon("x")}</button>`;
+  }
+
   function switchChatGroup(gid) {
     if (!gid || gid === state.chat.group) return;
     captureChatDraft();
+    state.chat.file = null;
     state.chat.group = gid;
     store.set(CHAT_GROUP_KEY, gid);
     state.chat.error = "";
@@ -2181,6 +2224,118 @@
     form.elements.content.value = template.content;
     updateChatComposerState();
     form.elements.content.focus();
+  }
+
+  function findChatMessage(id) {
+    return state.chat.messages.find(item => String(item.id) === String(id)) || null;
+  }
+
+  async function downloadMedia(src, name) {
+    if (!src) throw new Error("这条消息没有可下载的媒体");
+    try {
+      const headers = state.token ? { Authorization: "Bearer " + state.token } : {};
+      const res = await fetch(src, { credentials: "same-origin", headers });
+      if (!res.ok) {
+        let message = "下载失败（HTTP " + res.status + "）";
+        try {
+          const data = await res.json();
+          if (data && data.error) message = data.error;
+        } catch {}
+        throw new ApiError(message, res.status);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name || "LianT-media";
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      toast.success("已开始下载");
+    } catch (err) {
+      throw err instanceof ApiError ? err : new ApiError("下载失败：" + (err && err.message ? err.message : String(err)));
+    }
+  }
+
+  function closeMessageMenu() {
+    const menu = document.getElementById("msg-menu");
+    const scrim = document.getElementById("msg-menu-scrim");
+    if (menu) menu.hidden = true;
+    if (scrim) scrim.hidden = true;
+    state.chat.menuId = "";
+  }
+
+  function openMessageMenu(id, anchor) {
+    const message = findChatMessage(id);
+    const menu = document.getElementById("msg-menu");
+    const actions = document.getElementById("msg-menu-actions");
+    const head = document.getElementById("msg-menu-head");
+    const scrim = document.getElementById("msg-menu-scrim");
+    if (!message || !menu || !actions || !head || !scrim) return;
+    state.chat.menuId = String(id);
+    const media = message.media || null;
+    const isImage = media && media.kind === "image";
+    head.textContent = message.username || (message.is_bot ? "LianT" : "消息");
+    const items = [];
+    if (isImage) items.push(["open-media", "查看图片", "image"]);
+    items.push(["quote", "引用", "message"]);
+    if (message.content) items.push(["copy", "复制文本", "copy"]);
+    if (media && media.fetchable) items.push(["download", isImage ? "保存图片" : "下载附件", "download"]);
+    items.push(["recall", "撤回", "trash", "danger"]);
+    actions.innerHTML = items.map(([key, label, ico, tone]) =>
+      `<button class="msg-menu-item${tone ? " " + tone : ""}" type="button" role="menuitem" data-act="menu-action" data-key="${key}">${icon(ico)}<span>${esc(label)}</span></button>`
+    ).join("");
+    menu.hidden = false;
+    scrim.hidden = false;
+    menu.classList.add("is-open");
+    if (window.matchMedia("(max-width: 640px)").matches) {
+      menu.style.left = "";
+      menu.style.top = "";
+    } else {
+      const rect = anchor.getBoundingClientRect();
+      const width = menu.offsetWidth || 220;
+      const height = menu.offsetHeight || 240;
+      let left = Math.min(rect.left, window.innerWidth - width - 12);
+      left = Math.max(12, left);
+      let top = rect.bottom + 8;
+      if (top + height > window.innerHeight - 12) top = Math.max(12, rect.top - height - 8);
+      menu.style.left = left + "px";
+      menu.style.top = top + "px";
+    }
+  }
+
+  async function runMessageMenu(key) {
+    const message = findChatMessage(state.chat.menuId);
+    if (!message) {
+      closeMessageMenu();
+      return;
+    }
+    if (key === "quote") {
+      closeMessageMenu();
+      quoteChatMessage(message.id);
+      return;
+    }
+    if (key === "copy") {
+      closeMessageMenu();
+      await copyText(message.content || "").catch(err => toast.error("复制失败：" + (err.message || err)));
+      return;
+    }
+    if (key === "download") {
+      closeMessageMenu();
+      await downloadMedia(mediaSource(message), (message.media && message.media.name) || "LianT-media");
+      return;
+    }
+    if (key === "open-media") {
+      closeMessageMenu();
+      openMediaDialog(mediaSource(message), (message.media && message.media.name) || "图片");
+      return;
+    }
+    if (key === "recall") {
+      closeMessageMenu();
+      await recallChatMessage(message.id);
+    }
   }
 
   function openMediaDialog(src, name) {
@@ -2239,20 +2394,64 @@
     if (timeline) timeline.scrollTop = timeline.scrollHeight;
   }
 
+  async function uploadChatFile(gid, content) {
+    const file = state.chat.file;
+    if (!file) throw new Error("还没有选择文件");
+    const body = new FormData();
+    body.append("conversation", gid);
+    if (content) body.append("caption", content);
+    body.append("file", file, file.name);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 120000);
+    const headers = state.token ? { Authorization: "Bearer " + state.token } : {};
+    const params = state.botID ? "?bot_id=" + encodeURIComponent(state.botID) : "";
+    try {
+      const res = await fetch(BASE + "/api/chat/upload" + params, {
+        method: "POST", body, credentials: "same-origin", headers, signal: controller.signal
+      });
+      const text = await res.text();
+      let json = null;
+      try { json = text ? JSON.parse(text) : null; } catch {}
+      if (!res.ok || !json || !json.ok) {
+        throw new ApiError((json && json.error) || "上传失败（HTTP " + res.status + "）", res.status);
+      }
+      return json.data;
+    } catch (err) {
+      if (err && err.name === "AbortError") throw new ApiError("上传超时，请检查网络或文件大小", 0);
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function sendChatMessage(form) {
     const content = String(form.elements.content ? form.elements.content.value : "").trim();
     const title = String(form.elements.title ? form.elements.title.value : "").trim();
     const gid = state.chat.group;
-    if (!gid) throw new Error("先选择一个群");
-    if (!content) throw new Error("消息内容不能为空");
+    if (!gid) throw new Error("先选择一个会话");
+    if (!content && !state.chat.file) throw new Error("写点什么，或先选一个文件");
+    const group = state.chat.groups.find(g => g.openid === gid);
+    if (state.chat.file) {
+      await uploadChatFile(gid, content);
+      state.chat.file = null;
+      state.chat.draft = { title: "", content: "" };
+      if (form.elements.title) form.elements.title.value = "";
+      if (form.elements.content) form.elements.content.value = "";
+      const input = document.getElementById("chat-file-input");
+      if (input) input.value = "";
+      updateChatAttachment();
+      updateChatComposerState();
+      toast.success("已发送到「" + (group && group.name ? group.name : "会话") + "」");
+      await refreshChatMessages(true);
+      return;
+    }
     const format = state.chat.format;
     const data = await api("chat/send", {
       method: "POST",
       timeout: 30000,
       body: { group_openid: gid, format, title, content }
     });
-    const group = state.chat.groups.find(g => g.openid === gid);
-    toast.success("已发送到「" + (group && group.name ? group.name : "群") + "」");
+    toast.success("已发送到「" + (group && group.name ? group.name : "会话") + "」");
     state.chat.draft = { title: "", content: "" };
     if (form.elements.title) form.elements.title.value = "";
     form.elements.content.value = "";
@@ -2954,6 +3153,21 @@
     "chat-groups-toggle": () => toggleChatGroups(),
     "chat-groups-close": () => toggleChatGroups(false),
     "chat-format": el => setChatFormat(el.dataset.format),
+    "chat-menu": el => openMessageMenu(el.dataset.id, el),
+    "menu-action": el => runMessageMenu(el.dataset.key),
+    "msg-menu-close": () => closeMessageMenu(),
+    "chat-download": el => downloadMedia(el.dataset.src, el.dataset.name).catch(err => toast.error(err.message || String(err))),
+    "chat-attach": () => {
+      const input = document.getElementById("chat-file-input");
+      if (input) input.click();
+    },
+    "chat-attach-clear": () => {
+      state.chat.file = null;
+      const input = document.getElementById("chat-file-input");
+      if (input) input.value = "";
+      updateChatAttachment();
+      updateChatComposerState();
+    },
     "chat-quote": el => quoteChatMessage(el.dataset.id),
     "chat-recall": el => recallChatMessage(el.dataset.id),
     "media-open": el => openMediaDialog(el.dataset.src, el.dataset.name)
@@ -3040,7 +3254,10 @@
       closeNav();
     });
     window.addEventListener("keydown", event => {
-      if (event.key === "Escape") closeNav();
+      if (event.key === "Escape") {
+        closeNav();
+        closeMessageMenu();
+      }
     });
     const wide = window.matchMedia("(min-width: 901px)");
     const onWide = event => { if (event.matches) closeNav(); };
@@ -3116,34 +3333,6 @@
       }
     }, true);
 
-    // 触摸设备没有 hover：长按气泡 420ms 打开"引用/撤回"浮层。
-    let chatPressTimer = 0;
-    view.addEventListener("pointerdown", event => {
-      const msg = event.target.closest(".msg");
-      if (!msg || event.target.closest("[data-act]")) return;
-      const startX = event.clientX;
-      const startY = event.clientY;
-      clearTimeout(chatPressTimer);
-      const cancel = () => clearTimeout(chatPressTimer);
-      msg.addEventListener("pointerup", cancel, { once: true });
-      msg.addEventListener("pointercancel", cancel, { once: true });
-      msg.addEventListener("pointermove", e => {
-        if (Math.hypot(e.clientX - startX, e.clientY - startY) > 8) cancel();
-      }, { once: true });
-      chatPressTimer = setTimeout(() => {
-        view.querySelectorAll(".msg.is-actions-open").forEach(node => node.classList.remove("is-actions-open"));
-        msg.classList.add("is-actions-open");
-        if (navigator.vibrate) {
-          try { navigator.vibrate(8); } catch {}
-        }
-      }, 420);
-    });
-    view.addEventListener("click", event => {
-      if (!event.target.closest("[data-act]") && !event.target.closest(".msg")) {
-        view.querySelectorAll(".msg.is-actions-open").forEach(node => node.classList.remove("is-actions-open"));
-      }
-    });
-
     view.addEventListener("click", event => {
       const target = event.target.closest("[data-act]");
       if (!target || target.disabled) return;
@@ -3154,8 +3343,31 @@
       });
     });
 
+    // 消息操作菜单在 #view 之外，单独绑定。
+    const msgMenu = document.getElementById("msg-menu");
+    const msgMenuScrim = document.getElementById("msg-menu-scrim");
+    if (msgMenuScrim) msgMenuScrim.addEventListener("click", () => closeMessageMenu());
+    if (msgMenu) {
+      msgMenu.addEventListener("click", event => {
+        const target = event.target.closest("[data-act]");
+        if (!target) return;
+        const action = ACTIONS[target.dataset.act];
+        if (!action) return;
+        Promise.resolve().then(() => action(target, event)).catch(err => {
+          toast.error(err && err.message ? err.message : String(err));
+        });
+      });
+    }
+
     // 表单弹窗在 #view 之外，成员选择器要在 document 上统一处理。
     document.addEventListener("change", event => {
+      if (event.target && event.target.id === "chat-file-input") {
+        const files = event.target.files;
+        state.chat.file = files && files.length ? files[0] : null;
+        updateChatAttachment();
+        updateChatComposerState();
+        return;
+      }
       const memberSelect = event.target.closest("[data-member-select]");
       if (memberSelect) handleMemberSelect(memberSelect);
       const platformSelect = event.target.closest('#app-form select[name="platform"]');

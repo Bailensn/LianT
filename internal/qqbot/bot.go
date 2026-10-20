@@ -250,8 +250,13 @@ func (b *Bot) RememberMessage(d qq.MessageData) {
 	if b.st == nil || b.st.L == nil || strings.TrimSpace(d.ID) == "" {
 		return
 	}
+	title := "QQ 群"
+	if g, ok := b.st.Group(d.GroupOpenID); ok && strings.TrimSpace(g.Name) != "" {
+		title = g.Name
+	}
 	rec := store.MessageRec{
 		ChatID: d.GroupOpenID, MessageID: d.ID, MsgIdx: d.MessageScene.Get("msg_idx"),
+		ConvKey: store.ConversationKey(d.GroupOpenID, ""), ChatKind: "group", ChatTitle: title,
 		UserID: d.Author.MemberOpenID, Username: d.Author.Username,
 		Content: d.Content, Kind: ClassifyMessage(d), State: "received", At: time.Now(),
 	}
@@ -265,17 +270,68 @@ func (b *Bot) RememberMessage(d qq.MessageData) {
 	}
 }
 
+// RememberDirectMessage 把 QQ 单聊消息写入本地库（与群聊分开上下文）。
+func (b *Bot) RememberDirectMessage(d qq.MessageData) {
+	if b.st == nil || b.st.L == nil || strings.TrimSpace(d.ID) == "" {
+		return
+	}
+	chatID := strings.TrimSpace(d.Author.UserOpenID)
+	if chatID == "" {
+		chatID = strings.TrimSpace(d.Author.MemberOpenID)
+	}
+	if chatID == "" {
+		return
+	}
+	title := strings.TrimSpace(d.Author.Username)
+	if title == "" {
+		title = "私聊"
+		if len(chatID) > 6 {
+			title += " · " + chatID[len(chatID)-6:]
+		}
+	}
+	rec := store.MessageRec{
+		ChatID: chatID, MessageID: d.ID,
+		ConvKey: store.ConversationKey(chatID, ""), ChatKind: "private", ChatTitle: title,
+		UserID: chatID, Username: d.Author.Username,
+		Content: d.Content, Kind: ClassifyMessage(d), State: "received", At: time.Now(),
+	}
+	if ref := AttachmentRef(d); ref != nil {
+		if raw, err := json.Marshal(ref); err == nil {
+			rec.MediaJSON = string(raw)
+		}
+	}
+	if err := b.st.L.SaveMessage(rec); err != nil {
+		log.Printf("[!] 保存单聊消息失败 user=%s msg=%s: %v", chatID, d.ID, err)
+	}
+}
+
 // RememberOutgoing 记下机器人自己发出去的消息（这样"撤回你/撤回机器人"能撤自己的回复）。
 func (b *Bot) RememberOutgoing(groupOpenID, messageID, content string) {
 	if b.st == nil || b.st.L == nil || groupOpenID == "" || messageID == "" {
 		return
 	}
+	kind, title := "", ""
+	if conv, ok := b.st.L.Conversation(groupOpenID); ok {
+		kind, title = conv.Kind, conv.Title
+	}
+	b.RememberOutgoingIn(groupOpenID, kind, title, messageID, content)
+}
+
+// RememberOutgoingIn 记下机器人发到指定会话（群/私聊）的消息。
+func (b *Bot) RememberOutgoingIn(chatID, kind, title, messageID, content string) {
+	if b.st == nil || b.st.L == nil || chatID == "" || messageID == "" {
+		return
+	}
+	if kind == "" {
+		kind = "group"
+	}
 	rec := store.MessageRec{
-		ChatID: groupOpenID, MessageID: messageID,
+		ChatID: chatID, MessageID: messageID,
+		ConvKey: store.ConversationKey(chatID, ""), ChatKind: kind, ChatTitle: title,
 		Username: "机器人", Content: content, Kind: "bot", IsBot: true, State: "sent", At: time.Now(),
 	}
 	if err := b.st.L.SaveMessage(rec); err != nil {
-		log.Printf("[!] 保存机器人消息失败 group=%s msg=%s: %v", groupOpenID, messageID, err)
+		log.Printf("[!] 保存机器人消息失败 chat=%s msg=%s: %v", chatID, messageID, err)
 	}
 }
 
@@ -291,6 +347,27 @@ func (b *Bot) RecentList(groupOpenID string, n int, onlyWithin time.Duration) []
 	recs, err := b.st.L.Messages(groupOpenID, n, since)
 	if err != nil {
 		log.Printf("[!] 读取群消息失败 group=%s: %v", groupOpenID, err)
+		return nil
+	}
+	out := make([]RecentMsg, 0, len(recs))
+	for _, rec := range recs {
+		out = append(out, recentFromRec(rec))
+	}
+	return out
+}
+
+// RecentListByConversation 按本地会话键取消息（群/私聊各自独立上下文）。
+func (b *Bot) RecentListByConversation(convKey string, n int, onlyWithin time.Duration) []RecentMsg {
+	if b.st == nil || b.st.L == nil {
+		return nil
+	}
+	var since time.Time
+	if onlyWithin > 0 {
+		since = time.Now().Add(-onlyWithin)
+	}
+	recs, err := b.st.L.MessagesByConversation(convKey, n, since)
+	if err != nil {
+		log.Printf("[!] 读取会话消息失败 conv=%s: %v", convKey, err)
 		return nil
 	}
 	out := make([]RecentMsg, 0, len(recs))
@@ -420,6 +497,14 @@ func (b *Bot) MarkMediaState(groupOpenID, msgID string, st media.State) {
 	if err := b.st.L.SetMessageMedia(groupOpenID, rec.MessageID, string(raw)); err != nil {
 		log.Printf("[!] 更新附件状态失败 group=%s msg=%s: %v", groupOpenID, msgID, err)
 	}
+}
+
+// MessagesSignatureByConversation 是具体会话的 SSE 签名。
+func (b *Bot) MessagesSignatureByConversation(convKey string) string {
+	if b.st == nil || b.st.L == nil {
+		return ""
+	}
+	return b.st.L.ConversationSignature(convKey)
 }
 
 // MessagesSignature 是 SSE 用的会话快照签名，不必把整段历史读出来。

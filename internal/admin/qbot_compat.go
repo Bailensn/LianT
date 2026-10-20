@@ -3,12 +3,17 @@ package admin
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"LianT/internal/bot"
+	"LianT/internal/config"
 	"LianT/internal/manager"
 	qqstore "LianT/internal/platform/qq/store"
 	"LianT/internal/qqbot"
@@ -266,6 +271,8 @@ func (a *Server) compat(w http.ResponseWriter, r *http.Request, route, method st
 		c.chatRecent(w, r)
 	case "chat/send":
 		c.chatSend(w, r, method)
+	case "chat/upload":
+		c.chatUpload(w, r)
 	case "qq/botstate":
 		c.qqBotState(w, r)
 	case "qq/groupinfo":
@@ -698,24 +705,92 @@ func (c *qctx) joins(w http.ResponseWriter, r *http.Request, method string) {
 
 func (c *qctx) chatGroups(w http.ResponseWriter, r *http.Request) {
 	groups, _ := c.st.Groups()
-	out := make([]map[string]interface{}, 0, len(groups))
+	groupByID := make(map[string]store.GroupRec, len(groups))
 	for _, g := range groups {
-		if !g.Enabled {
+		groupByID[g.ChatID] = g
+	}
+	convs, _ := c.st.Conversations()
+	seen := make(map[string]bool, len(convs))
+	out := make([]map[string]interface{}, 0, len(convs)+len(groups))
+	for _, conv := range convs {
+		if g, ok := groupByID[conv.ChatID]; ok && !g.Enabled {
 			continue
 		}
-		item := map[string]interface{}{
-			"openid": g.ChatID, "name": g.Name, "note": g.Note, "bot_is_admin": g.BotIsAdmin,
-		}
-		if rec, ok := c.st.LastMessage(g.ChatID); ok {
-			item["last_at"] = rec.At.Format(time.RFC3339)
-			item["last_user"] = rec.Username
-			item["last_text"] = c.messagePreview(rec)
-		} else {
-			item["last_at"] = g.UpdatedAt
-		}
-		out = append(out, item)
+		seen[conv.Key] = true
+		out = append(out, c.conversationItem(conv, groupByID[conv.ChatID]))
 	}
+	// 手动登记、还没有消息的群也出现在会话列表里。
+	for _, g := range groups {
+		if !g.Enabled || seen[g.ChatID] {
+			continue
+		}
+		conv := store.ConversationRec{Key: g.ChatID, ChatID: g.ChatID, Kind: "group", Title: g.Name}
+		out = append(out, c.conversationItem(conv, g))
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		ti, _ := time.Parse(time.RFC3339, fmt.Sprint(out[i]["last_at"]))
+		tj, _ := time.Parse(time.RFC3339, fmt.Sprint(out[j]["last_at"]))
+		return ti.After(tj)
+	})
 	ApiOK(w, out)
+}
+
+// conversationItem 把会话目录 + 群设置 + 最后一条消息合成列表项。
+func (c *qctx) conversationItem(conv store.ConversationRec, g store.GroupRec) map[string]interface{} {
+	kind := conv.Kind
+	title := strings.TrimSpace(conv.Title)
+	note := strings.TrimSpace(conv.Note)
+	// 旧库没有会话类型：有群记录的是群，没有群记录的基本是私聊。
+	if g.ChatID == "" && (kind == "" || kind == "group") && title == "" {
+		kind = "private"
+	}
+	if kind == "topic" {
+		if title == "" {
+			title = "话题 " + conv.ThreadID
+		}
+		if g.ChatID != "" && strings.TrimSpace(g.Name) != "" && !strings.HasPrefix(title, g.Name) {
+			title = g.Name + " · " + title
+		}
+	} else if g.ChatID != "" && strings.TrimSpace(g.Name) != "" {
+		title = g.Name
+	}
+	if title == "" {
+		switch kind {
+		case "private":
+			title = "私聊"
+		case "topic":
+			title = "话题 " + conv.ThreadID
+		default:
+			title = "会话"
+		}
+	}
+	if note == "" && g.ChatID != "" {
+		note = strings.TrimSpace(g.Note)
+	}
+	if note == "" {
+		switch kind {
+		case "private":
+			note = "私聊"
+		case "topic":
+			note = "话题"
+		default:
+			note = "群聊"
+		}
+	}
+	item := map[string]interface{}{
+		"openid": conv.Key, "chat_id": conv.ChatID, "thread_id": conv.ThreadID,
+		"kind": kind, "name": title, "note": note, "upload": !c.isQQ(),
+	}
+	if rec, ok := c.st.LastMessageByConversation(conv.Key); ok {
+		item["last_at"] = rec.At.Format(time.RFC3339)
+		item["last_user"] = rec.Username
+		item["last_text"] = c.messagePreview(rec)
+	} else if !conv.UpdatedAt.IsZero() {
+		item["last_at"] = conv.UpdatedAt.Format(time.RFC3339)
+	} else {
+		item["last_at"] = g.UpdatedAt
+	}
+	return item
 }
 
 // messagePreview 给会话列表生成一行预览；没有正文时用媒体类型，不编造文本。
@@ -746,8 +821,13 @@ func (c *qctx) chatRecent(w http.ResponseWriter, r *http.Request) {
 		limit = n
 	}
 	out := make([]map[string]interface{}, 0, 60)
+	conv, _ := c.st.Conversation(gid)
+	chatID := conv.ChatID
+	if chatID == "" {
+		chatID = gid
+	}
 	if c.isQQ() {
-		for _, m := range c.q.RecentList(gid, limit, 0) {
+		for _, m := range c.q.RecentListByConversation(gid, limit, 0) {
 			item := map[string]interface{}{
 				"id": m.ID, "username": m.Username, "member_openid": m.MemberOpenID,
 				"content": m.Content, "kind": m.Kind, "is_bot": m.IsBot, "state": m.State, "at": m.At.Format(time.RFC3339),
@@ -757,10 +837,10 @@ func (c *qctx) chatRecent(w http.ResponseWriter, r *http.Request) {
 			}
 			out = append(out, item)
 		}
-		ApiOK(w, map[string]interface{}{"group": gid, "messages": out})
+		ApiOK(w, map[string]interface{}{"group": gid, "chat_id": chatID, "thread_id": conv.ThreadID, "kind": conv.Kind, "messages": out})
 		return
 	}
-	for _, m := range c.b.RecentList(gid, limit, 0) {
+	for _, m := range c.b.RecentListByConversation(gid, limit, 0) {
 		item := map[string]interface{}{
 			"id": m.MessageID, "username": m.Username, "member_openid": m.UserID,
 			"content": m.Content, "kind": m.Kind, "is_bot": m.IsBot, "state": m.State, "at": m.At.Format(time.RFC3339),
@@ -770,50 +850,98 @@ func (c *qctx) chatRecent(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, item)
 	}
-	ApiOK(w, map[string]interface{}{"group": gid, "messages": out})
+	ApiOK(w, map[string]interface{}{"group": gid, "chat_id": chatID, "thread_id": conv.ThreadID, "kind": conv.Kind, "messages": out})
 }
 
 func (c *qctx) chatSend(w http.ResponseWriter, r *http.Request, method string) {
-	if method != http.MethodPost { ApiErr(w, 405, "不支持的方法"); return }
+	if method != http.MethodPost {
+		ApiErr(w, 405, "不支持的方法")
+		return
+	}
 	var in struct {
 		GroupOpenID string `json:"group_openid"`
 		Format      string `json:"format"`
 		Title       string `json:"title"`
 		Content     string `json:"content"`
 	}
-	if err := DecodeBody(r, &in); err != nil { ApiErr(w, 400, "请求体不是合法 JSON: "+err.Error()); return }
+	if err := DecodeBody(r, &in); err != nil {
+		ApiErr(w, 400, "请求体不是合法 JSON: "+err.Error())
+		return
+	}
+	key := strings.TrimSpace(in.GroupOpenID)
+	if key == "" {
+		ApiErr(w, 400, "需要会话")
+		return
+	}
 	content := strings.TrimSpace(in.Content)
-	if strings.TrimSpace(in.GroupOpenID) == "" { ApiErr(w, 400, "需要 group_openid"); return }
-	if content == "" { ApiErr(w, 400, "消息内容不能为空"); return }
+	if content == "" {
+		ApiErr(w, 400, "消息内容不能为空")
+		return
+	}
+	conv, ok := c.st.Conversation(key)
+	chatID, threadID, kind, title := key, "", "group", ""
+	if ok {
+		chatID, threadID, kind, title = conv.ChatID, conv.ThreadID, conv.Kind, conv.Title
+	}
 	format := strings.ToLower(strings.TrimSpace(in.Format))
 	if format != "text" {
-		title := strings.TrimSpace(in.Title)
-		if title == "" { title = "群消息" }
-		if len([]rune(content))+len([]rune(title)) > 3800 {
-			ApiErr(w, 400, "卡片内容太长（最多 3800 字）"); return
+		cardTitle := strings.TrimSpace(in.Title)
+		if cardTitle == "" {
+			cardTitle = "群消息"
 		}
-		if c.isQQ() {
-			markdown := "## " + title + "\n\n" + content
-			id, err := c.q.SendGroupCardNow(in.GroupOpenID, markdown)
-			if err != nil { ApiErr(w, 502, err.Error()); return }
-			ApiOK(w, map[string]interface{}{"id": id, "group_openid": in.GroupOpenID, "format": "card", "markdown": markdown})
+		if len([]rune(content))+len([]rune(cardTitle)) > 3800 {
+			ApiErr(w, 400, "卡片内容太长（最多 3800 字）")
 			return
 		}
-		id, err := c.b.SendCardNow(in.GroupOpenID, title, content)
-		if err != nil { ApiErr(w, 502, err.Error()); return }
-		ApiOK(w, map[string]interface{}{"id": id, "group_openid": in.GroupOpenID, "format": "card", "markdown": bot.CardDisplay(title, content)})
+		if c.isQQ() {
+			if kind == "private" {
+				ApiErr(w, http.StatusConflict, "QQ 私聊暂不支持卡片消息")
+				return
+			}
+			markdown := "## " + cardTitle + "\n\n" + content
+			id, err := c.q.SendGroupCardNow(chatID, markdown)
+			if err != nil {
+				ApiErr(w, 502, err.Error())
+				return
+			}
+			ApiOK(w, map[string]interface{}{"id": id, "group_openid": key, "chat_id": chatID, "format": "card", "markdown": markdown})
+			return
+		}
+		id, err := c.b.SendCardIn(chatID, threadID, kind, title, cardTitle, content)
+		if err != nil {
+			ApiErr(w, 502, err.Error())
+			return
+		}
+		ApiOK(w, map[string]interface{}{"id": id, "group_openid": key, "chat_id": chatID, "format": "card", "markdown": bot.CardDisplay(cardTitle, content)})
 		return
 	}
-	if len([]rune(content)) > 4000 { ApiErr(w, 400, "消息内容太长（最多 4000 字）"); return }
+	if len([]rune(content)) > 4000 {
+		ApiErr(w, 400, "消息内容太长（最多 4000 字）")
+		return
+	}
 	if c.isQQ() {
-		id, err := c.q.SendGroupTextNow(in.GroupOpenID, content)
-		if err != nil { ApiErr(w, 502, err.Error()); return }
-		ApiOK(w, map[string]interface{}{"id": id, "group_openid": in.GroupOpenID, "format": "text"})
+		var (
+			id  string
+			err error
+		)
+		if kind == "private" {
+			id, err = c.q.SendC2CTextNow(chatID, content)
+		} else {
+			id, err = c.q.SendGroupTextNow(chatID, content)
+		}
+		if err != nil {
+			ApiErr(w, 502, err.Error())
+			return
+		}
+		ApiOK(w, map[string]interface{}{"id": id, "group_openid": key, "chat_id": chatID, "format": "text"})
 		return
 	}
-	id, err := c.b.SendMessageOpt(in.GroupOpenID, content, telegram.SendOptions{})
-	if err != nil { ApiErr(w, 502, err.Error()); return }
-	ApiOK(w, map[string]interface{}{"id": id, "group_openid": in.GroupOpenID, "format": "text"})
+	id, err := c.b.SendMessageIn(chatID, threadID, kind, title, content, telegram.SendOptions{})
+	if err != nil {
+		ApiErr(w, 502, err.Error())
+		return
+	}
+	ApiOK(w, map[string]interface{}{"id": id, "group_openid": key, "chat_id": chatID, "format": "text"})
 }
 
 func (c *qctx) qqBotState(w http.ResponseWriter, r *http.Request) {
@@ -921,34 +1049,152 @@ func (c *qctx) qqRecall(w http.ResponseWriter, r *http.Request, method string) {
 		Count       int    `json:"count"`
 	}
 	if err := DecodeBody(r, &in); err != nil { ApiErr(w, 400, "请求体不是合法 JSON: "+err.Error()); return }
-	if in.GroupOpenID == "" { ApiErr(w, 400, "需要 group_openid"); return }
+	key := strings.TrimSpace(in.GroupOpenID)
+	if key == "" { ApiErr(w, 400, "需要会话"); return }
+	conv, _ := c.st.Conversation(key)
+	chatID, kind := key, "group"
+	if conv.ChatID != "" {
+		chatID, kind = conv.ChatID, conv.Kind
+	}
 	if c.isQQ() {
+		if kind == "private" {
+			ApiErr(w, http.StatusConflict, "QQ 私聊撤回暂未接入平台接口")
+			return
+		}
 		if in.MessageID != "" {
-			resp := c.q.QqRecallMessage(in.GroupOpenID, in.MessageID)
+			resp := c.q.QqRecallMessage(chatID, in.MessageID)
 			ApiOK(w, map[string]interface{}{"ok": resp.Ok(), "result": map[bool]string{true: "已撤回", false: resp.Hint()}[resp.Ok()]})
 			return
 		}
 		count := in.Count
 		if count <= 0 { count = 1 }
 		n := 0
-		for _, m := range c.q.RecentList(in.GroupOpenID, count, 2*time.Minute) {
-			if r := c.q.QqRecallMessage(in.GroupOpenID, m.ID); r.Ok() { n++ }
+		for _, m := range c.q.RecentList(chatID, count, 2*time.Minute) {
+			if r := c.q.QqRecallMessage(chatID, m.ID); r.Ok() { n++ }
 		}
 		ApiOK(w, map[string]interface{}{"ok": true, "result": fmt.Sprintf("已撤回 %d 条", n)})
 		return
 	}
 	if in.MessageID != "" {
 		id, _ := strconv.ParseInt(in.MessageID, 10, 64)
-		if err := c.b.RecallMessage(in.GroupOpenID, id); err != nil { ApiErr(w, 502, err.Error()); return }
+		if err := c.b.RecallMessage(chatID, id); err != nil { ApiErr(w, 502, err.Error()); return }
 		ApiOK(w, map[string]interface{}{"ok": true, "result": "已撤回"})
 		return
 	}
 	count := in.Count
 	if count <= 0 { count = 1 }
-	list := c.b.RecentList(in.GroupOpenID, count, 48*time.Hour)
+	list := c.b.RecentListByConversation(key, count, 48*time.Hour)
 	ids := make([]int64, 0, len(list))
 	for _, m := range list { ids = append(ids, m.MessageID) }
-	n, err := c.b.RecallMessages(in.GroupOpenID, ids)
+	n, err := c.b.RecallMessages(chatID, ids)
 	if err != nil { ApiErr(w, 502, err.Error()); return }
 	ApiOK(w, map[string]interface{}{"ok": true, "result": fmt.Sprintf("已撤回 %d 条", n)})
+}
+
+// chatUpload 上传本地图片/文件并以媒体消息发送。
+// 目前走 Telegram Bot API 的 multipart；QQ 富媒体上传需要平台额外权限，先明确返回 409。
+func (c *qctx) chatUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		ApiErr(w, 405, "不支持的方法")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		ApiErr(w, 400, "上传表单解析失败（单文件上限 32MB）: "+err.Error())
+		return
+	}
+	key := strings.TrimSpace(r.FormValue("conversation"))
+	caption := strings.TrimSpace(r.FormValue("caption"))
+	if key == "" {
+		ApiErr(w, 400, "需要会话")
+		return
+	}
+	if c.isQQ() {
+		ApiErr(w, http.StatusConflict, "QQ 富媒体上传暂未接入：需要在 QQ 开放平台申请文件上传权限")
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		ApiErr(w, 400, "缺少文件: "+err.Error())
+		return
+	}
+	defer file.Close()
+	conv, ok := c.st.Conversation(key)
+	chatID, threadID, kind, title := key, "", "group", ""
+	if ok {
+		chatID, threadID, kind, title = conv.ChatID, conv.ThreadID, conv.Kind, conv.Title
+	}
+	client := c.b.Client()
+	if client == nil {
+		ApiErr(w, 503, "机器人尚未连接 Telegram")
+		return
+	}
+	tmpDir, err := os.MkdirTemp(config.DataDir, "liant-upload-*")
+	if err != nil {
+		ApiErr(w, 500, "创建临时目录失败: "+err.Error())
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+	base := filepath.Base(strings.TrimSpace(header.Filename))
+	base = strings.ReplaceAll(strings.ReplaceAll(base, "/", "_"), "\\", "_")
+	if base == "" || base == "." {
+		base = "upload.bin"
+	}
+	tmpName := filepath.Join(tmpDir, base)
+	tmp, err := os.Create(tmpName)
+	if err != nil {
+		ApiErr(w, 500, "创建临时文件失败: "+err.Error())
+		return
+	}
+	if _, err := io.Copy(tmp, file); err != nil {
+		_ = tmp.Close()
+		ApiErr(w, 500, "保存上传文件失败: "+err.Error())
+		return
+	}
+	_ = tmp.Close()
+	contentType := strings.ToLower(strings.TrimSpace(header.Header.Get("Content-Type")))
+	name := strings.ToLower(strings.TrimSpace(header.Filename))
+	method, field := "sendDocument", "document"
+	switch {
+	case contentType == "image/jpeg" || contentType == "image/png" || contentType == "image/webp" ||
+		strings.HasSuffix(name, ".jpg") || strings.HasSuffix(name, ".jpeg") || strings.HasSuffix(name, ".png") || strings.HasSuffix(name, ".webp"):
+		method, field = "sendPhoto", "photo"
+	case strings.HasPrefix(contentType, "video/") || strings.HasSuffix(name, ".mp4") || strings.HasSuffix(name, ".mov"):
+		method, field = "sendVideo", "video"
+	case strings.HasPrefix(contentType, "audio/") || strings.HasSuffix(name, ".mp3") || strings.HasSuffix(name, ".m4a") || strings.HasSuffix(name, ".ogg"):
+		method, field = "sendAudio", "audio"
+	}
+	params := map[string]interface{}{"chat_id": chatID}
+	if caption != "" {
+		params["caption"] = caption
+	}
+	if threadID != "" {
+		if n, err := strconv.ParseInt(threadID, 10, 64); err == nil && n > 0 {
+			params["message_thread_id"] = n
+		}
+	}
+	raw, err := client.CallMultipart(method, params, field, tmpName)
+	if err != nil {
+		ApiErr(w, 502, tgErr(err))
+		return
+	}
+	var out telegram.Message
+	if err := json.Unmarshal(raw, &out); err != nil {
+		ApiErr(w, 502, "解析平台返回失败: "+err.Error())
+		return
+	}
+	if out.MessageID == 0 {
+		ApiErr(w, 502, "平台没有返回消息 ID")
+		return
+	}
+	c.b.RememberSentMediaIn(chatID, threadID, kind, title, out, caption)
+	_ = c.st.AddAudit(store.AuditRec{
+		Kind: "push", ChatID: chatID, Username: "网页后台", Content: caption,
+		Hit: "网页发送文件", Actions: `["upload"]`, Result: "ok",
+		Detail: fmt.Sprintf("id=%d method=%s file=%s", out.MessageID, method, header.Filename),
+	})
+	ApiOK(w, map[string]interface{}{
+		"id": out.MessageID, "chat_id": chatID, "group_openid": key,
+		"kind": method, "file": header.Filename,
+	})
 }

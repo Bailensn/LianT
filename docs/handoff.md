@@ -50,7 +50,7 @@ Termux 的 Go 1.27 走 `libtermux-exec` + `linker64` 启动时会把程序路径
 
 ## 聊天记录持久化（已完成）
 
-- 每个 Bot 的业务库新增 `messages` 表（`internal/store/messages.go`，schema v4）：
+- 每个 Bot 的业务库新增 `messages` 表（`internal/store/messages.go`，schema v5）：
   `chat_id + message_id` 唯一，按 `seq` 排序；正文、类型、发送者、状态、媒体引用、时间都在里面。
 - 消息默认**不设条数上限**：`RecentList` / `/api/chat/recent` / `/api/messages` 读库，
   `limit<=0` 返回全部；CLI 与 daemon 默认也是全部，`-n` 可限制。
@@ -83,6 +83,27 @@ Termux 的 Go 1.27 走 `libtermux-exec` + `linker64` 启动时会把程序路径
 - **验证**：用 mock API 在应用内 AI 浏览器按 1920×1080 和 390×844 实际打开截图，
   检查了消息气泡、媒体、撤回、卡片模式、发送后状态；隐藏 WebView 的截图偶有合成残影，
   以 DOM 尺寸复核为准。
+
+## 私聊 / 话题 / 发送（已完成）
+
+- **会话模型**：新增 `conversations` 表与 `messages.conv_key/thread_id`（schema v5）。
+  会话键：普通群/私聊 = `chat_id`，Telegram 论坛话题 = `chat_id::thread_id`。
+- **私聊**：Telegram 私聊消息直接落库；QQ C2C 新增 `RememberDirectMessage`，
+  群聊/单聊各有独立会话与历史。管理端可以向私聊发文本（QQ 用 C2C 接口）。
+- **话题**：Telegram `is_topic_message` / `forum_topic_created` 映射成独立会话；
+  发文本、卡片、上传媒体都带 `message_thread_id`；话题创建服务消息不生成空气泡。
+- **QQ 频道**：会话模型已保留 `kind=channel`，但当前 QQ adapter 只订阅群聊/C2C 事件，
+  频道网关与发送接口尚未接入。
+- **消息操作**：去掉长按；每条消息和头像都有「⋯」按钮，点开统一菜单：
+  查看图片 / 引用 / 复制文本 / 下载附件 / 撤回。
+- **发送**：输入条加附件按钮，支持图片/视频/音频/文件（Telegram multipart）；
+  文件按 MIME/扩展名走 `sendPhoto/sendVideo/sendAudio/sendDocument`，发出的消息写回历史。
+  QQ 富媒体上传返回 `409` 并在界面隐藏附件按钮。
+- **下载**：附件卡片改为按钮，走带鉴权的 `fetch` → Blob → `download`，
+  失败显示平台错误；不再依赖 WebView 对 `<a download>` 的支持。
+
+已知限制：QQ 频道 runtime、QQ 私聊撤回/富媒体仍待平台接口；命令引擎的历史窗口仍是群级；
+v4 之前的历史消息没有 `thread_id`，无法回溯拆成话题，只能从新消息开始分。
 
 ## 其他待办
 

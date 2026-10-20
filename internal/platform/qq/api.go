@@ -299,14 +299,19 @@ func SendGroupMarkdown(token, groupOpenID, markdown, msgID string, msgSeq int) S
 	return PostMessageResult(token, GroupMessageURL(groupOpenID), m)
 }
 
-// SendC2CMessage 发单聊消息，返回服务端给的 message_id。
-func SendC2CMessage(token, userOpenID, content, msgID string, msgSeq int) string {
+// SendC2CText 发单聊消息，返回完整结果。
+func SendC2CText(token, userOpenID, content, msgID string, msgSeq int) SendResult {
 	m := map[string]interface{}{"content": content, "msg_type": 0}
 	if msgID != "" {
 		m["msg_id"] = msgID
 		m["msg_seq"] = msgSeq
 	}
-	return PostMessageID(token, C2cMessageURL(userOpenID), m)
+	return PostMessageResult(token, C2cMessageURL(userOpenID), m)
+}
+
+// SendC2CMessage 发单聊消息，返回服务端给的 message_id。
+func SendC2CMessage(token, userOpenID, content, msgID string, msgSeq int) string {
+	return SendC2CText(token, userOpenID, content, msgID, msgSeq).ID
 }
 
 // clip 把响应体截断到 n 个字符再写日志：整段响应可能有几百 KB，

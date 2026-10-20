@@ -162,6 +162,7 @@ func (b *Bot) HandleGroupMessage(d qq.MessageData, scope string) {
 
 // HandleC2CMessage 处理单聊消息（没有群管理动作，只走规则 + 黑名单）。
 func (b *Bot) HandleC2CMessage(d qq.MessageData) {
+	b.RememberDirectMessage(d)
 	if b.st != nil && b.st.IsBlacklisted("", d.Author.UserOpenID) {
 		log.Printf("[blacklist] 单聊用户 %s 在黑名单，忽略", d.Author.UserOpenID)
 		return
@@ -230,7 +231,7 @@ func (b *Bot) SendText(scope, groupOpenID, userOpenID, msgID, text string) {
 		msgSeq := int(time.Now().UnixNano()/1e6) % 100000
 		if scope == "私聊" {
 			if outID := qq.SendC2CMessage(token, userOpenID, text, msgID, msgSeq); outID != "" {
-				b.RememberOutgoing(groupOpenID, outID, text)
+				b.RememberOutgoingIn(userOpenID, "private", "", outID, text)
 			}
 			return
 		}
@@ -303,4 +304,25 @@ func (b *Bot) DescribeCounts() string {
 	_, _, words := b.Rules()
 	group, _, _ := b.Rules()
 	return fmt.Sprintf("回复规则 %d 条、违禁词 %d 条", len(group.Rules), words.Count())
+}
+
+// SendC2CTextNow 同步发一条单聊文本（网页后台需要确切的成功/失败）。
+func (b *Bot) SendC2CTextNow(userOpenID, content string) (string, error) {
+	if strings.TrimSpace(userOpenID) == "" {
+		return "", fmt.Errorf("缺少用户 openid")
+	}
+	if strings.TrimSpace(content) == "" {
+		return "", fmt.Errorf("消息内容为空")
+	}
+	token, err := b.EnsureToken(false)
+	if err != nil {
+		return "", err
+	}
+	msgSeq := int(time.Now().UnixNano()/1e6) % 100000
+	result := qq.SendC2CText(token, userOpenID, content, "", msgSeq)
+	if !result.Ok() {
+		return "", sendResultError(result)
+	}
+	b.RememberOutgoingIn(userOpenID, "private", "", result.ID, content)
+	return result.ID, nil
 }

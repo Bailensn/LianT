@@ -625,17 +625,13 @@ details[open] > summary .chev{ transform:rotate(90deg); }
 .msg-time{ font-variant-numeric:tabular-nums; }
 .msg-tick{ display:inline-flex; color:var(--accent); }
 .msg-tick .i{ width:12px; height:12px; }
-.msg-actions{ position:absolute; top:0; display:flex; gap:2px; opacity:0; pointer-events:none; transition:opacity 120ms ease; }
-.msg-in .msg-actions{ left:calc(100% + 6px); }
-.msg-out .msg-actions{ right:calc(100% + 6px); }
-.msg:hover .msg-actions,.msg:focus-within .msg-actions{ opacity:1; pointer-events:auto; }
-.msg-action{
-  display:grid; place-items:center; width:24px; height:24px; padding:0;
-  border:1px solid var(--border); border-radius:7px;
-  background:var(--surface-solid); color:var(--text-3);
+.msg-more{
+  display:grid; place-items:center; width:20px; height:20px; margin-left:2px; padding:0;
+  border-radius:6px; color:var(--text-3); opacity:.55; transition:opacity 120ms ease, background-color 120ms ease;
 }
-.msg-action .i{ width:12px; height:12px; }
-.msg-action:active{ background:var(--surface-2); }
+.msg-more .i{ width:13px; height:13px; }
+.msg-more:active{ background:var(--surface-2); }
+.msg-avatar-btn{ display:block; padding:0; border:0; border-radius:10px; }
 
 /* 媒体气泡 */
 .msg-bubble.has-media{ padding:4px; background:var(--surface-solid); border-color:var(--border); color:var(--text); }
@@ -745,17 +741,6 @@ details[open] > summary .chev{ transform:rotate(90deg); }
   .msg-body{ max-width:82%; }
   .chat-composer{ padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px)); }
   .chat-note{ display:none; }
-}
-/* 触摸设备：长按气泡才显示操作，不把图标常驻在每条消息下面 */
-@media (hover:none){
-  .msg-actions{
-    top:-13px; left:auto; right:-4px; padding:2px; gap:1px;
-    background:var(--surface-solid); border:1px solid var(--border); border-radius:9px;
-    box-shadow:var(--shadow-md); opacity:0; pointer-events:none;
-  }
-  .msg-out .msg-actions{ right:auto; left:-4px; }
-  .msg.is-actions-open .msg-actions{ opacity:1; pointer-events:auto; }
-  .msg-action{ width:26px; height:26px; border:0; }
 }
 @media (max-width:640px){
   .chat-side-head{ padding:14px 14px 8px; }
@@ -885,7 +870,6 @@ details[open] > summary .chev{ transform:rotate(90deg); }
   .toast-close:hover{ background:var(--surface-2); color:var(--text); }
   .chat-group:hover{ background:var(--surface-2); }
   .chat-group.is-active:hover{ background:var(--accent-soft); }
-  .msg-action:hover{ background:var(--surface-2); color:var(--text-2); }
   .json-card summary:hover,.help-card summary:hover{ background:var(--surface-2); }
   .seg:hover{ color:var(--text); }
   .skip-link:hover{ color:var(--on-accent); }
@@ -972,7 +956,6 @@ details[open] > summary .chev{ transform:rotate(90deg); }
   .icon-btn{ width:36px; height:36px; }
   .icon-btn.sm{ width:32px; height:32px; }
   .nav-link{ min-height:42px; }
-  .msg-action{ min-height:28px; padding:4px 7px; font-size:11px; }
 }
 /* ---------------- accessibility / environment ---------------- */
 @media (prefers-reduced-motion: reduce){
@@ -1143,4 +1126,71 @@ body::before{ background:radial-gradient(45% 70% at 84% -10%,var(--glow-a),trans
 @media (prefers-reduced-motion: reduce){
   .bot-card,.bot-add-card,.bot-card-foot .i,.nav-back,.nav-link{ transition:none !important; }
   .bot-card:hover,.bot-card:active,.bot-add-card:active{ transform:none !important; }
+}
+
+/* ---------------- 消息操作菜单 ---------------- */
+.msg-menu-scrim{
+  position:fixed; inset:0; z-index:59; border:0; padding:0;
+  background:rgba(8,10,16,.28);
+}
+@media (min-width:641px){ .msg-menu-scrim{ background:transparent; } }
+.msg-menu{
+  position:fixed; z-index:60; width:min(224px,calc(100vw - 24px));
+  padding:6px; border-radius:14px; border:1px solid var(--border);
+  background:var(--surface-solid); box-shadow:var(--shadow-lg);
+}
+.msg-menu[hidden],.msg-menu-scrim[hidden]{ display:none; }
+.msg-menu-head{
+  padding:7px 10px 6px; font-size:11px; color:var(--text-3);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  border-bottom:1px solid var(--border); margin-bottom:4px;
+}
+.msg-menu-actions{ display:flex; flex-direction:column; gap:1px; }
+.msg-menu-item{
+  display:flex; align-items:center; gap:9px; width:100%; min-height:34px;
+  padding:6px 9px; border-radius:8px; text-align:left; font-size:12.5px; color:var(--text);
+}
+.msg-menu-item .i{ width:15px; height:15px; color:var(--text-3); flex:0 0 auto; }
+.msg-menu-item.danger{ color:var(--danger); }
+.msg-menu-item.danger .i{ color:var(--danger); }
+.msg-menu-item:active{ background:var(--surface-2); }
+.msg-menu-cancel{
+  display:none; width:100%; min-height:36px; margin-top:4px; border-top:1px solid var(--border);
+  font-size:12.5px; color:var(--text-2);
+}
+.chat-attachment{
+  display:flex; align-items:center; gap:8px; padding:8px 12px 2px;
+}
+.chat-attachment[hidden]{ display:none; }
+.chat-attachment-icon{ display:grid; place-items:center; width:28px; height:28px; flex:0 0 auto; border-radius:8px; background:var(--accent-soft); color:var(--accent-strong); }
+.chat-attachment-icon .i{ width:14px; height:14px; }
+.chat-attachment-text{ min-width:0; flex:1; display:flex; flex-direction:column; gap:1px; }
+.chat-attachment-text strong{ font-size:12px; font-weight:550; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.chat-attachment-text small{ font-size:10px; color:var(--text-3); }
+.chat-attachment-remove{ display:grid; place-items:center; width:24px; height:24px; flex:0 0 auto; border-radius:6px; color:var(--text-3); }
+.chat-attachment-remove .i{ width:12px; height:12px; }
+.chat-file-input{ display:none; }
+.composer-attach{
+  display:grid; place-items:center; width:30px; height:30px; flex:0 0 auto;
+  border-radius:8px; color:var(--text-3);
+}
+.composer-attach .i{ width:16px; height:16px; }
+.composer-attach:active{ background:var(--surface-2); }
+
+@media (hover:hover) and (pointer:fine){
+  .msg:hover .msg-more,.msg:focus-within .msg-more{ opacity:1; background:var(--surface-2); }
+  .msg-menu-item:hover{ background:var(--surface-2); }
+  .composer-attach:hover{ background:var(--surface-2); color:var(--text-2); }
+  .chat-attachment-remove:hover{ background:var(--surface-2); color:var(--text); }
+}
+@media (max-width:640px){
+  .msg-menu{
+    left:0 !important; right:0; top:auto !important; bottom:0;
+    width:100%; max-width:none; border-radius:18px 18px 0 0;
+    padding:8px 10px calc(10px + env(safe-area-inset-bottom,0px));
+  }
+  .msg-menu-head{ padding:10px 12px 8px; }
+  .msg-menu-item{ min-height:42px; font-size:14px; }
+  .msg-menu-cancel{ display:block; min-height:42px; margin-top:6px; }
+  .msg-menu-scrim{ background:rgba(8,10,16,.4); }
 }

@@ -245,44 +245,146 @@ func KindLabel(kind string) string {
 	return ""
 }
 
+// telegramConversation 从 Telegram 消息推出本地会话：私聊 / 群 / 论坛话题。
+func telegramConversation(m *telegram.Message) (threadID, kind, title string, titleFinal bool) {
+	chatTitle := strings.TrimSpace(m.Chat.Display())
+	threadID = ""
+	if m.MessageThreadID > 0 && (m.IsTopicMessage || m.Chat.IsForum) {
+		threadID = strconv.FormatInt(m.MessageThreadID, 10)
+	}
+	switch {
+	case threadID != "":
+		kind = "topic"
+		if m.ForumTopicCreated != nil && strings.TrimSpace(m.ForumTopicCreated.Name) != "" {
+			title = chatTitle + " · " + strings.TrimSpace(m.ForumTopicCreated.Name)
+			titleFinal = true
+		} else {
+			topic := "话题 " + threadID
+			if threadID == "1" {
+				topic = "General"
+			}
+			title = chatTitle + " · " + topic
+		}
+	case m.Chat.Type == "private":
+		kind = "private"
+		title = chatTitle
+	case m.Chat.Type == "channel":
+		kind = "channel"
+		title = chatTitle
+	default:
+		kind = "group"
+		title = chatTitle
+	}
+	return threadID, kind, title, titleFinal
+}
+
 // remember 把收到的消息写入本地业务库。消息不设条数上限，重启后仍可查看。
 func (b *Bot) remember(m *telegram.Message) {
 	if m == nil || m.MessageID == 0 || b.st == nil {
 		return
 	}
+	rec := b.messageRec(m, "received", false, m.Content())
+	// 话题创建是服务消息：只更新会话标题，不往聊天记录里塞一个空气泡。
+	if m.ForumTopicCreated != nil {
+		_ = b.st.EnsureConversation(store.ConversationRec{
+			Key: rec.ConvKey, ChatID: rec.ChatID, ThreadID: rec.ThreadID,
+			Kind: rec.ChatKind, Title: rec.ChatTitle, TitleFinal: rec.ChatTitleFinal,
+		})
+		return
+	}
+	if err := b.st.SaveMessage(rec); err != nil {
+		log.Printf("[!] 保存消息失败 chat=%s msg=%d: %v", rec.ChatID, m.MessageID, err)
+	}
+}
+
+// messageRec 把一条 Telegram 消息转成持久化记录（含会话键/话题）。
+func (b *Bot) messageRec(m *telegram.Message, state string, isBot bool, content string) store.MessageRec {
 	chatID := strconv.FormatInt(m.Chat.ID, 10)
-	userID, username, isBot := "", "", false
+	userID, username := "", ""
 	if m.From != nil {
-		userID, username, isBot = strconv.FormatInt(m.From.ID, 10), m.From.Display(), m.From.IsBot
+		userID, username = strconv.FormatInt(m.From.ID, 10), m.From.Display()
 	} else if m.SenderChat != nil {
 		userID, username = strconv.FormatInt(m.SenderChat.ID, 10), m.SenderChat.Display()
 	}
+	threadID, kind, title, titleFinal := telegramConversation(m)
 	rec := store.MessageRec{
 		ChatID: chatID, MessageID: strconv.FormatInt(m.MessageID, 10),
-		UserID: userID, Username: username, Content: m.Content(),
-		Kind: Classify(m), IsBot: isBot, State: "received", At: time.Now(),
+		ConvKey: store.ConversationKey(chatID, threadID), ThreadID: threadID,
+		ChatKind: kind, ChatTitle: title, ChatTitleFinal: titleFinal,
+		UserID: userID, Username: username, Content: content,
+		Kind: Classify(m), IsBot: isBot, State: state, At: time.Now(),
 	}
 	if ref := MediaRefOf(m); ref != nil {
 		if raw, err := json.Marshal(ref); err == nil {
 			rec.MediaJSON = string(raw)
 		}
 	}
-	if err := b.st.SaveMessage(rec); err != nil {
-		log.Printf("[!] 保存消息失败 chat=%s msg=%d: %v", chatID, m.MessageID, err)
-	}
+	return rec
 }
 
 // RememberOutgoing 让「撤回机器人」能找到机器人自己刚发的消息。
 func (b *Bot) RememberOutgoing(chatID string, messageID int64, content string) {
+	kind, title, threadID := "", "", ""
+	if b.st != nil {
+		if conv, ok := b.st.Conversation(chatID); ok {
+			kind, title, threadID = conv.Kind, conv.Title, conv.ThreadID
+		}
+	}
+	b.RememberOutgoingIn(chatID, threadID, kind, title, messageID, content)
+}
+
+// RememberOutgoingIn 记下机器人发到指定会话（含话题/私聊）的消息。
+func (b *Bot) RememberOutgoingIn(chatID, threadID, kind, title string, messageID int64, content string) {
 	if chatID == "" || messageID == 0 || b.st == nil {
 		return
 	}
 	rec := store.MessageRec{
 		ChatID: chatID, MessageID: strconv.FormatInt(messageID, 10),
+		ConvKey: store.ConversationKey(chatID, threadID), ThreadID: threadID,
+		ChatKind: kind, ChatTitle: title,
 		Username: "机器人", Content: content, Kind: "bot", IsBot: true, State: "sent", At: time.Now(),
 	}
 	if err := b.st.SaveMessage(rec); err != nil {
 		log.Printf("[!] 保存机器人消息失败 chat=%s msg=%d: %v", chatID, messageID, err)
+	}
+}
+
+// RememberSentMessage 记下机器人通过 Bot API 发出的媒体消息（本地文件上传用）。
+func (b *Bot) RememberSentMessage(out telegram.Message, caption string) {
+	if out.MessageID == 0 || b.st == nil {
+		return
+	}
+	b.rememberSent(out, caption)
+}
+
+// RememberSentMediaIn 按已知会话（话题/私聊）记下发出的媒体，避免依赖平台回包里的线程字段。
+func (b *Bot) RememberSentMediaIn(chatID, threadID, kind, title string, out telegram.Message, caption string) {
+	if out.MessageID == 0 || b.st == nil {
+		return
+	}
+	rec := b.messageRec(&out, "sent", true, caption)
+	rec.ChatID = chatID
+	rec.ThreadID = threadID
+	rec.ConvKey = store.ConversationKey(chatID, threadID)
+	rec.ChatKind = kind
+	rec.ChatTitle = title
+	rec.Username = "机器人"
+	rec.UserID = ""
+	if rec.Content == "" {
+		rec.Content = caption
+	}
+	if err := b.st.SaveMessage(rec); err != nil {
+		log.Printf("[!] 保存已发送媒体失败 chat=%s msg=%d: %v", chatID, out.MessageID, err)
+	}
+}
+
+func (b *Bot) rememberSent(out telegram.Message, caption string) {
+	rec := b.messageRec(&out, "sent", true, caption)
+	if rec.Content == "" {
+		rec.Content = caption
+	}
+	if err := b.st.SaveMessage(rec); err != nil {
+		log.Printf("[!] 保存已发送媒体失败 chat=%s msg=%d: %v", rec.ChatID, out.MessageID, err)
 	}
 }
 
@@ -298,6 +400,27 @@ func (b *Bot) RecentList(chatID string, n int, onlyWithin time.Duration) []Recen
 	recs, err := b.st.Messages(chatID, n, since)
 	if err != nil {
 		log.Printf("[!] 读取消息失败 chat=%s: %v", chatID, err)
+		return nil
+	}
+	out := make([]RecentMsg, 0, len(recs))
+	for _, rec := range recs {
+		out = append(out, recentFromRec(rec))
+	}
+	return out
+}
+
+// RecentListByConversation 按本地会话键取消息（话题/私聊各有独立上下文）。
+func (b *Bot) RecentListByConversation(convKey string, n int, onlyWithin time.Duration) []RecentMsg {
+	if b.st == nil {
+		return nil
+	}
+	var since time.Time
+	if onlyWithin > 0 {
+		since = time.Now().Add(-onlyWithin)
+	}
+	recs, err := b.st.MessagesByConversation(convKey, n, since)
+	if err != nil {
+		log.Printf("[!] 读取会话消息失败 conv=%s: %v", convKey, err)
 		return nil
 	}
 	out := make([]RecentMsg, 0, len(recs))
@@ -377,6 +500,14 @@ func (b *Bot) LookupBotRecent(chatID string, onlyWithin time.Duration) (RecentMs
 		return RecentMsg{}, false
 	}
 	return recentFromRec(rec), true
+}
+
+// MessagesSignatureByConversation 是具体会话（话题/私聊）的 SSE 签名。
+func (b *Bot) MessagesSignatureByConversation(convKey string) string {
+	if b.st == nil {
+		return ""
+	}
+	return b.st.ConversationSignature(convKey)
 }
 
 // MessagesSignature 是 SSE 用的会话快照签名，不必把整段历史读出来。
@@ -1208,6 +1339,49 @@ func (b *Bot) SendMessageOpt(chatID, text string, opt telegram.SendOptions) (int
 	}
 	if out.MessageID > 0 {
 		b.RememberOutgoing(chatID, out.MessageID, text)
+	}
+	return out.MessageID, nil
+}
+
+// SendMessageIn 发到指定会话（支持话题），并按该会话记录本地历史。
+func (b *Bot) SendMessageIn(chatID, threadID, kind, title, text string, opt telegram.SendOptions) (int64, error) {
+	c := b.clientOrNil()
+	if c == nil {
+		return 0, errors.New("机器人尚未连接")
+	}
+	if threadID != "" {
+		if n, err := strconv.ParseInt(threadID, 10, 64); err == nil && n > 0 {
+			opt.ThreadID = n
+		}
+	}
+	out, err := c.SendMessage(chatID, text, opt)
+	if err != nil {
+		return 0, err
+	}
+	if out.MessageID > 0 {
+		b.RememberOutgoingIn(chatID, threadID, kind, title, out.MessageID, text)
+	}
+	return out.MessageID, nil
+}
+
+// SendCardIn 发卡片到指定会话（支持话题）。
+func (b *Bot) SendCardIn(chatID, threadID, kind, title, cardTitle, content string) (int64, error) {
+	c := b.clientOrNil()
+	if c == nil {
+		return 0, errors.New("机器人尚未连接")
+	}
+	opt := telegram.SendOptions{ParseMode: "HTML", DisablePreview: true}
+	if threadID != "" {
+		if n, err := strconv.ParseInt(threadID, 10, 64); err == nil && n > 0 {
+			opt.ThreadID = n
+		}
+	}
+	out, err := c.SendMessage(chatID, BuildCardHTML(cardTitle, content), opt)
+	if err != nil {
+		return 0, err
+	}
+	if out.MessageID > 0 {
+		b.RememberOutgoingIn(chatID, threadID, kind, title, out.MessageID, CardDisplay(cardTitle, content))
 	}
 	return out.MessageID, nil
 }

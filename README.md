@@ -24,6 +24,7 @@
 | [docs/api.md](docs/api.md) | 管理端 HTTP API：鉴权、返回格式、路由表、示例 |
 | [docs/platforms.md](docs/platforms.md) | 平台兼容层：Adapter、能力声明、qbot 合并、接入 Discord |
 | [docs/reverse-proxy.md](docs/reverse-proxy.md) | Nginx / Caddy 反代、前缀、Webhook、静态资源、排错 |
+| [docs/task-log.md](docs/task-log.md) | 每次任务的目标、完成、验证与遗留 |
 
 ## 功能
 
@@ -167,8 +168,9 @@ Telegram 普通 @username 不带用户 ID，所以 LianT 会用本地名册（�
 - **群组**：自动登记 + 手动添加；启用/停用、回复所有消息、指令开关、群管理员权限、备注；
   「从 Telegram 同步」会拉群名并检查机器人是否管理员。
 - **消息**：全屏聊天界面——左侧会话列表、中间气泡流、底部输入条；
-  完整记录存本机 SQLite，条数不设上限；图片/文件/语音/视频/表情按原生样式展示；
-  悬停或长按气泡可引用、撤回。
+  群聊、Telegram 论坛话题、私聊各自独立上下文；完整记录存本机 SQLite，条数不设上限；
+  支持文本、卡片、图片与文件发送（Telegram），附件下载走服务端鉴权；
+  点消息或头像上的「⋯」打开操作菜单：查看图片、引用、复制、下载、撤回。
 - **回复规则 / 违禁词**：网页增删改，保存后下一条消息生效。
 - **管理员**：全局或限定某个群。
 - **禁言 / 黑名单**：手动处置、解除。
@@ -372,6 +374,7 @@ type Adapter interface {
 | `join_requests` | 入群申请 |
 | `audit` | 操作日志 |
 | `messages` | 聊天记录（`chat_id + message_id` 唯一，条数不设上限；媒体引用也在这里） |
+| `conversations` | 会话目录：群 / 话题 / 私聊 / 频道，标题与最近活动时间 |
 
 备份：拷整个 `LianT-data/`（注册表 + 所有 Bot 业务库），或单个 Bot 用网页「设置 → 导出 JSON 配置」。
 聊天记录在 `messages` 表里，想单独归档/迁移可以直接拷 `bots/<id>.db`。

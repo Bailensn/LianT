@@ -1514,10 +1514,10 @@ func (a *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 			next := ""
 			if rt != nil && chatID != "" {
 				if rt.Bot != nil {
-					next = "tg:" + rt.Bot.MessagesSignature(chatID)
+					next = "tg:" + rt.Bot.MessagesSignatureByConversation(chatID)
 				}
 				if rt.QQ != nil {
-					next += "|qq:" + rt.QQ.MessagesSignature(chatID)
+					next += "|qq:" + rt.QQ.MessagesSignatureByConversation(chatID)
 				}
 			}
 			if next == sig {

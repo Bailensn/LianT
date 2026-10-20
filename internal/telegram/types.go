@@ -100,6 +100,8 @@ type Message struct {
 	NewChatMembers     []User          `json:"new_chat_members"`
 	LeftChatMember     *User           `json:"left_chat_member"`
 	IsAutomaticForward bool            `json:"is_automatic_forward"`
+	IsTopicMessage     bool            `json:"is_topic_message"`
+	ForumTopicCreated  *ForumTopicCreated `json:"forum_topic_created"`
 
 	Photo     []PhotoSize `json:"photo"`
 	Video     *Video      `json:"video"`
@@ -117,6 +119,12 @@ type Message struct {
 	MediaGroupID  string          `json:"media_group_id"`
 	ReplyMarkup   json.RawMessage `json:"reply_markup"`
 	PinnedMessage *Message        `json:"pinned_message"`
+}
+
+// ForumTopicCreated 是论坛话题创建服务消息（拿得到话题名时优先用它）。
+type ForumTopicCreated struct {
+	Name      string `json:"name"`
+	IconColor int    `json:"icon_color"`
 }
 
 // 下面是最小化的媒体类型：只保留分类与「取回一条消息的媒体」需要的字段。

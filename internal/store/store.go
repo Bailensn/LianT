@@ -27,7 +27,7 @@ import (
 // ============================================================================
 
 // SchemaVersion 每次改表结构都 +1，并在 migrations 里追加一段。
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 // SchemaStatements 是当前版本的全量建表语句（幂等，可重复执行）。
 var SchemaStatements = []string{
@@ -169,6 +169,8 @@ var SchemaStatements = []string{
 		chat_id    TEXT NOT NULL,
 		message_id TEXT NOT NULL,
 		msg_idx    TEXT NOT NULL DEFAULT '',
+		conv_key   TEXT NOT NULL DEFAULT '',
+		thread_id  TEXT NOT NULL DEFAULT '',
 		user_id    TEXT NOT NULL DEFAULT '',
 		username   TEXT NOT NULL DEFAULT '',
 		content    TEXT NOT NULL DEFAULT '',
@@ -180,6 +182,19 @@ var SchemaStatements = []string{
 		updated_at TEXT NOT NULL DEFAULT '',
 		UNIQUE(chat_id, message_id)
 	)`,
+	`CREATE TABLE IF NOT EXISTS conversations (
+		key         TEXT PRIMARY KEY,
+		chat_id     TEXT NOT NULL,
+		thread_id   TEXT NOT NULL DEFAULT '',
+		kind        TEXT NOT NULL DEFAULT 'group',
+		title       TEXT NOT NULL DEFAULT '',
+		title_final INTEGER NOT NULL DEFAULT 0,
+		note        TEXT NOT NULL DEFAULT '',
+		updated_at  TEXT NOT NULL DEFAULT ''
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_messages_conv_seq ON messages(conv_key, seq DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_messages_conv_updated ON messages(conv_key, updated_at DESC)`,
 	`CREATE INDEX IF NOT EXISTS idx_messages_chat_seq ON messages(chat_id, seq DESC)`,
 	`CREATE INDEX IF NOT EXISTS idx_messages_chat_idx ON messages(chat_id, msg_idx)`,
 	`CREATE INDEX IF NOT EXISTS idx_messages_chat_member ON messages(chat_id, user_id, seq DESC)`,
@@ -415,13 +430,34 @@ func (s *Store) migrate() error {
 	if err != nil {
 		return err
 	}
+	// v4 的 messages 表没有会话键；先补列，后面的索引才能建。
+	if v == 4 {
+		for _, alter := range []string{
+			"ALTER TABLE messages ADD COLUMN conv_key TEXT NOT NULL DEFAULT ''",
+			"ALTER TABLE messages ADD COLUMN thread_id TEXT NOT NULL DEFAULT ''",
+		} {
+			if _, err := tx.Exec(alter); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+				_ = tx.Rollback()
+				return fmt.Errorf("迁移 messages 失败: %w", err)
+			}
+		}
+	}
 	for _, stmt := range SchemaStatements {
 		if _, err := tx.Exec(stmt); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("建表失败: %w\nSQL: %s", err, stmt)
 		}
 	}
-	// 后续版本在这里追加：if v < 2 { ... }
+	// 旧消息没有会话键：归到 chat_id 所在的群会话；再补一份会话目录。
+	if _, err := tx.Exec("UPDATE messages SET conv_key = chat_id WHERE conv_key = ''"); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("回填消息会话失败: %w", err)
+	}
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO conversations(key, chat_id, thread_id, kind, title, updated_at)
+		SELECT chat_id, chat_id, '', 'group', '', MAX(updated_at) FROM messages GROUP BY chat_id`); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("回填会话目录失败: %w", err)
+	}
 	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", SchemaVersion)); err != nil {
 		_ = tx.Rollback()
 		return err

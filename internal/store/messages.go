@@ -27,25 +27,53 @@ func parseMessageTime(s string) time.Time {
 	return t
 }
 
-// MessageRec 是持久化的一条聊天消息。
-type MessageRec struct {
-	Seq       int64
-	ChatID    string
-	MessageID string
-	MsgIdx    string
-	UserID    string
-	Username  string
-	Content   string
-	Kind      string
-	IsBot     bool
-	State     string
-	MediaJSON string
-	At        time.Time
-	UpdatedAt time.Time
+// ConversationKey 把平台会话 + 话题/频道拼成稳定的本地会话键。
+// 普通群聊/私聊 threadID 为空，键就是 chat_id，兼容旧数据。
+func ConversationKey(chatID, threadID string) string {
+	chatID = strings.TrimSpace(chatID)
+	threadID = strings.TrimSpace(threadID)
+	if threadID == "" {
+		return chatID
+	}
+	return chatID + "::" + threadID
 }
 
-const messageColumns = `seq, chat_id, message_id, msg_idx, user_id, username, content, kind,
-	is_bot, state, media, at, updated_at`
+// ConversationRec 是会话目录的一项（群、话题、私聊、频道）。
+type ConversationRec struct {
+	Key        string
+	ChatID     string
+	ThreadID   string
+	Kind       string // group | topic | private | channel
+	Title      string
+	TitleFinal bool
+	Note       string
+	UpdatedAt  time.Time
+}
+
+// MessageRec 是持久化的一条聊天消息。
+type MessageRec struct {
+	Seq            int64
+	ChatID         string
+	MessageID      string
+	MsgIdx         string
+	ConvKey        string
+	ThreadID       string
+	ChatKind       string
+	ChatTitle      string
+	ChatTitleFinal bool
+	UserID         string
+	Username       string
+	Content        string
+	Kind           string
+	IsBot          bool
+	State          string
+	MediaJSON      string
+	At             time.Time
+	UpdatedAt      time.Time
+}
+
+const messageColumns = `seq, chat_id, message_id, msg_idx, conv_key, thread_id,
+	user_id, username, content, kind, is_bot, state, media, at, updated_at`
 
 type messageScanner interface {
 	Scan(dest ...interface{}) error
@@ -57,8 +85,8 @@ func scanMessage(sc messageScanner) (MessageRec, error) {
 		isBot         int
 		at, updatedAt string
 	)
-	err := sc.Scan(&m.Seq, &m.ChatID, &m.MessageID, &m.MsgIdx, &m.UserID, &m.Username,
-		&m.Content, &m.Kind, &isBot, &m.State, &m.MediaJSON, &at, &updatedAt)
+	err := sc.Scan(&m.Seq, &m.ChatID, &m.MessageID, &m.MsgIdx, &m.ConvKey, &m.ThreadID,
+		&m.UserID, &m.Username, &m.Content, &m.Kind, &isBot, &m.State, &m.MediaJSON, &at, &updatedAt)
 	if err != nil {
 		return MessageRec{}, err
 	}
@@ -68,15 +96,25 @@ func scanMessage(sc messageScanner) (MessageRec, error) {
 	return m, nil
 }
 
-// SaveMessage 写入或更新一条消息（按 chat_id + message_id 去重）。
+// SaveMessage 写入或更新一条消息，并同步维护会话目录。
 func (s *Store) SaveMessage(m MessageRec) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("存储未就绪")
 	}
 	m.ChatID = strings.TrimSpace(m.ChatID)
 	m.MessageID = strings.TrimSpace(m.MessageID)
+	m.ThreadID = strings.TrimSpace(m.ThreadID)
 	if m.ChatID == "" || m.MessageID == "" {
 		return fmt.Errorf("消息缺少 chat_id / message_id")
+	}
+	if strings.TrimSpace(m.ConvKey) == "" {
+		m.ConvKey = ConversationKey(m.ChatID, m.ThreadID)
+	}
+	if strings.TrimSpace(m.ChatKind) == "" {
+		m.ChatKind = "group"
+	}
+	if strings.TrimSpace(m.State) == "" {
+		m.State = "received"
 	}
 	now := time.Now()
 	if m.At.IsZero() {
@@ -84,11 +122,16 @@ func (s *Store) SaveMessage(m MessageRec) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := s.db.Exec(`INSERT INTO messages(chat_id, message_id, msg_idx, user_id, username, content, kind,
-			is_bot, state, media, at, updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+	if err := s.saveConversationLocked(m, now); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`INSERT INTO messages(chat_id, message_id, msg_idx, conv_key, thread_id,
+			user_id, username, content, kind, is_bot, state, media, at, updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(chat_id, message_id) DO UPDATE SET
 			msg_idx   = excluded.msg_idx,
+			conv_key  = excluded.conv_key,
+			thread_id = excluded.thread_id,
 			user_id   = excluded.user_id,
 			username  = excluded.username,
 			content   = CASE WHEN messages.state = 'recalled' THEN '' ELSE excluded.content END,
@@ -97,11 +140,35 @@ func (s *Store) SaveMessage(m MessageRec) error {
 			state     = CASE WHEN messages.state = 'recalled' THEN 'recalled' ELSE excluded.state END,
 			media     = CASE WHEN messages.state = 'recalled' THEN '' ELSE excluded.media END,
 			updated_at = excluded.updated_at`,
-		m.ChatID, m.MessageID, m.MsgIdx, m.UserID, m.Username, m.Content, m.Kind,
+		m.ChatID, m.MessageID, m.MsgIdx, m.ConvKey, m.ThreadID,
+		m.UserID, m.Username, m.Content, m.Kind,
 		BoolInt(m.IsBot), m.State, m.MediaJSON, messageTime(m.At), messageTime(now))
 	if err == nil {
 		s.bump()
 	}
+	return err
+}
+
+func (s *Store) saveConversationLocked(m MessageRec, now time.Time) error {
+	kind := strings.TrimSpace(m.ChatKind)
+	if kind == "" {
+		kind = "group"
+	}
+	title := strings.TrimSpace(m.ChatTitle)
+	_, err := s.db.Exec(`INSERT INTO conversations(key, chat_id, thread_id, kind, title, title_final, updated_at)
+		VALUES(?,?,?,?,?,?,?)
+		ON CONFLICT(key) DO UPDATE SET
+			chat_id     = excluded.chat_id,
+			thread_id   = excluded.thread_id,
+			kind        = CASE WHEN excluded.kind <> '' THEN excluded.kind ELSE conversations.kind END,
+			title       = CASE
+				WHEN excluded.title_final = 1 AND excluded.title <> '' THEN excluded.title
+				WHEN conversations.title_final = 1 AND conversations.title <> '' THEN conversations.title
+				WHEN excluded.title <> '' THEN excluded.title
+				ELSE conversations.title END,
+			title_final = CASE WHEN excluded.title_final = 1 OR conversations.title_final = 1 THEN 1 ELSE 0 END,
+			updated_at  = excluded.updated_at`,
+		m.ConvKey, m.ChatID, m.ThreadID, kind, title, BoolInt(m.ChatTitleFinal), messageTime(now))
 	return err
 }
 
@@ -288,4 +355,140 @@ func (s *Store) LastMessage(chatID string) (MessageRec, bool) {
 		return MessageRec{}, false
 	}
 	return m, true
+}
+
+// MessagesByConversation 取一个具体会话（群/话题/私聊/频道）的消息。
+func (s *Store) MessagesByConversation(convKey string, limit int, since time.Time) ([]MessageRec, error) {
+	if s == nil || s.db == nil || strings.TrimSpace(convKey) == "" {
+		return nil, nil
+	}
+	q := `SELECT ` + messageColumns + ` FROM messages WHERE conv_key = ?`
+	args := []interface{}{convKey}
+	if !since.IsZero() {
+		q += ` AND at >= ?`
+		args = append(args, messageTime(since))
+	}
+	q += ` ORDER BY seq DESC`
+	if limit > 0 {
+		q += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MessageRec
+	for rows.Next() {
+		m, err := scanMessage(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out, nil
+}
+
+// LastMessageByConversation 取一个具体会话的最后一条消息。
+func (s *Store) LastMessageByConversation(convKey string) (MessageRec, bool) {
+	if s == nil || s.db == nil || strings.TrimSpace(convKey) == "" {
+		return MessageRec{}, false
+	}
+	m, err := scanMessage(s.db.QueryRow(`SELECT `+messageColumns+` FROM messages
+		WHERE conv_key = ? ORDER BY seq DESC LIMIT 1`, convKey))
+	if err != nil {
+		return MessageRec{}, false
+	}
+	return m, true
+}
+
+// Conversations 返回会话目录（按最近活动倒序）。
+func (s *Store) Conversations() ([]ConversationRec, error) {
+	if s == nil || s.db == nil {
+		return nil, nil
+	}
+	rows, err := s.db.Query(`SELECT key, chat_id, thread_id, kind, title, title_final, note, updated_at
+		FROM conversations ORDER BY updated_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ConversationRec
+	for rows.Next() {
+		var (
+			c        ConversationRec
+			isFinal  int
+			updated  string
+		)
+		if err := rows.Scan(&c.Key, &c.ChatID, &c.ThreadID, &c.Kind, &c.Title, &isFinal, &c.Note, &updated); err != nil {
+			return nil, err
+		}
+		c.TitleFinal = isFinal != 0
+		c.UpdatedAt = parseMessageTime(updated)
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// Conversation 按本地会话键查会话。
+func (s *Store) Conversation(key string) (ConversationRec, bool) {
+	if s == nil || s.db == nil || strings.TrimSpace(key) == "" {
+		return ConversationRec{}, false
+	}
+	var (
+		c       ConversationRec
+		isFinal int
+		updated string
+	)
+	err := s.db.QueryRow(`SELECT key, chat_id, thread_id, kind, title, title_final, note, updated_at
+		FROM conversations WHERE key = ?`, key).
+		Scan(&c.Key, &c.ChatID, &c.ThreadID, &c.Kind, &c.Title, &isFinal, &c.Note, &updated)
+	if err != nil {
+		return ConversationRec{}, false
+	}
+	c.TitleFinal = isFinal != 0
+	c.UpdatedAt = parseMessageTime(updated)
+	return c, true
+}
+
+// ConversationSignature 是具体会话的 SSE 快照签名。
+func (s *Store) ConversationSignature(convKey string) string {
+	if s == nil || s.db == nil || strings.TrimSpace(convKey) == "" {
+		return ""
+	}
+	var (
+		maxSeq int64
+		last   string
+	)
+	err := s.db.QueryRow(`SELECT
+		COALESCE((SELECT MAX(seq) FROM messages WHERE conv_key = ?), 0),
+		COALESCE((SELECT updated_at FROM messages WHERE conv_key = ?
+			ORDER BY updated_at DESC LIMIT 1), '')`, convKey, convKey).Scan(&maxSeq, &last)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%d:%s", maxSeq, last)
+}
+
+// EnsureConversation 只写会话目录，不写消息（用于话题创建等服务消息）。
+func (s *Store) EnsureConversation(c ConversationRec) error {
+	if s == nil || s.db == nil || strings.TrimSpace(c.Key) == "" {
+		return nil
+	}
+	if strings.TrimSpace(c.Kind) == "" {
+		c.Kind = "group"
+	}
+	m := MessageRec{
+		ConvKey: c.Key, ChatID: c.ChatID, ThreadID: c.ThreadID,
+		ChatKind: c.Kind, ChatTitle: c.Title, ChatTitleFinal: c.TitleFinal,
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.saveConversationLocked(m, time.Now())
 }

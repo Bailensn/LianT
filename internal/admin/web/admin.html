@@ -47,6 +47,9 @@
   <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
   <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
   <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></symbol>
+  <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
 </svg>
 
 <div class="app" id="app">
@@ -158,6 +161,13 @@
 </dialog>
 
 <dialog id="form-modal" class="modal" aria-labelledby="form-title"></dialog>
+
+<div class="msg-menu-scrim" id="msg-menu-scrim" data-act="msg-menu-close" hidden></div>
+<div class="msg-menu" id="msg-menu" hidden role="menu" aria-label="消息操作">
+  <div class="msg-menu-head" id="msg-menu-head"></div>
+  <div class="msg-menu-actions" id="msg-menu-actions"></div>
+  <button class="msg-menu-cancel" type="button" data-act="msg-menu-close">取消</button>
+</div>
 
 <dialog id="media-dialog" class="media-dialog" aria-label="媒体预览">
   <button class="icon-btn media-dialog-close" id="media-dialog-close" type="button" aria-label="关闭">
