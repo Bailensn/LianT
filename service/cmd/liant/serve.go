@@ -236,6 +236,17 @@ func pairCommand(_ []string) {
 	_ = httpSrv.Shutdown(ctx)
 }
 
+// mustOpenStore 打开配置里的数据库；CLI 命令共用。
+func mustOpenStore() *store.Store {
+	cfg := loadConfigOrDie()
+	db, err := store.Open(cfg.Storage.Database)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "打开数据库失败：", err)
+		os.Exit(1)
+	}
+	return db
+}
+
 func portOf(addr string) int {
 	_, port, err := net.SplitHostPort(addr)
 	if err != nil {
