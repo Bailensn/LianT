@@ -1,9 +1,14 @@
 name: Build Manager (Android)
 
-# 注意：暂只支持手动触发。GitHub 托管运行器的 SDK 仓库目前最高到
-# android-36，而 manager 的 compileSdk 是 37，自动触发会红。
-# 等运行器提供 37（或决定降 compileSdk）后，再把 push/pull_request 加回来。
 on:
+  push:
+    paths:
+      - 'manager/android/**'
+      - '.github/workflows/build-manager-android.yml'
+  pull_request:
+    paths:
+      - 'manager/android/**'
+      - '.github/workflows/build-manager-android.yml'
   workflow_dispatch:
 
 permissions:
