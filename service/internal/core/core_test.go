@@ -116,6 +116,10 @@ func (e *testEnv) seedBot(t *testing.T, constraints map[string]any) {
 	if err != nil {
 		t.Fatalf("写入 Bot: %v", err)
 	}
+	// 登记不写运行状态，状态由 SetBotStatus 维护。
+	if err := e.store.SetBotStatus(context.Background(), testBotID, platform.Status{State: platform.StateRunning}); err != nil {
+		t.Fatalf("设置 Bot 状态: %v", err)
+	}
 }
 
 func (e *testEnv) seedPeer(t *testing.T) {
