@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/LensnTeam/LianT/service/internal/config"
-	"github.com/LensnTeam/LianT/service/internal/wss"
+	"github.com/Bailensn/LianT/service/internal/config"
+	"github.com/Bailensn/LianT/service/internal/wss"
 )
 
 // proxyTransport 是 daemon 反向代理下载到 bot 本机 WSS 所用的 HTTP 客户端。

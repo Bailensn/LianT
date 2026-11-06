@@ -9,7 +9,7 @@ import (
 )
 
 import (
-	"github.com/LensnTeam/LianT/service/internal/crypto"
+	"github.com/Bailensn/LianT/service/internal/crypto"
 )
 
 var (

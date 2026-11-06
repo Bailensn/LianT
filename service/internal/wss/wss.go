@@ -22,7 +22,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/LensnTeam/LianT/service/internal/crypto"
+	"github.com/Bailensn/LianT/service/internal/crypto"
 )
 
 // sessionTTL 是新签发 session 的有效期。

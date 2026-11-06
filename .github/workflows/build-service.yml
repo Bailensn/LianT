@@ -53,10 +53,10 @@ jobs:
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-              go build -ldflags="-s -w" -trimpath -o LianT-Service-Linux-amd64 ./cmd/liant
+              go build -ldflags="-s -w" -trimpath -o LianT-Service-Linux-amd64 ./cmd/LianT
           else
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-              go build -o LianT-Service-Linux-amd64 ./cmd/liant
+              go build -o LianT-Service-Linux-amd64 ./cmd/LianT
           fi
       - uses: actions/upload-artifact@v7
         with:
@@ -85,10 +85,10 @@ jobs:
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-              go build -ldflags="-s -w" -trimpath -o LianT-Service-Linux-arm64 ./cmd/liant
+              go build -ldflags="-s -w" -trimpath -o LianT-Service-Linux-arm64 ./cmd/LianT
           else
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-              go build -o LianT-Service-Linux-arm64 ./cmd/liant
+              go build -o LianT-Service-Linux-arm64 ./cmd/LianT
           fi
       - uses: actions/upload-artifact@v7
         with:
@@ -117,9 +117,9 @@ jobs:
         shell: pwsh
         run: |
           if ($env:BUILD_MODE -eq "release") {
-            go build -ldflags="-s -w" -trimpath -o LianT-Service-Windows-amd64.exe ./cmd/liant
+            go build -ldflags="-s -w" -trimpath -o LianT-Service-Windows-amd64.exe ./cmd/LianT
           } else {
-            go build -o LianT-Service-Windows-amd64.exe ./cmd/liant
+            go build -o LianT-Service-Windows-amd64.exe ./cmd/LianT
           }
       - uses: actions/upload-artifact@v7
         with:
@@ -148,10 +148,10 @@ jobs:
         run: |
           if [ "$BUILD_MODE" = "release" ]; then
             CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
-              go build -ldflags="-s -w" -trimpath -o LianT-Service-Darwin-arm64 ./cmd/liant
+              go build -ldflags="-s -w" -trimpath -o LianT-Service-Darwin-arm64 ./cmd/LianT
           else
             CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
-              go build -o LianT-Service-Darwin-arm64 ./cmd/liant
+              go build -o LianT-Service-Darwin-arm64 ./cmd/LianT
           fi
       - uses: actions/upload-artifact@v7
         with:

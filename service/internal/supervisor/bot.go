@@ -7,8 +7,8 @@ import (
 )
 
 import (
-	"github.com/LensnTeam/LianT/service/internal/botruntime"
-	"github.com/LensnTeam/LianT/service/internal/wss"
+	"github.com/Bailensn/LianT/service/internal/botruntime"
+	"github.com/Bailensn/LianT/service/internal/wss"
 )
 
 // BotCommand 启动一个 bot 进程：

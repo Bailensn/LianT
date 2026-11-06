@@ -1,4 +1,4 @@
-module github.com/LensnTeam/LianT/service
+module github.com/Bailensn/LianT/service
 
 go 1.27.0
 
