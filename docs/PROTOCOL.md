@@ -33,7 +33,8 @@
 2. Manager 扫码，连接 `wss://host:port/v1/ws`。
 3. `pair.request`：`{ticket, manager_name, manager_pub, sig(nonce)}`。
 4. Service **终端要求本地确认**（显示名称与指纹前 8 位）——二维码单独泄漏不足以绑定。
-5. 确认 → `pair.ok {service_id, service_name, devices_count}`；拒绝 → `pair.denied`。
+5. 确认 → `pair.ok {service_id, service_name, devices_count, device_id}`；拒绝 → `pair.denied {reason}`。
+   `device_id` 是服务端生成的设备标识，之后的 `auth.response.manager_id` 用它。
 6. 配对码一次性、60 秒过期；默认最多 8 台 Manager。
 
 ## 4. 握手（每次连接）

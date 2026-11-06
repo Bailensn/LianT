@@ -83,6 +83,9 @@ type PairOK struct {
 	ServiceID    string `json:"service_id"`
 	ServiceName  string `json:"service_name"`
 	DevicesCount int    `json:"devices_count"`
+	// DeviceID 是本次授权得到的设备标识，之后 auth.response 用它。
+	// 协议 v1 只加字段不升版本。
+	DeviceID string `json:"device_id"`
 }
 
 // PairDenied 表示配对被拒绝。

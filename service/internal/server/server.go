@@ -1,0 +1,542 @@
+// Package server 实现协议 v1 的 WSS 入口：挑战认证、首次配对与消息分发。
+//
+// 传输细节（TLS、固定端口、帧上限）在这里收口，业务方法通过 Register 挂进来；
+// 核心方法（bot.list、msg.send 等）不直接依赖 websocket。
+package server
+
+import (
+	"context"
+	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/gorilla/websocket"
+
+	"github.com/Bailensn/LianT/service/internal/node"
+	"github.com/Bailensn/LianT/service/internal/pairing"
+	"github.com/Bailensn/LianT/service/internal/protocol"
+	"github.com/Bailensn/LianT/service/internal/store"
+)
+
+const (
+	// 握手阶段与普通读写的超时。
+	handshakeTimeout = 15 * time.Second
+	writeTimeout     = 10 * time.Second
+
+	// 每台设备每分钟最多 5 次认证失败（协议 §4）。
+	maxAuthFailures = 5
+	authWindow      = time.Minute
+
+	// 单连接最多尝试 3 次认证。
+	maxAuthAttempts = 3
+
+	closeAuthFailed   = 4001
+	closeVersion      = 4002
+	closeServerLoaded = 4003
+)
+
+// DeviceStore 是服务端需要的设备持久化能力（store.Store 满足）。
+type DeviceStore interface {
+	Device(ctx context.Context, id string) (store.Device, error)
+	PutDevice(ctx context.Context, d store.Device) error
+	TouchDevice(ctx context.Context, id string) error
+	CountDevices(ctx context.Context) (int, error)
+}
+
+// Options 是服务端的依赖。
+type Options struct {
+	Identity *node.Identity
+	Devices  DeviceStore
+	Pairer   *pairing.Pairer
+
+	// Confirm 是配对前的本地确认回调：返回 true 才授权。
+	// 终端实现里它应当把名称与指纹打到屏幕上并等待输入。
+	Confirm func(ctx context.Context, name, fingerprint string, pub *ecdsa.PublicKey) bool
+
+	Retention  protocol.Retention
+	MaxDevices int
+	Now        func() time.Time
+	Logf       func(format string, args ...any)
+}
+
+// Method 是一个已认证的方法处理器；返回的 any 会被编码成响应 payload。
+type Method func(ctx context.Context, sess Session, payload json.RawMessage) (any, *protocol.Error)
+
+// Session 是已认证连接的身份。
+type Session struct {
+	ManagerID string
+}
+
+// Server 是 WSS 入口。
+type Server struct {
+	opt     Options
+	now     func() time.Time
+	limiter *limiter
+
+	mu      sync.RWMutex
+	methods map[string]Method
+
+	upgrader websocket.Upgrader
+}
+
+// New 校验依赖并构造服务端。
+func New(opt Options) (*Server, error) {
+	if opt.Identity == nil {
+		return nil, errors.New("server: 缺少节点身份")
+	}
+	if opt.Devices == nil {
+		return nil, errors.New("server: 缺少设备存储")
+	}
+	if opt.Pairer == nil {
+		return nil, errors.New("server: 缺少配对器")
+	}
+	if opt.Confirm == nil {
+		return nil, errors.New("server: 缺少配对确认回调")
+	}
+	if opt.MaxDevices <= 0 {
+		opt.MaxDevices = 8
+	}
+	if opt.Now == nil {
+		opt.Now = time.Now
+	}
+	if opt.Logf == nil {
+		opt.Logf = func(string, ...any) {}
+	}
+	return &Server{
+		opt:     opt,
+		now:     opt.Now,
+		limiter: newLimiter(maxAuthFailures, authWindow, opt.Now),
+		methods: map[string]Method{},
+		upgrader: websocket.Upgrader{
+			ReadBufferSize:  4096,
+			WriteBufferSize: 4096,
+			// v1 只服务非浏览器客户端：带 Origin 的一律拒绝（协议 §10 第 1 条）。
+			CheckOrigin: func(r *http.Request) bool { return r.Header.Get("Origin") == "" },
+		},
+	}, nil
+}
+
+// Register 挂一个方法。重复注册会 panic——只应发生在启动期。
+func (s *Server) Register(typ string, m Method) {
+	if m == nil || typ == "" {
+		panic("server: 注册空方法")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.methods[typ]; exists {
+		panic("server: 重复注册 " + typ)
+	}
+	s.methods[typ] = m
+}
+
+// Handler 返回 /v1/ws 的 http.Handler。
+func (s *Server) Handler() http.Handler {
+	return http.HandlerFunc(s.serve)
+}
+
+func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/v1/ws" {
+		http.NotFound(w, r)
+		return
+	}
+	ws, err := s.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer ws.Close()
+	ws.SetReadLimit(protocol.MaxFrame + 4096)
+
+	ip := remoteIP(r)
+	if !s.limiter.Allow(ip) {
+		s.writeError(ws, "", protocol.CodeRateLimited, "认证失败次数过多，稍后再试", map[string]any{"retry_after_ms": 60000})
+		ws.WriteControl(websocket.CloseMessage,
+			websocket.FormatCloseMessage(closeServerLoaded, "rate limited"), s.now().Add(writeTimeout))
+		return
+	}
+
+	c := &conn{s: s, ws: ws, ip: ip}
+	if err := c.handshake(); err != nil {
+		s.opt.Logf("握手结束: %v", err)
+	}
+}
+
+type conn struct {
+	s      *Server
+	ws     *websocket.Conn
+	ip     string
+	sess   Session
+	authed bool
+	failed int
+}
+
+func (c *conn) handshake() error {
+	challenge, err := c.s.newChallenge()
+	if err != nil {
+		return err
+	}
+	if err := c.write(protocol.TypeAuthChallenge, "", challenge); err != nil {
+		return err
+	}
+
+	for !c.authed {
+		env, err := c.read()
+		if err != nil {
+			return err
+		}
+		switch env.Type {
+		case protocol.TypePing:
+			if err := c.write(protocol.TypePong, env.ID, struct{}{}); err != nil {
+				return err
+			}
+		case protocol.TypeAuthResponse:
+			if err := c.handleAuth(env, challenge); err != nil {
+				return err
+			}
+		case protocol.TypePairRequest:
+			if err := c.handlePair(env); err != nil {
+				return err
+			}
+		default:
+			c.writeErrorFor(env, protocol.CodeUnauthorized, "认证前只能 pair.request / auth.response / ping", nil)
+		}
+	}
+	return c.loop()
+}
+
+func (c *conn) handleAuth(env protocol.Envelope, challenge protocol.AuthChallenge) error {
+	var req protocol.AuthResponse
+	if err := env.DecodePayload(&req); err != nil {
+		c.writeErrorFor(env, protocol.CodeInvalidPayload, "auth.response 字段不合法", nil)
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	dev, err := c.s.opt.Devices.Device(ctx, req.ManagerID)
+	if err != nil {
+		c.failed++
+		c.s.limiter.Fail(c.ip)
+		c.writeErrorFor(env, protocol.CodeUnauthorized, "设备未授权", nil)
+		return c.tooManyAttempts()
+	}
+	pub, err := node.ParsePublicKey(base64.StdEncoding.EncodeToString(dev.PublicKey))
+	if err != nil {
+		c.s.limiter.Fail(c.ip)
+		c.writeErrorFor(env, protocol.CodeUnauthorized, "设备公钥损坏", nil)
+		return c.tooManyAttempts()
+	}
+	if skew := c.s.now().Sub(time.UnixMilli(challenge.TS)); skew > time.Minute || skew < -time.Minute {
+		c.s.limiter.Fail(c.ip)
+		c.writeErrorFor(env, protocol.CodeClockSkew, "客户端与服务端时间偏差过大", nil)
+		return c.tooManyAttempts()
+	}
+	msg := node.AuthMessage(challenge.Nonce, c.s.opt.Identity.Fingerprint(), challenge.TS)
+	sig, err := base64.StdEncoding.DecodeString(req.Sig)
+	if err != nil {
+		c.s.limiter.Fail(c.ip)
+		c.writeErrorFor(env, protocol.CodeUnauthorized, "签名编码不合法", nil)
+		return c.tooManyAttempts()
+	}
+	if err := node.Verify(pub, msg, sig); err != nil {
+		c.failed++
+		c.s.limiter.Fail(c.ip)
+		c.writeErrorFor(env, protocol.CodeUnauthorized, "签名校验失败", nil)
+		return c.tooManyAttempts()
+	}
+
+	if err := c.s.opt.Devices.TouchDevice(ctx, dev.ID); err != nil {
+		c.s.opt.Logf("更新设备在线时间失败: %v", err)
+	}
+	c.sess = Session{ManagerID: dev.ID}
+	c.authed = true
+	c.ws.SetReadDeadline(time.Time{})
+	return c.write(protocol.TypeAuthOK, env.ID, protocol.AuthOK{
+		ServiceTime: c.s.now().UnixMilli(),
+		Caps:        protocol.ServerCaps(),
+		Retention:   c.s.opt.Retention,
+	})
+}
+
+func (c *conn) handlePair(env protocol.Envelope) error {
+	var req protocol.PairRequest
+	if err := env.DecodePayload(&req); err != nil {
+		c.writeErrorFor(env, protocol.CodeInvalidPayload, "pair.request 字段不合法", nil)
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	count, err := c.s.opt.Devices.CountDevices(ctx)
+	if err != nil {
+		c.s.opt.Logf("统计设备失败: %v", err)
+		return c.denyPair(env, "internal")
+	}
+	if count >= c.s.opt.MaxDevices {
+		return c.denyPair(env, "devices_full")
+	}
+
+	pending, ok := c.s.opt.Pairer.Pending()
+	if !ok {
+		return c.denyPair(env, "no_ticket")
+	}
+	pub, err := node.ParsePublicKey(req.ManagerPub)
+	if err != nil {
+		c.s.limiter.Fail(c.ip)
+		return c.denyPair(env, "invalid_pub")
+	}
+	sig, err := base64.StdEncoding.DecodeString(req.Sig)
+	if err != nil {
+		c.s.limiter.Fail(c.ip)
+		return c.denyPair(env, "invalid_sig")
+	}
+	if err := node.Verify(pub, []byte(pending.Nonce), sig); err != nil {
+		c.s.limiter.Fail(c.ip)
+		return c.denyPair(env, "invalid_sig")
+	}
+	// 签名先验，再消费配对码：签名失败不应烧掉码。
+	if err := c.s.opt.Pairer.Redeem(req.Ticket, pending.Nonce); err != nil {
+		c.s.limiter.Fail(c.ip)
+		return c.denyPair(env, pairReason(err))
+	}
+
+	name := req.ManagerName
+	if name == "" {
+		name = "未命名设备"
+	}
+	fp := node.PinnedFingerprint(pub)
+	if !c.s.opt.Confirm(ctx, name, fp, pub) {
+		return c.denyPair(env, "denied")
+	}
+
+	der, err := marshalPublicKey(pub)
+	if err != nil {
+		return c.denyPair(env, "internal")
+	}
+	deviceID := newDeviceID()
+	if err := c.s.opt.Devices.PutDevice(ctx, store.Device{
+		ID:        deviceID,
+		Name:      name,
+		PublicKey: der,
+	}); err != nil {
+		c.s.opt.Logf("登记设备失败: %v", err)
+		return c.denyPair(env, "internal")
+	}
+	return c.write(protocol.TypePairOK, env.ID, protocol.PairOK{
+		ServiceID:    c.s.opt.Identity.Fingerprint(),
+		ServiceName:  "LianT Service",
+		DevicesCount: count + 1,
+		DeviceID:     deviceID,
+	})
+}
+
+func (c *conn) denyPair(env protocol.Envelope, reason string) error {
+	return c.write(protocol.TypePairDenied, env.ID, protocol.PairDenied{Reason: reason})
+}
+
+func (c *conn) loop() error {
+	for {
+		env, err := c.read()
+		if err != nil {
+			return err
+		}
+		switch env.Type {
+		case protocol.TypePing:
+			if err := c.write(protocol.TypePong, env.ID, struct{}{}); err != nil {
+				return err
+			}
+			continue
+		}
+
+		c.s.mu.RLock()
+		method, ok := c.s.methods[env.Type]
+		c.s.mu.RUnlock()
+		if !ok {
+			c.writeErrorFor(env, protocol.CodeUnknownType, "未知的 type: "+env.Type, nil)
+			continue
+		}
+		payload, perr := method(context.Background(), c.sess, env.Payload)
+		if perr != nil {
+			c.writeErrorFor(env, perr.Code, perr.Message, perr.Details)
+			continue
+		}
+		if err := c.write(env.Type, env.ID, payload); err != nil {
+			return err
+		}
+	}
+}
+
+func (c *conn) tooManyAttempts() error {
+	if c.failed < maxAuthAttempts {
+		return nil
+	}
+	c.ws.WriteControl(websocket.CloseMessage,
+		websocket.FormatCloseMessage(closeAuthFailed, "too many attempts"), c.s.now().Add(writeTimeout))
+	return errors.New("server: 认证失败次数过多")
+}
+
+func (c *conn) read() (protocol.Envelope, error) {
+	// 握手阶段每次读都重新计时，避免配对确认耗时把后续读超时带进来。
+	if !c.authed {
+		c.ws.SetReadDeadline(c.s.now().Add(handshakeTimeout))
+	}
+	var env protocol.Envelope
+	_, data, err := c.ws.ReadMessage()
+	if err != nil {
+		return env, err
+	}
+	if err := json.Unmarshal(data, &env); err != nil {
+		return env, fmt.Errorf("server: 解析信封: %w", err)
+	}
+	if err := env.Validate(); err != nil {
+		if errors.Is(err, protocol.ErrUnsupportedVersion) {
+			c.ws.WriteControl(websocket.CloseMessage,
+				websocket.FormatCloseMessage(closeVersion, "unsupported version"), c.s.now().Add(writeTimeout))
+			return env, err
+		}
+		c.writeErrorFor(env, protocol.CodeInvalidPayload, err.Error(), nil)
+		return env, err
+	}
+	return env, nil
+}
+
+func (c *conn) write(typ, replyTo string, payload any) error {
+	env, err := protocol.New(newMessageID(), typ, c.s.now().UnixMilli(), payload)
+	if err != nil {
+		return err
+	}
+	env.ReplyTo = replyTo
+	data, err := json.Marshal(env)
+	if err != nil {
+		return err
+	}
+	c.ws.SetWriteDeadline(c.s.now().Add(writeTimeout))
+	return c.ws.WriteMessage(websocket.TextMessage, data)
+}
+
+func (c *conn) writeErrorFor(env protocol.Envelope, code, msg string, details map[string]any) {
+	_ = c.write(protocol.TypeError, env.ID, protocol.Error{
+		Code:      code,
+		Message:   msg,
+		Retryable: protocol.Retryable(code),
+		Details:   details,
+	})
+}
+
+func (s *Server) writeError(ws *websocket.Conn, replyTo, code, msg string, details map[string]any) {
+	env, err := protocol.New(newMessageID(), protocol.TypeError, s.now().UnixMilli(), protocol.Error{
+		Code:      code,
+		Message:   msg,
+		Retryable: protocol.Retryable(code),
+		Details:   details,
+	})
+	if err != nil {
+		return
+	}
+	env.ReplyTo = replyTo
+	data, _ := json.Marshal(env)
+	ws.SetWriteDeadline(s.now().Add(writeTimeout))
+	_ = ws.WriteMessage(websocket.TextMessage, data)
+}
+
+func (s *Server) newChallenge() (protocol.AuthChallenge, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return protocol.AuthChallenge{}, fmt.Errorf("server: 生成 nonce: %w", err)
+	}
+	return protocol.AuthChallenge{
+		Nonce: base64.RawURLEncoding.EncodeToString(buf),
+		TS:    s.now().UnixMilli(),
+	}, nil
+}
+
+func remoteIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+func newDeviceID() string { return "dev-" + randomHex(12) }
+
+func newMessageID() string { return randomHex(16) }
+
+func randomHex(n int) string {
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		// crypto/rand 失败属于不可恢复的环境错误。
+		panic("server: 生成随机数失败: " + err.Error())
+	}
+	return base64.RawURLEncoding.EncodeToString(buf)
+}
+
+func marshalPublicKey(pub *ecdsa.PublicKey) ([]byte, error) {
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return nil, fmt.Errorf("server: 编码公钥: %w", err)
+	}
+	return der, nil
+}
+
+func pairReason(err error) string {
+	switch {
+	case errors.Is(err, pairing.ErrExpired):
+		return "expired"
+	case errors.Is(err, pairing.ErrUsed):
+		return "used"
+	case errors.Is(err, pairing.ErrNoTicket):
+		return "no_ticket"
+	default:
+		return "invalid_ticket"
+	}
+}
+
+// limiter 是按 IP 的滑动窗口，只记录认证失败。
+type limiter struct {
+	mu     sync.Mutex
+	max    int
+	window time.Duration
+	now    func() time.Time
+	fails  map[string][]time.Time
+}
+
+func newLimiter(max int, window time.Duration, now func() time.Time) *limiter {
+	return &limiter{max: max, window: window, now: now, fails: map[string][]time.Time{}}
+}
+
+func (l *limiter) Allow(ip string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.prune(ip)
+	return len(l.fails[ip]) < l.max
+}
+
+func (l *limiter) Fail(ip string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.prune(ip)
+	l.fails[ip] = append(l.fails[ip], l.now())
+}
+
+func (l *limiter) prune(ip string) {
+	cutoff := l.now().Add(-l.window)
+	kept := l.fails[ip][:0]
+	for _, t := range l.fails[ip] {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	if len(kept) == 0 {
+		delete(l.fails, ip)
+		return
+	}
+	l.fails[ip] = kept
+}
