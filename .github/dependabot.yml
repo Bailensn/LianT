@@ -1,6 +1,7 @@
 version: 2
 updates:
-  - package-ecosystem: ""
-    directory: "/"
+  # Service（Go）是唯一活跃的模块；桌面端已冻结，不再开依赖更新。
+  - package-ecosystem: "gomod"
+    directory: "/service"
     schedule:
       interval: "weekly"

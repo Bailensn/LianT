@@ -2,7 +2,10 @@
 
 简体中文 | [English](README.md)
 
-一款基于 Telegram Bot API 的管理器，支持自托管服务器。
+一款自托管的 Bot 运营客户端与服务端（首发 QQ，Telegram 随后）。
+
+- 设计文档与决策记录：[DESIGN.md](docs/DESIGN.md)
+- 通信协议（草案）：[PROTOCOL.md](docs/PROTOCOL.md)
 
 ## 许可证
 
@@ -20,7 +23,6 @@
 以下目录采用 **Apache License 2.0 (Apache-2.0)** 授权：
 
 - `manager/`
-- `pages/`
 
 不同许可证仅适用于其对应目录及其中的代码。
 

@@ -4,9 +4,12 @@ data/
 *.enc
 build.sh
 *.tar.gz
+build-out/
 
 # Logs
 logs/
 
 # Environment
 .env
+# Build artifacts
+LianT-Service-*

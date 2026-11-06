@@ -2,7 +2,10 @@
 
 [简体中文](README.zh-CN.md) | English
 
-A Telegram Bot API management system with self-hosted server support.
+A self-hosted client and service for operating chat-platform bots (QQ first; Telegram next).
+
+- Design and decisions: [DESIGN.md](docs/DESIGN.md)
+- Wire protocol (draft): [PROTOCOL.md](docs/PROTOCOL.md)
 
 ## License
 
@@ -20,7 +23,6 @@ The following components are licensed under the **GNU Affero General Public Lice
 The following components are licensed under the **Apache License 2.0 (Apache-2.0)**:
 
 - `manager/`
-- `pages/`
 
 Each license only applies to the corresponding directory and its contents.
 
