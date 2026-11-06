@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LianT</string>
+    <string name="home_title">LianT</string>
+    <string name="home_empty_title">No Service connected</string>
+    <string name="home_empty_hint">Bots and conversations will appear here after pairing.</string>
+</resources>
