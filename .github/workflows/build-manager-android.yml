@@ -37,7 +37,8 @@ jobs:
           # 运行器自带 SDK；不用 setup-android，它会去装已下架的 'tools' 包。
           SDKMGR=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
           yes | "$SDKMGR" --licenses > /dev/null || true
-          if ! "$SDKMGR" --install "platforms;android-37" "ndk;30.0.16248370" "cmake;3.22.1"; then
+          # android-37 在稳定频道还没上架，先试 canary 频道。
+          if ! "$SDKMGR" --channel=3 --install "platforms;android-37" "ndk;30.0.16248370" "cmake;3.22.1"; then
             echo "== 可用的 platforms =="
             "$SDKMGR" --list 2>/dev/null | grep -E "platforms;android-3[5-9]" | sort -u | head -20
             exit 1
