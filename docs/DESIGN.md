@@ -265,7 +265,7 @@ LianT/
 │   │   ├── supervisor/   daemon、bot 进程管理、反代入口（原 service/service）
 │   │   ├── wss/          WSS 传输与媒体服务
 │   │   ├── botruntime/   单 bot 运行循环（P0 拆进 platform）
-│   │   ├── platform/     Adapter 接口 + qqbot（P0 创建）
+│   │   ├── platform/     Adapter 接口 + 注册表 + 命名空间 ID（已建；qqbot 待实现）
 │   │   ├── format/       NDoc + Format 接口 + qqplain（已建）
 │   │   └── store/        会话 / 消息 / 媒体（P0 创建）
 │   ├── go.mod
@@ -278,7 +278,7 @@ LianT/
 **结构规则**
 
 1. 只有一个 Go module（`service/`），可执行入口只放 `cmd/`；库代码全在 `internal/`，不承诺对外 API。
-2. `platform/` 与 `format/` 互不依赖，也不依赖 `supervisor`；两者只依赖标准库与各自平台 SDK。
+2. `format` 不依赖任何内部包；`platform` 可依赖 `format`（承载入站文档），反向与对 `supervisor` 的依赖一律禁止。
 3. 分层方向单向：`cmd → supervisor → {platform, format, wss, store, config, crypto}`；反向 import 一律拒绝。
 4. 文档只在 `docs/`，代码注释不复制文档结论（注释解释“为什么”，文档记录“是什么”）。
 5. 不保留“冻结目录”：不再维护的代码直接删，需要时从 git 历史取回。
