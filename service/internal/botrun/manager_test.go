@@ -126,6 +126,10 @@ func TestStartRunsAndIngests(t *testing.T) {
 		t.Fatalf("启动: %v", err)
 	}
 	waitStatus(t, db, platform.StateRunning)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && ing.n.Load() == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
 	if got := ing.n.Load(); got != 1 {
 		t.Fatalf("入站处理次数不符: %d", got)
 	}
