@@ -1,0 +1,33 @@
+name: Test Service
+
+on:
+  push:
+    paths:
+      - 'service/**'
+      - '.github/workflows/test-service.yml'
+  pull_request:
+    paths:
+      - 'service/**'
+      - '.github/workflows/test-service.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: service
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: service/go.mod
+          cache: true
+          cache-dependency-path: service/go.sum
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
