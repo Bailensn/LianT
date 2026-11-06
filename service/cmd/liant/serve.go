@@ -149,6 +149,7 @@ func serveCommand(_ []string) {
 		fmt.Fprintln(os.Stderr, "初始化 Bot 管理器失败：", err)
 		os.Exit(1)
 	}
+	coreSvc.SetController(manager)
 	if started, err := manager.Reconcile(context.Background()); err != nil {
 		log.Printf("认领已有 Bot 失败: %v", err)
 	} else {

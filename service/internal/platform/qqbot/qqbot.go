@@ -62,6 +62,14 @@ func (a *Adapter) Validate(ctx context.Context, creds platform.Credentials) (pla
 		DisplayName: "QQ Bot " + c.appID,
 		Caps:        []string{platform.CapText},
 		MaxTextLen:  2000,
+		Limits:      map[string]any{"max_text_len": 2000},
+		// QQ 不能主动发起；被动回复窗口 300s，同一条入站最多回 5 次。
+		Constraints: map[string]any{
+			"can_initiate":          false,
+			"reply_window_s":        300,
+			"max_replies_per_inbound": 5,
+			"requires_mention":      true,
+		},
 	}, nil
 }
 

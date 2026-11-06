@@ -32,6 +32,11 @@ type Account struct {
 	Caps        []string
 	MaxTextLen  int
 	RichText    bool
+
+	// Limits / Constraints 由适配器声明，核心与 Manager 原样消费（协议 §6）。
+	// Constraints 只描述“最严格限制”，不是能力清单。
+	Limits      map[string]any
+	Constraints map[string]any
 }
 
 // Peer 是一段会话的对象，ID 已带命名空间（platform:external）。

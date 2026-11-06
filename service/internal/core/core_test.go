@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,6 +24,7 @@ const (
 
 type fakeAdapter struct {
 	name string
+	acc  platform.Account
 	sent []platform.SendRequest
 	err  error
 }
@@ -30,7 +32,14 @@ type fakeAdapter struct {
 func (f *fakeAdapter) Name() string { return f.name }
 
 func (f *fakeAdapter) Validate(context.Context, platform.Credentials) (platform.Account, error) {
-	return platform.Account{ID: "1234567890", Caps: []string{platform.CapText}}, nil
+	acc := f.acc
+	if acc.ID == "" {
+		acc.ID = "1234567890"
+	}
+	if acc.Caps == nil {
+		acc.Caps = []string{platform.CapText}
+	}
+	return acc, nil
 }
 
 func (f *fakeAdapter) Run(context.Context, platform.Account, platform.Credentials, platform.Hooks) error {
@@ -61,11 +70,32 @@ func (b *fakeBroadcaster) Broadcast(typ string, payload any) {
 	}{typ, payload})
 }
 
+type fakeController struct {
+	mu      sync.Mutex
+	started []string
+	stopped []string
+}
+
+func (f *fakeController) Start(_ context.Context, botID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.started = append(f.started, botID)
+	return nil
+}
+
+func (f *fakeController) Stop(botID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stopped = append(f.stopped, botID)
+	return nil
+}
+
 type testEnv struct {
 	store *store.Store
 	core  *core.Core
 	ad    *fakeAdapter
 	bc    *fakeBroadcaster
+	ctl   *fakeController
 	now   time.Time
 }
 
@@ -79,6 +109,7 @@ func newEnv(t *testing.T) *testEnv {
 
 	ad := &fakeAdapter{name: "qqbot"}
 	bc := &fakeBroadcaster{}
+	ctl := &fakeController{}
 	now := time.UnixMilli(1_800_000_000_000)
 	c, err := core.New(core.Options{
 		Store: db,
@@ -89,6 +120,10 @@ func newEnv(t *testing.T) *testEnv {
 			return nil, false
 		},
 		Broadcaster: bc,
+		Controller:  ctl,
+		Encrypt: func(raw []byte) (string, error) {
+			return "enc:" + string(raw), nil
+		},
 		DecodeCredentials: func(store.Bot) (platform.Credentials, error) {
 			return platform.Credentials{"app_id": "1", "app_secret": "s"}, nil
 		},
@@ -97,7 +132,7 @@ func newEnv(t *testing.T) *testEnv {
 	if err != nil {
 		t.Fatalf("构造 Core: %v", err)
 	}
-	return &testEnv{store: db, core: c, ad: ad, bc: bc, now: now}
+	return &testEnv{store: db, core: c, ad: ad, bc: bc, ctl: ctl, now: now}
 }
 
 func (e *testEnv) seedBot(t *testing.T, constraints map[string]any) {
@@ -315,5 +350,65 @@ func TestListMessages(t *testing.T) {
 	}
 	if list.Messages[0].MsgID != "in-1" || list.Messages[0].Direction != store.DirectionIn {
 		t.Fatalf("消息字段不符: %+v", list.Messages[0])
+	}
+}
+
+func TestAddBotStoresEncryptedCredentials(t *testing.T) {
+	e := newEnv(t)
+	e.ad.acc = platform.Account{
+		ID:          "42",
+		Caps:        []string{platform.CapText},
+		Limits:      map[string]any{"max_text_len": float64(1000)},
+		Constraints: map[string]any{"can_initiate": false},
+	}
+	payload, _ := json.Marshal(protocol.BotAdd{
+		Platform:    "qqbot",
+		Credentials: map[string]string{"app_id": "42", "app_secret": "secret"},
+		Label:       "测试号",
+	})
+	got, perr := e.core.AddBot(context.Background(), server.Session{}, payload)
+	if perr != nil {
+		t.Fatalf("bot.add 失败: %+v", perr)
+	}
+	ref := got.(protocol.BotRef)
+	if ref.BotID != "qqbot:42" {
+		t.Fatalf("bot_id 不符: %s", ref.BotID)
+	}
+	b, err := e.store.Bot(context.Background(), ref.BotID)
+	if err != nil {
+		t.Fatalf("读取 Bot: %v", err)
+	}
+	if string(b.Credentials) == `{"app_id":"42","app_secret":"secret"}` {
+		t.Fatal("凭据不应明文落库")
+	}
+	if b.Caps == nil || b.Constraints["can_initiate"] != false {
+		t.Fatalf("适配器声明的能力未保存: %+v", b)
+	}
+}
+
+func TestBotStartStop(t *testing.T) {
+	e := newEnv(t)
+	e.seedBot(t, nil)
+	payload, _ := json.Marshal(protocol.BotRef{BotID: testBotID})
+
+	if _, perr := e.core.StartBot(context.Background(), server.Session{}, payload); perr != nil {
+		t.Fatalf("bot.start 失败: %+v", perr)
+	}
+	if len(e.ctl.started) != 1 || e.ctl.started[0] != testBotID {
+		t.Fatalf("控制器未收到启动: %+v", e.ctl.started)
+	}
+	if _, perr := e.core.StopBot(context.Background(), server.Session{}, payload); perr != nil {
+		t.Fatalf("bot.stop 失败: %+v", perr)
+	}
+	if len(e.ctl.stopped) != 1 {
+		t.Fatalf("控制器未收到停止: %+v", e.ctl.stopped)
+	}
+
+	status, perr := e.core.BotStatus(context.Background(), server.Session{}, payload)
+	if perr != nil {
+		t.Fatalf("bot.status 失败: %+v", perr)
+	}
+	if status.(protocol.BotStatusOK).Status != platform.StateRunning {
+		t.Fatalf("状态不符: %+v", status)
 	}
 }
