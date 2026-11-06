@@ -34,6 +34,8 @@ type Config struct {
 		Url string `json:"url"`
 		// Address 覆盖对外通告的 WSS 地址；留空则由启动时自动探测。
 		Address string `json:"address"`
+		// Listen 是 WSS 的监听地址，默认 :8443（协议 §1 的固定端口）。
+		Listen string `json:"listen"`
 	} `json:"connect"`
 }
 
@@ -151,6 +153,8 @@ func ConfigCommand(
 			cfg.Connect.Url = args[2]
 		case "connect.address":
 			cfg.Connect.Address = args[2]
+		case "connect.listen":
+			cfg.Connect.Listen = args[2]
 		default:
 			fmt.Println(
 				"未知配置",

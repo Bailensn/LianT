@@ -19,6 +19,10 @@ func main() {
 		initCommand()
 	case "config":
 		config.ConfigCommand(args[2:])
+	case "serve":
+		serveCommand(args[2:])
+	case "pair":
+		pairCommand(args[2:])
 	case "service":
 		supervisor.ServiceCommand(args[2:])
 	case "bot":

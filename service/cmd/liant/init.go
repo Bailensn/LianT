@@ -26,6 +26,7 @@ func initCommand() {
 			"data/key/master.key"
 		cfg.Connect.Url =
 			"https://api.telegram.org"
+		cfg.Connect.Listen = ":8443"
 		config.SaveConfig(
 			cfg,
 		)
