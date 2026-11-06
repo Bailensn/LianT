@@ -18,10 +18,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Bailensn/LianT/service/internal/botrun"
 	"github.com/Bailensn/LianT/service/internal/config"
 	"github.com/Bailensn/LianT/service/internal/core"
 	"github.com/Bailensn/LianT/service/internal/node"
 	"github.com/Bailensn/LianT/service/internal/pairing"
+	"github.com/Bailensn/LianT/service/internal/platform"
 	"github.com/Bailensn/LianT/service/internal/protocol"
 	"github.com/Bailensn/LianT/service/internal/server"
 	"github.com/Bailensn/LianT/service/internal/store"
@@ -48,17 +50,17 @@ func buildServer(
 	confirm func(context.Context, string, string, *ecdsa.PublicKey) bool,
 	pairer *pairing.Pairer,
 	factory deviceFactory,
-) (*server.Server, *node.Identity, *store.Store, error) {
+) (*server.Server, *node.Identity, *store.Store, *core.Core, error) {
 	cfg := loadConfigOrDie()
 
 	db, err := store.Open(cfg.Storage.Database)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	id, err := node.LoadOrCreate(nodeDir)
 	if err != nil {
 		db.Close()
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	if pairer == nil {
 		pairer = pairing.New()
@@ -77,15 +79,15 @@ func buildServer(
 	})
 	if err != nil {
 		db.Close()
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	coreSvc, err := core.New(core.Options{Store: db, Broadcaster: srv})
 	if err != nil {
 		db.Close()
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	coreSvc.Register(srv)
-	return srv, id, db, nil
+	return srv, id, db, coreSvc, nil
 }
 
 func loadConfigOrDie() config.Config {
@@ -124,12 +126,35 @@ func serveTLS(srv *http.Server, id *node.Identity, addr string) error {
 // serveCommand 前台运行 WSS 服务端。
 func serveCommand(_ []string) {
 	cfg := loadConfigOrDie()
-	srv, id, db, err := buildServer(confirmTerminal, nil, nil)
+	srv, id, db, coreSvc, err := buildServer(confirmTerminal, nil, nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "启动失败：", err)
 		os.Exit(1)
 	}
 	defer db.Close()
+
+	manager, err := botrun.New(botrun.Options{
+		Store:  db,
+		Ingest: coreSvc,
+		OnStatus: func(botID string, st platform.Status) {
+			reason := st.Reason
+			srv.Broadcast(protocol.TypeEventBot, protocol.EventBot{
+				BotID:  botID,
+				Status: st.State,
+				Reason: reason,
+			})
+		},
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "初始化 Bot 管理器失败：", err)
+		os.Exit(1)
+	}
+	if started, err := manager.Reconcile(context.Background()); err != nil {
+		log.Printf("认领已有 Bot 失败: %v", err)
+	} else {
+		log.Printf("已认领 %d 个 Bot", started)
+	}
+	defer manager.Shutdown()
 
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
@@ -160,7 +185,7 @@ func pairCommand(_ []string) {
 	}
 
 	watcher := &pairWatcher{done: make(chan struct{})}
-	srv, id, db, err := buildServer(confirmTerminal, pairer, func(db *store.Store) server.DeviceStore {
+	srv, id, db, _, err := buildServer(confirmTerminal, pairer, func(db *store.Store) server.DeviceStore {
 		watcher.Store = db
 		return watcher
 	})

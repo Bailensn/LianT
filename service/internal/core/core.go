@@ -57,7 +57,7 @@ func New(opt Options) (*Core, error) {
 		opt.Adapter = platform.Get
 	}
 	if opt.DecodeCredentials == nil {
-		opt.DecodeCredentials = decodeCredentials
+		opt.DecodeCredentials = DecodeCredentials
 	}
 	if opt.Now == nil {
 		opt.Now = time.Now
@@ -73,7 +73,8 @@ func (c *Core) Register(s *server.Server) {
 	s.Register(protocol.TypeMsgAck, c.Ack)
 }
 
-func decodeCredentials(b store.Bot) (platform.Credentials, error) {
+// DecodeCredentials 用主密钥解密 Bot 凭据 JSON，供 supervisor 启动适配器时使用。
+func DecodeCredentials(b store.Bot) (platform.Credentials, error) {
 	raw, err := crypto.DecryptBytes(string(b.Credentials))
 	if err != nil {
 		return nil, fmt.Errorf("core: 解密凭据: %w", err)
