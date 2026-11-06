@@ -47,6 +47,8 @@ Manager                          Service
 ```
 
 - 签名覆盖 `nonce || 服务端指纹 || ts`；`nonce` 一次性，重放必败。
+- **编码固定**（v1 冻结）：待签字节为 `nonce + "\n" + fp + "\n" + 十进制 ts`（UTF-8），
+  算法 ECDSA P-256 + SHA-256，签名输出 ASN.1 DER 后 base64；`fp` 与二维码里的一致。
 - `ts` 偏差超过 60s 拒绝（`clock_skew`）。
 - 认证失败统一 `auth_failed`；同 IP 每分钟 5 次上限。
 - `auth.ok.caps`（服务端能力）：`["msg.list","bot.control","media.recv","rich_text","multi_bot"]`。

@@ -23,7 +23,7 @@ import (
 )
 
 // schemaVersion 记录在 PRAGMA user_version 里。改表结构时 +1 并补迁移。
-const schemaVersion = 1
+const schemaVersion = 2
 
 var (
 	// ErrNotFound 表示按主键没有查到记录。
@@ -115,15 +115,38 @@ func (s *Store) migrate(ctx context.Context) error {
 	if version == schemaVersion {
 		return nil
 	}
-	for _, stmt := range schemaV1 {
-		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
-			return fmt.Errorf("store: 迁移到 v%d: %w", schemaVersion, err)
+	steps := []struct {
+		version int
+		stmts   []string
+	}{
+		{1, schemaV1},
+		{2, schemaV2},
+	}
+	for _, step := range steps {
+		if version >= step.version {
+			continue
+		}
+		for _, stmt := range step.stmts {
+			if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+				return fmt.Errorf("store: 迁移到 v%d: %w", step.version, err)
+			}
 		}
 	}
 	if _, err := s.db.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion)); err != nil {
 		return fmt.Errorf("store: 写入 schema 版本: %w", err)
 	}
 	return nil
+}
+
+// schemaV2 增加已授权的 Manager 设备表（配对后落库，撤销即删除）。
+var schemaV2 = []string{
+	`CREATE TABLE IF NOT EXISTS devices (
+		device_id    TEXT PRIMARY KEY,
+		name         TEXT NOT NULL,
+		public_key   BLOB NOT NULL,
+		created_at   INTEGER NOT NULL,
+		last_seen_at INTEGER NOT NULL DEFAULT 0
+	)`,
 }
 
 // schemaV1 是 v1 的全部建表语句。
