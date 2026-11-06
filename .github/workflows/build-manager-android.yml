@@ -37,10 +37,10 @@ jobs:
           # 运行器自带 SDK；不用 setup-android，它会去装已下架的 'tools' 包。
           SDKMGR=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
           yes | "$SDKMGR" --licenses > /dev/null || true
-          # API 37 起 SDK 平台按 major.minor 命名：platforms;android-37.0。
-          "$SDKMGR" --install "platforms;android-37.0" "build-tools;37.0.0" "ndk;30.0.16248370" "cmake;3.22.1"
-          # AGP 的 compileSdk = 37 会去找 platforms/android-37。
-          ln -sfn "$ANDROID_HOME/platforms/android-37.0" "$ANDROID_HOME/platforms/android-37"
+          # API 37 起 SDK 平台按 major.minor 命名；项目用 37.1（37.2 仍是 beta）。
+          "$SDKMGR" --install "platforms;android-37.1" "build-tools;37.0.0" "ndk;30.0.16248370" "cmake;3.22.1"
+          # 兜底：某些工具仍按 android-37 找平台。
+          ln -sfn "$ANDROID_HOME/platforms/android-37.1" "$ANDROID_HOME/platforms/android-37"
 
       - name: Make gradlew executable
         run: chmod +x gradlew

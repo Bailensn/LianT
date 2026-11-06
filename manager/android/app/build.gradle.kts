@@ -5,7 +5,13 @@ plugins {
 
 android {
     namespace = "com.bailensn.liant"
-    compileSdk = 37
+    // API 37.1：Android 17 的稳定 minor 平台（37.2 还是 beta）。
+    // compileSdk 只决定编译器可见的 API，运行时行为仍由 targetSdk 决定。
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
     ndkVersion = libs.versions.ndk.get()
 
     defaultConfig {
