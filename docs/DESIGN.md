@@ -15,7 +15,7 @@ LianT 让用户在自己服务器上托管多个 Bot，并在自己的设备上�
 | --- | --- | --- | --- | --- |
 | D1 | **会话端为主**；账号感只对**运营者**：一个客户端汇总所有 Bot 的消息、入库、像聊天一样回复。**不做拟人化**——用户眼里它始终是 Bot | 控制台为主；用户视角的“像真人” | 控制台是已解决领域；让用户以为是真人在 QQ/Telegram 上都既做不到也不该做 | 必须有消息模型与历史；启停页要做但不抢主流程 |
 | D2 | **Service 保留 7 天（时间口径）作为缓冲，Manager 本地留档**；文本与媒体都缓，媒体单 Bot 上限 3 GB；手机杀后台后靠这 7 天补拉 | Service 无状态；长期留存 | 无状态丢连续性；长期留存违反 P2 | 服务端要写盘、清理、备份说明；3 GB 是硬上限，超限会淘汰旧媒体 |
-| D3 | **Android + Jetpack Compose 优先** | 桌面单二进制；继续 Python + QML | 桌面栈没收敛；QML 客户端是空壳 | 第 4 次 UI 重写；`manager/desktop` 冻结 |
+| D3 | **Android + Jetpack Compose 优先** | 桌面单二进制；继续 Python + QML | 桌面栈没收敛；QML 客户端是空壳 | 第 4 次 UI 重写；桌面端已删除 |
 | D4 | **ECDSA P-256 节点密钥 + 指纹配对 + 固定端口** | ed25519；随机端口 + token；反代自理 | Keystore 对 ed25519 支持不稳；随机端口会漂移；反代门槛高 | 要写配对流程与本地确认 |
 | D5 | **一 bot 一进程 + 启动 reconcile** | 单进程 goroutine；交给 systemd | 前者一 panic 全挂；后者失去「点一下就能管」 | 要补 PID、进程组、退避 |
 | D6-1 | **协议：单层 JSON envelope** | 保留双层 base64 | 旧债进 v1 | 旧客户端不能直连 |
@@ -64,10 +64,10 @@ LianT 让用户在自己服务器上托管多个 Bot，并在自己的设备上�
 | A10 | 下行是「JSON 数组套 base64 + content 再 base64」，无版本/id/ack | `service/internal/botruntime/main.go` | 第三个客户端接入即收税 | 按 D6-1 重写 |
 | A11 | 消息与会话只存在内存 | `service/internal/botruntime/main.go` | 重启即失忆 | 按 D2 重写 |
 | A12 | 0 个测试；`go.mod` 要求 1.27.0 而 CI 钉 1.26.5 | 仓库 | 回归不可控 | 修复 |
-| A13 | Manager 是 11 行空窗口；Android 已在工作区删除 | `manager/desktop/client/qml/Main.qml` | 产品闭环不存在 | 按 D3 重写 |
+| A13 | Manager 长期只有空壳；旧 QML 与 Android 实现均已删除，现存仅为 Compose 骨架 | `manager/android` | 产品闭环不存在 | 按 D3 建设 |
 | A14 | `pages/` 与 `deploy-on-release.yml` 已删除 | 2026-11-07 | 仓库不再含官网 | 完成 |
-| A15 | `manager/desktop` 不再进入 v1 路线 | 仓库 | 打包工作量转移 | 冻结，不删 |
-| A16 | `bots` 表以 `INTEGER bot_id` 为主键，凭据是单个 `token` | `service/cmd/liant/init.go`、`service/cmd/liant/bot.go` | 撞键；凭据形状不同 | 按 D7 改为命名空间字符串 + 凭据 JSON |
+| A15 | `manager/desktop` 与桌面构建 workflow 已删除（2026-11-07） | 仓库 | 代码仍在 git 历史里，可随时取回 | 完成 |
+| A16 | `bots` 表以 `INTEGER bot_id` 为主键，凭据是单个 `token` | `service/cmd/LianT/init.go`、`service/cmd/LianT/bot.go` | 撞键；凭据形状不同 | 按 D7 改为命名空间字符串 + 凭据 JSON |
 | A17 | 入站只取 `c.Text()`，entities 全丢；出站只能纯文本 | `service/internal/botruntime/main.go` | 带格式的消息变裸文本 | 按 D8 重写 |
 | A18 | 没有任何「多 Bot 收件箱」概念：一个进程一个 bot，客户端也没有汇总视图 | `service/internal/supervisor/manager.go` | D1/D9 的产品行为无处安放 | 新增（客户端 + 协议） |
 
@@ -232,9 +232,7 @@ QQ 的“不能主动发起、只能窗口内回复”不能变成核心里的 `
 
 **重写**：supervisor（D5）、协议（D6-1）、身份（D4）、配置错误处理、Manager（D3）、bot 存储与运行时（D7）、消息内容层（D8）、多 Bot 汇总（D1/D9）。
 
-**冻结**：`manager/desktop/` 全目录；`build-manager-desktop.yml` 暂留不发版。
-
-**删除**：`pages/`、`deploy-on-release.yml`（已执行）。
+**删除**：`pages/`、`deploy-on-release.yml`、`manager/desktop/`、`build-manager-desktop.yml`（均已执行，历史可回看）。
 
 ## 7. 版本与发布
 
@@ -260,7 +258,7 @@ LianT/
 │   ├── DESIGN.md
 │   └── PROTOCOL.md
 ├── service/              服务端（Go，独立 module）
-│   ├── cmd/liant/        入口与 CLI（main / init / bot）
+│   ├── cmd/LianT/        入口与 CLI（main / init / bot）
 │   ├── internal/
 │   │   ├── config/       配置（加密落盘）
 │   │   ├── crypto/       主密钥 + HKDF 子密钥 + AEAD
@@ -268,14 +266,13 @@ LianT/
 │   │   ├── wss/          WSS 传输与媒体服务
 │   │   ├── botruntime/   单 bot 运行循环（P0 拆进 platform）
 │   │   ├── platform/     Adapter 接口 + qqbot（P0 创建）
-│   │   ├── format/       NDoc + Format 接口 + qqplain（P0 创建）
+│   │   ├── format/       NDoc + Format 接口 + qqplain（已建）
 │   │   └── store/        会话 / 消息 / 媒体（P0 创建）
 │   ├── go.mod
 │   └── .gitignore
 ├── manager/              客户端（Apache-2.0）
-│   ├── android/          Compose（P1 创建）
-│   └── desktop/          冻结，不入 v1 路线
-└── .github/workflows/    service 构建 + 桌面构建（手动）
+│   └── android/          Compose 骨架（P1，已从 Sort 拆出 UI 外壳）
+└── .github/workflows/    service 构建（手动触发）
 ```
 
 **结构规则**
@@ -284,4 +281,4 @@ LianT/
 2. `platform/` 与 `format/` 互不依赖，也不依赖 `supervisor`；两者只依赖标准库与各自平台 SDK。
 3. 分层方向单向：`cmd → supervisor → {platform, format, wss, store, config, crypto}`；反向 import 一律拒绝。
 4. 文档只在 `docs/`，代码注释不复制文档结论（注释解释“为什么”，文档记录“是什么”）。
-5. 冻结目录（`manager/desktop/`）不重构、不加依赖，只修安全洞。
+5. 不保留“冻结目录”：不再维护的代码直接删，需要时从 git 历史取回。
