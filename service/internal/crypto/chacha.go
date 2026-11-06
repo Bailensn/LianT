@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"crypto/rand"
+	"errors"
 	"crypto/sha256"
 	"encoding/base64"
 	"io"
@@ -128,6 +129,42 @@ func DecryptToken(token string) string {
 		panic(err)
 	}
 	return string(decryptWithKey(data, deriveSubkey(subToken)))
+}
+
+// ==========================
+// 通用字节（token 子密钥，供 Bot 凭据 JSON 等使用）
+// ==========================
+
+// EncryptBytes 用 token 子密钥加密任意字节，返回 base64 文本。
+// 与 EncryptToken 共用子密钥，因此同样不能跨用途解密。
+func EncryptBytes(data []byte) (string, error) {
+	aead, err := chacha20poly1305.New(deriveSubkey(subToken))
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	sealed := aead.Seal(nonce, nonce, data, nil)
+	return base64.StdEncoding.EncodeToString(sealed), nil
+}
+
+// DecryptBytes 解密 EncryptBytes 的输出；损坏时返回错误而不是 panic。
+func DecryptBytes(text string) ([]byte, error) {
+	raw, err := base64.StdEncoding.DecodeString(text)
+	if err != nil {
+		return nil, err
+	}
+	aead, err := chacha20poly1305.New(deriveSubkey(subToken))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) < aead.NonceSize() {
+		return nil, errors.New("crypto: 密文损坏")
+	}
+	nonce := raw[:aead.NonceSize()]
+	return aead.Open(nil, nonce, raw[aead.NonceSize():], nil)
 }
 
 // ==========================

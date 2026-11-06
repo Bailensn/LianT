@@ -274,6 +274,32 @@ func (s *Store) Messages(ctx context.Context, q ListQuery) ([]Message, bool, err
 	return out, hasMore, nil
 }
 
+// Peer 按 (bot_id, peer_id) 取一个会话；不存在时返回 ErrNotFound。
+func (s *Store) Peer(ctx context.Context, botID, peerID string) (Peer, error) {
+	if !platform.IsValidID(botID) {
+		return Peer{}, fmt.Errorf("%w: 非法 bot_id %q", ErrInvalid, botID)
+	}
+	if !platform.IsValidID(peerID) {
+		return Peer{}, fmt.Errorf("%w: 非法 peer_id %q", ErrInvalid, peerID)
+	}
+	var p Peer
+	err := s.db.QueryRowContext(ctx, `
+SELECT p.peer_id, p.kind, p.display_name, p.last_ts, p.last_msg_id,
+       COALESCE((SELECT m.body_plain FROM messages m
+                 WHERE m.bot_id = p.bot_id AND m.msg_id = p.last_msg_id), ''),
+       (SELECT COUNT(*) FROM messages m2
+        WHERE m2.bot_id = p.bot_id AND m2.peer_id = p.peer_id)
+FROM peers p WHERE p.bot_id = ? AND p.peer_id = ?`, botID, peerID).
+		Scan(&p.ID, &p.Kind, &p.DisplayName, &p.LastTS, &p.LastMsgID, &p.LastPlain, &p.Count)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Peer{}, fmt.Errorf("%w: 会话 %s/%s", ErrNotFound, botID, peerID)
+	}
+	if err != nil {
+		return Peer{}, fmt.Errorf("store: 读取会话 %s/%s: %w", botID, peerID, err)
+	}
+	return p, nil
+}
+
 // Peers 返回某个 Bot 的会话列表，按最近消息倒序。
 func (s *Store) Peers(ctx context.Context, botID string) ([]Peer, error) {
 	if !platform.IsValidID(botID) {

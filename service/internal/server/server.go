@@ -84,6 +84,9 @@ type Server struct {
 	mu      sync.RWMutex
 	methods map[string]Method
 
+	hubMu sync.Mutex
+	hub   map[*conn]struct{}
+
 	upgrader websocket.Upgrader
 }
 
@@ -115,6 +118,7 @@ func New(opt Options) (*Server, error) {
 		now:     opt.Now,
 		limiter: newLimiter(maxAuthFailures, authWindow, opt.Now),
 		methods: map[string]Method{},
+		hub:     map[*conn]struct{}{},
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  4096,
 			WriteBufferSize: 4096,
@@ -175,6 +179,9 @@ type conn struct {
 	sess   Session
 	authed bool
 	failed int
+
+	// 推送与响应可能来自不同 goroutine，写入口必须串行。
+	wmu sync.Mutex
 }
 
 func (c *conn) handshake() error {
@@ -257,6 +264,7 @@ func (c *conn) handleAuth(env protocol.Envelope, challenge protocol.AuthChalleng
 	}
 	c.sess = Session{ManagerID: dev.ID}
 	c.authed = true
+	c.s.addConn(c)
 	c.ws.SetReadDeadline(time.Time{})
 	return c.write(protocol.TypeAuthOK, env.ID, protocol.AuthOK{
 		ServiceTime: c.s.now().UnixMilli(),
@@ -417,6 +425,8 @@ func (c *conn) write(typ, replyTo string, payload any) error {
 	if err != nil {
 		return err
 	}
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
 	c.ws.SetWriteDeadline(c.s.now().Add(writeTimeout))
 	return c.ws.WriteMessage(websocket.TextMessage, data)
 }
@@ -444,6 +454,36 @@ func (s *Server) writeError(ws *websocket.Conn, replyTo, code, msg string, detai
 	data, _ := json.Marshal(env)
 	ws.SetWriteDeadline(s.now().Add(writeTimeout))
 	_ = ws.WriteMessage(websocket.TextMessage, data)
+}
+
+// Broadcast 把事件推给所有已认证连接。
+//
+// 推送失败只记日志：客户端断线后靠游标补拉，不应影响其他连接。
+func (s *Server) Broadcast(typ string, payload any) {
+	s.hubMu.Lock()
+	conns := make([]*conn, 0, len(s.hub))
+	for c := range s.hub {
+		conns = append(conns, c)
+	}
+	s.hubMu.Unlock()
+
+	for _, c := range conns {
+		if err := c.write(typ, "", payload); err != nil {
+			s.opt.Logf("推送 %s 失败: %v", typ, err)
+		}
+	}
+}
+
+func (s *Server) addConn(c *conn) {
+	s.hubMu.Lock()
+	s.hub[c] = struct{}{}
+	s.hubMu.Unlock()
+}
+
+func (s *Server) removeConn(c *conn) {
+	s.hubMu.Lock()
+	delete(s.hub, c)
+	s.hubMu.Unlock()
 }
 
 func (s *Server) newChallenge() (protocol.AuthChallenge, error) {
