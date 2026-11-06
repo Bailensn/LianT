@@ -54,8 +54,8 @@ type Core struct {
 	opt Options
 	now func() time.Time
 
-	mu         sync.RWMutex
-	controller BotController
+	mu     sync.RWMutex
+	botCtl BotController
 }
 
 // New 校验依赖并构造 Core。
@@ -75,7 +75,7 @@ func New(opt Options) (*Core, error) {
 	if opt.Now == nil {
 		opt.Now = time.Now
 	}
-	c := &Core{opt: opt, now: opt.Now, controller: opt.Controller}
+	c := &Core{opt: opt, now: opt.Now, botCtl: opt.Controller}
 	return c, nil
 }
 
@@ -307,14 +307,14 @@ type BotController interface {
 // SetController 注入启停实现；serve 在构造完 Manager 后调用。
 func (c *Core) SetController(b BotController) {
 	c.mu.Lock()
-	c.controller = b
+	c.botCtl = b
 	c.mu.Unlock()
 }
 
 func (c *Core) controller() BotController {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.controller
+	return c.botCtl
 }
 
 // AddBot 校验凭据并登记一个 Bot；凭据加密后落库，绝不回显。
