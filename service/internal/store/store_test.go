@@ -80,11 +80,16 @@ func TestBotLifecycle(t *testing.T) {
 	if b.DisplayName != "Example" || b.Platform != "qqbot" {
 		t.Fatalf("字段不符: %+v", b)
 	}
-	if b.Status.State != platform.StateRunning {
-		t.Fatalf("状态不符: %+v", b.Status)
+	// 登记不等于启动：Upsert 不碰运行状态，状态由 SetBotStatus 维护。
+	if b.Status.State != platform.StateStopped {
+		t.Fatalf("新登记的 Bot 应为 stopped: %+v", b.Status)
 	}
 	if string(b.Credentials) != "encrypted-blob" {
 		t.Fatalf("凭据被改写: %q", b.Credentials)
+	}
+
+	if err := s.SetBotStatus(ctx, testBotID, platform.Status{State: platform.StateRunning}); err != nil {
+		t.Fatalf("设置状态: %v", err)
 	}
 
 	// 二次 Upsert 不应改变 created_at，也不应影响状态。
