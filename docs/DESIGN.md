@@ -102,7 +102,7 @@ type Adapter interface {
     Name() string                                          // "qqbot"
     Validate(ctx context.Context, c Credentials) (Account, error)
     Run(ctx context.Context, acc Account, h Hooks) error    // 回调 / WebSocket，事件回调
-    SendText(ctx context.Context, acc Account, p Peer, text string) (MessageID, error)
+    SendText(ctx context.Context, acc Account, c Credentials, req SendRequest) (MessageID, error)
     Format() string                                        // 该平台使用的格式适配器名
 }
 
@@ -265,7 +265,7 @@ LianT/
 │   │   ├── supervisor/   daemon、bot 进程管理、反代入口（原 service/service）
 │   │   ├── wss/          WSS 传输与媒体服务
 │   │   ├── botruntime/   单 bot 运行循环（P0 拆进 platform）
-│   │   ├── platform/     Adapter 接口 + 注册表 + 命名空间 ID（已建；qqbot 待实现）
+│   │   ├── platform/     Adapter 接口 + 注册表 + 命名空间 ID；qqbot（WSS）已建
 │   │   ├── format/       NDoc + Format 接口 + qqplain（已建）
 │   │   └── store/        会话 / 消息 / 媒体（P0 创建）
 │   ├── go.mod

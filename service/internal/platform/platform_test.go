@@ -28,8 +28,7 @@ func (fakeAdapter) SendText(
 	context.Context,
 	platform.Account,
 	platform.Credentials,
-	platform.Peer,
-	string,
+	platform.SendRequest,
 ) (platform.MessageID, error) {
 	return "m-1", nil
 }

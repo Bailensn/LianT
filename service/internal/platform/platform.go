@@ -94,6 +94,16 @@ const (
 // MessageID 是平台侧消息标识。
 type MessageID string
 
+// SendRequest 是一条待发送的消息。
+//
+// InReplyTo 是触发本次回复的平台入站消息 ID（QQ 的被动回复必须带），
+// 为空表示主动消息，平台是否允许由适配器决定。
+type SendRequest struct {
+	Peer      Peer
+	Text      string
+	InReplyTo string
+}
+
 // Hooks 是适配器向核心回调的入口。
 //
 // OnMessage 返回错误时，适配器应记录日志并继续运行，而不是退出；
@@ -118,7 +128,7 @@ type Adapter interface {
 	Run(ctx context.Context, acc Account, creds Credentials, hooks Hooks) error
 
 	// SendText 发送一条已经按 Format() 渲染好的文本。
-	SendText(ctx context.Context, acc Account, creds Credentials, peer Peer, text string) (MessageID, error)
+	SendText(ctx context.Context, acc Account, creds Credentials, req SendRequest) (MessageID, error)
 
 	// Format 返回该平台使用的格式适配器名（见 internal/format）。
 	Format() string
