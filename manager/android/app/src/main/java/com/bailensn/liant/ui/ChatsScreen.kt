@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,7 +43,6 @@ fun ChatsScreen(
     conversations: List<Conversation>,
     onOpen: (Conversation) -> Unit,
     onRefresh: () -> Unit,
-    onForget: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(
@@ -54,8 +55,10 @@ fun ChatsScreen(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onRefresh) { Text("刷新") }
-            TextButton(onClick = onForget) { Text("解除配对") }
+            TextButton(
+                onClick = onRefresh,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text("刷新") }
         }
         HorizontalDivider(thickness = 0.5.dp)
         if (conversations.isEmpty()) {
@@ -72,7 +75,7 @@ fun ChatsScreen(
                 )
             }
         }
-        LazyColumn {
+        LazyColumn(Modifier.weight(1f)) {
             items(conversations, key = { "${it.botId}|${it.peerId}" }) { conversation ->
                 ConversationRow(conversation, onOpen)
                 HorizontalDivider(

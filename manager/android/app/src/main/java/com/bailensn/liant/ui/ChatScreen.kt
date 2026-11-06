@@ -8,7 +8,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -73,7 +78,10 @@ fun ChatScreen(
                     }
                 },
                 navigationIcon = {
-                    TextButton(onClick = onBack) { Text("‹ 返回") }
+                    TextButton(
+                        onClick = onBack,
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) { Text("‹ 返回") }
                 },
             )
         },
@@ -113,7 +121,7 @@ private fun MessageBubble(message: ChatMessage) {
     ) {
         Column(
             Modifier
-                .widthIn(max = 300.dp)
+                .widthIn(max = 280.dp)
                 .clip(
                     RoundedCornerShape(
                         topStart = 12.dp,
@@ -160,7 +168,8 @@ private fun InputBar(sending: Boolean, onSend: (String) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .imePadding()
+            // 键盘与底部手势条都算进安全区，不用 imePadding 叠 navigationBarsPadding。
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
@@ -181,6 +190,7 @@ private fun InputBar(sending: Boolean, onSend: (String) -> Unit) {
                 }
             },
             enabled = !sending && text.isNotBlank(),
+            modifier = Modifier.heightIn(min = 48.dp),
         ) {
             Text(if (sending) "发送中" else "发送")
         }
