@@ -65,6 +65,9 @@ class LiantRepository(context: Context) {
 
     fun isConnected(): Boolean = client != null
 
+    /** 服务端推送事件（msg.inbound / event.bot）；未连接时为空。 */
+    fun events(): kotlinx.coroutines.flow.SharedFlow<JSONObject>? = client?.eventFlow
+
     suspend fun bots(): List<BotSummary> {
         val connection = client ?: error("连接尚未建立")
         val payload = connection.botList()
