@@ -33,15 +33,16 @@ fun BottomTabBar(selected: Int, onSelect: (Int) -> Unit) {
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TabItem(0, "💬", "消息", selected, onSelect)
-            TabItem(1, "🤖", "Bot", selected, onSelect)
-            TabItem(2, "⚙", "设置", selected, onSelect)
+            TabItem(Modifier.weight(1f), 0, "💬", "消息", selected, onSelect)
+            TabItem(Modifier.weight(1f), 1, "🤖", "Bot", selected, onSelect)
+            TabItem(Modifier.weight(1f), 2, "⚙", "设置", selected, onSelect)
         }
     }
 }
 
 @Composable
 private fun TabItem(
+    modifier: Modifier,
     index: Int,
     icon: String,
     label: String,
@@ -50,8 +51,7 @@ private fun TabItem(
 ) {
     val active = index == selected
     Column(
-        Modifier
-            .weight(1f)
+        modifier
             .heightIn(min = 48.dp)
             .clickable { onSelect(index) }
             .padding(vertical = 6.dp),
