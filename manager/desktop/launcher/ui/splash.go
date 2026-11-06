@@ -27,7 +27,6 @@ import (
 //go:embed logo.png
 var logoPNG []byte
 
-
 var (
 	bgDark     = color.NRGBA{R: 0x16, G: 0x1B, B: 0x26, A: 0xFF}
 	accent     = color.NRGBA{R: 0x4F, G: 0x8B, B: 0xFF, A: 0xFF}

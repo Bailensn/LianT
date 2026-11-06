@@ -251,7 +251,7 @@ func ProvisionRuntimeFrom(root, url, checksum string, deps []string, offlineDeps
 		return "", err
 	}
 	archivePath := filepath.Join(dl, "python-bundle")
-	if !fileExists(archivePath + ".tar.gz") && !fileExists(archivePath + ".zip") {
+	if !fileExists(archivePath+".tar.gz") && !fileExists(archivePath+".zip") {
 		if url == "" {
 			return "", fmt.Errorf("runtime not installed and no runtime URL configured")
 		}

@@ -1,1 +1,0 @@
-JitPack	https://jitpack.io

@@ -90,10 +90,10 @@ func NewManager() (*Manager, error) {
 //   - <app>/LianT.exe with client beside it -> <app>/client (Windows Inno)
 func detectInstalledLib(binDir string) string {
 	candidates := []string{
-		filepath.Join(binDir, ".."),                     // /opt/LianT/bin -> /opt/LianT
-		filepath.Join(binDir, "..", "lib", "LianT"),     // /usr/bin -> /usr/lib/LianT
+		filepath.Join(binDir, ".."),                 // /opt/LianT/bin -> /opt/LianT
+		filepath.Join(binDir, "..", "lib", "LianT"), // /usr/bin -> /usr/lib/LianT
 		filepath.Join(binDir, "..", "lib64", "LianT"),
-		filepath.Join(binDir, "client"),                 // <app>/LianT -> <app>/client
+		filepath.Join(binDir, "client"), // <app>/LianT -> <app>/client
 	}
 	for _, c := range candidates {
 		c = filepath.Clean(c)
@@ -150,7 +150,7 @@ func (m *Manager) ResourcesDir() string {
 func pythonCandidates(runtimeDir string) []string {
 	if runtime.GOOS == "windows" {
 		return []string{
-			filepath.Join(runtimeDir, "python", "python.exe"), // standalone
+			filepath.Join(runtimeDir, "python", "python.exe"),  // standalone
 			filepath.Join(runtimeDir, "Scripts", "python.exe"), // venv
 			filepath.Join(runtimeDir, "python.exe"),
 		}
