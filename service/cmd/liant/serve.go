@@ -24,6 +24,7 @@ import (
 	"github.com/Bailensn/LianT/service/internal/node"
 	"github.com/Bailensn/LianT/service/internal/pairing"
 	"github.com/Bailensn/LianT/service/internal/platform"
+	_ "github.com/Bailensn/LianT/service/internal/platform/qqbot"
 	"github.com/Bailensn/LianT/service/internal/protocol"
 	"github.com/Bailensn/LianT/service/internal/server"
 	"github.com/Bailensn/LianT/service/internal/store"

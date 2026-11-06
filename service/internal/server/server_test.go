@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"sync/atomic"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -30,6 +31,8 @@ type testEnv struct {
 	db   *store.Store
 	pair *pairing.Pairer
 	http *httptest.Server
+	srv  *server.Server
+	echo atomic.Int32
 }
 
 func newEnv(t *testing.T) *testEnv {
@@ -56,12 +59,18 @@ func newEnv(t *testing.T) *testEnv {
 	if err != nil {
 		t.Fatalf("服务端: %v", err)
 	}
+	env := &testEnv{id: id, db: db, pair: p, srv: srv}
+	srv.Register("test.echo", func(context.Context, server.Session, json.RawMessage) (any, *protocol.Error) {
+		n := env.echo.Add(1)
+		return map[string]any{"n": n}, nil
+	})
 	ts := httptest.NewTLSServer(srv.Handler())
+	env.http = ts
 	t.Cleanup(func() {
 		ts.Close()
 		db.Close()
 	})
-	return &testEnv{id: id, db: db, pair: p, http: ts}
+	return env
 }
 
 func (e *testEnv) dial(t *testing.T) *websocket.Conn {
@@ -303,4 +312,40 @@ func contains(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestRequestIdempotency(t *testing.T) {
+	e := newEnv(t)
+	key := newManagerKey(t)
+	if err := e.db.PutDevice(context.Background(), store.Device{
+		ID: "dev-1", Name: "测试机", PublicKey: pubDER(t, key),
+	}); err != nil {
+		t.Fatalf("登记设备: %v", err)
+	}
+
+	c := e.dial(t)
+	ch := authChallenge(t, c)
+	sig := sign(t, key, node.AuthMessage(ch.Nonce, e.id.Fingerprint(), ch.TS))
+	writeEnv(t, c, "auth-1", protocol.TypeAuthResponse, protocol.AuthResponse{
+		ManagerID: "dev-1",
+		Sig:       base64.StdEncoding.EncodeToString(sig),
+	})
+	if env := readEnv(t, c); env.Type != protocol.TypeAuthOK {
+		t.Fatalf("认证失败: %s", env.Type)
+	}
+
+	writeEnv(t, c, "dup-1", "test.echo", struct{}{})
+	first := readEnv(t, c)
+	writeEnv(t, c, "dup-1", "test.echo", struct{}{})
+	second := readEnv(t, c)
+
+	if first.ReplyTo != "dup-1" || second.ReplyTo != "dup-1" {
+		t.Fatalf("reply_to 不符: %s / %s", first.ReplyTo, second.ReplyTo)
+	}
+	if string(first.Payload) != string(second.Payload) {
+		t.Fatalf("重试响应不一致: %s vs %s", first.Payload, second.Payload)
+	}
+	if got := e.echo.Load(); got != 1 {
+		t.Fatalf("同 id 只应执行一次，实际 %d", got)
+	}
 }

@@ -1,345 +1,134 @@
 package main
 
 import (
-	"database/sql"
+	"context"
+	"encoding/json"
+	"flag"
 	"fmt"
-	_ "github.com/glebarez/go-sqlite"
-	"golang.org/x/term"
-	"gopkg.in/telebot.v4"
-	"net/http"
-	"net/url"
 	"os"
-	"path/filepath"
-	"strconv"
+	"strings"
+
+	"github.com/Bailensn/LianT/service/internal/core"
+	"github.com/Bailensn/LianT/service/internal/protocol"
+	"github.com/Bailensn/LianT/service/internal/server"
 )
 
-import (
-	"github.com/Bailensn/LianT/service/internal/config"
-	"github.com/Bailensn/LianT/service/internal/crypto"
-)
-
-type BotInfo struct {
-	ID        int64  `json:"id"`
-	Username  string `json:"username"`
-	FirstName string `json:"first_name"`
-}
-
-type TelegramResponse struct {
-	OK     bool    `json:"ok"`
-	Result BotInfo `json:"result"`
-}
-
-// ==========================
-// 数据库
-// ==========================
-func openBotDB() *sql.DB {
-	cfg := config.LoadConfig()
-	// 确保数据库所在目录存在（如 data/），避免首次 init 在无该目录时打开失败
-	if err := os.MkdirAll(
-		filepath.Dir(cfg.Storage.Database),
-		0700,
-	); err != nil {
-		panic(err)
-	}
-	db, err := sql.Open(
-		"sqlite",
-		cfg.Storage.Database,
-	)
-	if err != nil {
-		panic(err)
-	}
-	return db
-}
-
-// ==========================
-// Telegram
-// ==========================
-func checkBot(
-	token string,
-) (BotInfo, error) {
-	cfg := config.LoadConfig()
-	settings := telebot.Settings{
-		Token: token,
-	}
-	if cfg.Connect.Url != "" {
-		settings.URL = cfg.Connect.Url
-	}
-	if cfg.Proxy.Enabled {
-		proxy, err := url.Parse(
-			cfg.Proxy.URL,
-		)
-		if err != nil {
-			return BotInfo{}, err
-		}
-		settings.Client = &http.Client{
-			Transport: &http.Transport{
-				Proxy: http.ProxyURL(proxy),
-			},
-		}
-		fmt.Println(
-			"使用代理:",
-			cfg.Proxy.URL,
-		)
-	}
-	bot, err := telebot.NewBot(
-		settings,
-	)
-	if err != nil {
-		return BotInfo{}, err
-	}
-	me := bot.Me
-	return BotInfo{
-		ID:        me.ID,
-		Username:  me.Username,
-		FirstName: me.FirstName,
-	}, nil
-}
-
-// ==========================
-// 保存
-// ==========================
-func saveBot(
-	id int64,
-	token string,
-	info BotInfo,
-) error {
-	db := openBotDB()
-	defer db.Close()
-	_, err := db.Exec(
-		`
-INSERT INTO bots
-(bot_id,token,username,first_name)
-VALUES(?,?,?,?)
-`,
-		id,
-		crypto.EncryptToken(token),
-		info.Username,
-		info.FirstName,
-	)
-	return err
-}
-
-// ==========================
-// 删除
-// ==========================
-func removeBot(
-	id int64,
-) {
-	db := openBotDB()
-	defer db.Close()
-	res, err := db.Exec(
-		`
-DELETE FROM bots
-WHERE bot_id=?
-`,
-		id,
-	)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		fmt.Println(
-			"Bot不存在",
-		)
-	} else {
-		fmt.Println(
-			"删除成功",
-		)
-	}
-}
-
-// ==========================
-// 列出Bot
-// ==========================
-func listBot() {
-	db := openBotDB()
-	defer db.Close()
-
-	rows, err := db.Query(
-		`
-SELECT bot_id, username, first_name
-FROM bots
-ORDER BY bot_id
-`,
-	)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer rows.Close()
-	found := false
-	for rows.Next() {
-		var (
-			id        int64
-			username  string
-			firstName string
-		)
-		err := rows.Scan(
-			&id,
-			&username,
-			&firstName,
-		)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		found = true
-		fmt.Printf("ID: %d 用户名: @%s\n", id, username)
-	}
-	if !found {
-		fmt.Println("没有保存任何Bot")
-	}
-}
-
-func getNum() int {
-	db := openBotDB()
-	defer db.Close()
-	var count int
-	err := db.QueryRow(
-		`
-SELECT COUNT(*)
-FROM bots
-`,
-	).Scan(&count)
-	if err != nil {
-		return 0
-	}
-	return count
-}
-
-// ==========================
-// 隐式输入
-// ==========================
-func inputHidden(prompt string) string {
-	fmt.Print(prompt)
-	byteToken, err := term.ReadPassword(
-		int(os.Stdin.Fd()),
-	)
-	fmt.Println()
-	if err != nil {
-		panic(err)
-	}
-	return string(byteToken)
-}
-
-// ==========================
-// bot命令
-// ==========================
-func botCommand(
-	args []string,
-) {
-	if len(args) < 1 {
-		fmt.Println(
-			"用法: LianT bot add/remove/list",
-		)
+// botCommand 是本地管理命令：只做登记/查询/删除。
+// 启停走协议方法（客户端连上来调用 bot.start/stop），因为要落在那台常驻进程里。
+func botCommand(args []string) {
+	if len(args) == 0 {
+		botUsage()
 		return
 	}
 	switch args[0] {
 	case "add":
-		if len(args) != 2 {
-			fmt.Println(
-				"LianT bot add <bot_id>",
-			)
-			return
-		}
-		id, err := strconv.ParseInt(
-			args[1],
-			10,
-			64,
-		)
-		if err != nil {
-			fmt.Println(
-				"Bot ID必须是数字",
-			)
-			return
-		}
-		fmt.Print(
-			"请输入Token: ",
-		)
-		tokenBytes, err := term.ReadPassword(
-			int(os.Stdin.Fd()),
-		)
-		fmt.Println()
-		if err != nil {
-			fmt.Println(
-				"读取Token失败:",
-				err,
-			)
-			return
-		}
-		token := string(tokenBytes)
-		fmt.Println(
-			"正在验证Token...",
-		)
-		info, err := checkBot(
-			token,
-		)
-		if err != nil {
-			fmt.Println(
-				err,
-			)
-			return
-		}
-		if info.ID != id {
-			fmt.Println(
-				"Bot ID与Token不匹配",
-			)
-			return
-		}
-		fmt.Println()
-		fmt.Println(
-			"验证成功",
-		)
-		fmt.Printf(
-			"用户名: @%s\n",
-			info.Username,
-		)
-		fmt.Printf(
-			"名称: %s\n",
-			info.FirstName,
-		)
-		err = saveBot(
-			id,
-			token,
-			info,
-		)
-		if err != nil {
-			fmt.Println(
-				"该Bot已经存在",
-			)
-			return
-		}
-		fmt.Println()
-		fmt.Println(
-			"保存成功",
-		)
-	case "remove":
-		if len(args) != 2 {
-			fmt.Println(
-				"LianT bot remove <bot_id>",
-			)
-			return
-		}
-		id, err := strconv.ParseInt(
-			args[1],
-			10,
-			64,
-		)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		removeBot(id)
+		botAdd(args[1:])
 	case "list":
-		listBot()
-	case "num":
-		num := getNum()
-		fmt.Println(num)
+		botList()
+	case "remove":
+		botRemove(args[1:])
 	default:
-		fmt.Println(
-			"未知命令",
-		)
+		botUsage()
 	}
+}
+
+func botUsage() {
+	fmt.Println(`用法:
+  LianT bot add --platform qqbot --cred app_id=... --cred app_secret=... [--label 名字]
+  LianT bot list
+  LianT bot remove <bot_id>`)
+}
+
+// credFlags 收集可重复的 --cred key=value。
+type credFlags []string
+
+func (c *credFlags) String() string { return strings.Join(*c, ",") }
+
+func (c *credFlags) Set(v string) error {
+	*c = append(*c, v)
+	return nil
+}
+
+func botAdd(args []string) {
+	fs := flag.NewFlagSet("bot add", flag.ExitOnError)
+	platformName := fs.String("platform", "qqbot", "平台名，例如 qqbot")
+	label := fs.String("label", "", "显示名，可选")
+	var creds credFlags
+	fs.Var(&creds, "cred", "凭据键值对 key=value，可重复")
+	if err := fs.Parse(args); err != nil {
+		os.Exit(1)
+	}
+	if *platformName == "" {
+		fmt.Fprintln(os.Stderr, "缺少 --platform")
+		os.Exit(1)
+	}
+	if len(creds) == 0 {
+		fmt.Fprintln(os.Stderr, "缺少 --cred")
+		os.Exit(1)
+	}
+	m := map[string]string{}
+	for _, kv := range creds {
+		key, value, ok := strings.Cut(kv, "=")
+		if !ok || key == "" {
+			fmt.Fprintf(os.Stderr, "凭据格式应为 key=value：%q\n", kv)
+			os.Exit(1)
+		}
+		m[key] = value
+	}
+	raw, err := json.Marshal(protocol.BotAdd{
+		Platform:    *platformName,
+		Credentials: m,
+		Label:       *label,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "编码请求失败：", err)
+		os.Exit(1)
+	}
+
+	db := mustOpenStore()
+	defer db.Close()
+	svc, err := core.New(core.Options{Store: db})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "初始化失败：", err)
+		os.Exit(1)
+	}
+	got, perr := svc.AddBot(context.Background(), server.Session{}, raw)
+	if perr != nil {
+		fmt.Fprintf(os.Stderr, "登记失败：%s %s\n", perr.Code, perr.Message)
+		os.Exit(1)
+	}
+	fmt.Println("已登记", got.(protocol.BotRef).BotID)
+}
+
+func botList() {
+	db := mustOpenStore()
+	defer db.Close()
+	bots, err := db.Bots(context.Background())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "读取失败：", err)
+		os.Exit(1)
+	}
+	if len(bots) == 0 {
+		fmt.Println("还没有登记任何 Bot。")
+		return
+	}
+	fmt.Printf("%-28s %-8s %-12s %-10s %s\n", "BOT_ID", "平台", "名称", "状态", "标签")
+	for _, b := range bots {
+		fmt.Printf("%-28s %-8s %-12s %-10s %s\n",
+			b.ID, b.Platform, b.DisplayName, b.Status.State, b.Label)
+	}
+}
+
+func botRemove(args []string) {
+	if len(args) != 1 {
+		fmt.Println("用法: LianT bot remove <bot_id>")
+		os.Exit(1)
+	}
+	db := mustOpenStore()
+	defer db.Close()
+	if err := db.DeleteBot(context.Background(), args[0]); err != nil {
+		fmt.Fprintln(os.Stderr, "删除失败：", err)
+		os.Exit(1)
+	}
+	fmt.Println("已删除", args[0], "（消息与媒体记录一并删除）")
 }

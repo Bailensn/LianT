@@ -30,6 +30,10 @@ const (
 	// 握手阶段与普通读写的超时。
 	handshakeTimeout = 15 * time.Second
 	writeTimeout     = 10 * time.Second
+	// 认证后没有收到任何帧（含 ping）超过该时长就断开。
+	idleTimeout = 90 * time.Second
+	// 请求幂等缓存窗口（协议 §9）。
+	dedupeTTL = 5 * time.Minute
 
 	// 每台设备每分钟最多 5 次认证失败（协议 §4）。
 	maxAuthFailures = 5
@@ -87,6 +91,9 @@ type Server struct {
 	hubMu sync.Mutex
 	hub   map[*conn]struct{}
 
+	dedupeMu sync.Mutex
+	dedupe   map[string]cachedResponse
+
 	upgrader websocket.Upgrader
 }
 
@@ -119,6 +126,7 @@ func New(opt Options) (*Server, error) {
 		limiter: newLimiter(maxAuthFailures, authWindow, opt.Now),
 		methods: map[string]Method{},
 		hub:     map[*conn]struct{}{},
+		dedupe:  map[string]cachedResponse{},
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  4096,
 			WriteBufferSize: 4096,
@@ -363,6 +371,15 @@ func (c *conn) loop() error {
 			continue
 		}
 
+		// 同一个 id 重试直接回放上次的成功响应（协议 §9）。
+		key := c.sess.ManagerID + "\x00" + env.ID
+		if data, ok := c.s.cachedResponse(key); ok {
+			if err := c.writeRaw(data); err != nil {
+				return err
+			}
+			continue
+		}
+
 		c.s.mu.RLock()
 		method, ok := c.s.methods[env.Type]
 		c.s.mu.RUnlock()
@@ -375,10 +392,31 @@ func (c *conn) loop() error {
 			c.writeErrorFor(env, perr.Code, perr.Message, perr.Details)
 			continue
 		}
-		if err := c.write(env.Type, env.ID, payload); err != nil {
+		data, err := c.encode(env.Type, env.ID, payload)
+		if err != nil {
+			return err
+		}
+		c.s.remember(key, data)
+		if err := c.writeRaw(data); err != nil {
 			return err
 		}
 	}
+}
+
+func (c *conn) encode(typ, replyTo string, payload any) ([]byte, error) {
+	env, err := protocol.New(newMessageID(), typ, c.s.now().UnixMilli(), payload)
+	if err != nil {
+		return nil, err
+	}
+	env.ReplyTo = replyTo
+	return json.Marshal(env)
+}
+
+func (c *conn) writeRaw(data []byte) error {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+	c.ws.SetWriteDeadline(c.s.now().Add(writeTimeout))
+	return c.ws.WriteMessage(websocket.TextMessage, data)
 }
 
 func (c *conn) tooManyAttempts() error {
@@ -391,10 +429,12 @@ func (c *conn) tooManyAttempts() error {
 }
 
 func (c *conn) read() (protocol.Envelope, error) {
-	// 握手阶段每次读都重新计时，避免配对确认耗时把后续读超时带进来。
-	if !c.authed {
-		c.ws.SetReadDeadline(c.s.now().Add(handshakeTimeout))
+	// 握手阶段 15s；认证后 90s 收不到任何帧（含 ping）就断开。
+	timeout := handshakeTimeout
+	if c.authed {
+		timeout = idleTimeout
 	}
+	c.ws.SetReadDeadline(c.s.now().Add(timeout))
 	var env protocol.Envelope
 	_, data, err := c.ws.ReadMessage()
 	if err != nil {
@@ -540,6 +580,36 @@ func pairReason(err error) string {
 }
 
 // limiter 是按 IP 的滑动窗口，只记录认证失败。
+type cachedResponse struct {
+	data []byte
+	exp  time.Time
+}
+
+func (s *Server) cachedResponse(key string) ([]byte, bool) {
+	s.dedupeMu.Lock()
+	defer s.dedupeMu.Unlock()
+	entry, ok := s.dedupe[key]
+	if !ok || s.now().After(entry.exp) {
+		delete(s.dedupe, key)
+		return nil, false
+	}
+	return entry.data, true
+}
+
+func (s *Server) remember(key string, data []byte) {
+	s.dedupeMu.Lock()
+	defer s.dedupeMu.Unlock()
+	if len(s.dedupe) > 4096 {
+		now := s.now()
+		for k, v := range s.dedupe {
+			if now.After(v.exp) {
+				delete(s.dedupe, k)
+			}
+		}
+	}
+	s.dedupe[key] = cachedResponse{data: data, exp: s.now().Add(dedupeTTL)}
+}
+
 type limiter struct {
 	mu     sync.Mutex
 	max    int

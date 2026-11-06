@@ -198,6 +198,21 @@ func (c *Core) Send(ctx context.Context, sess server.Session, raw json.RawMessag
 		if trigger.Direction != store.DirectionIn {
 			return nil, bad(protocol.CodeInvalidPayload, "in_reply_to 必须是一条入站消息")
 		}
+		// 被动回复窗口：QQ 是 300 秒，过期就不能再回。
+		if window := intFrom(bot.Constraints["reply_window_s"]); window > 0 {
+			if c.now().UnixMilli()-trigger.TS > int64(window)*1000 {
+				return nil, bad(protocol.CodeReplyWindowClosed, "回复窗口已过")
+			}
+		}
+		if max := intFrom(bot.Constraints["max_replies_per_inbound"]); max > 0 {
+			n, err := c.opt.Store.ReplyCount(ctx, req.BotID, req.InReplyTo)
+			if err != nil {
+				return nil, internal(err)
+			}
+			if n >= max {
+				return nil, bad(protocol.CodeReplyWindowClosed, "这条消息的回复次数已达上限")
+			}
+		}
 	}
 
 	text := req.Body.Plain
@@ -497,10 +512,11 @@ func accountOf(b store.Bot) platform.Account {
 }
 
 func maxTextLen(b store.Bot) int {
-	v, ok := b.Limits["max_text_len"]
-	if !ok {
-		return 0
-	}
+	return intFrom(b.Limits["max_text_len"])
+}
+
+// intFrom 兼容 JSON 解出来的 float64、代码里写的 int 与 json.Number。
+func intFrom(v any) int {
 	switch n := v.(type) {
 	case float64:
 		return int(n)

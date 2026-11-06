@@ -274,6 +274,19 @@ func (s *Store) Messages(ctx context.Context, q ListQuery) ([]Message, bool, err
 	return out, hasMore, nil
 }
 
+// ReplyCount 统计某条入站消息已经被回复了多少次（出站消息按 in_reply_to 关联）。
+func (s *Store) ReplyCount(ctx context.Context, botID, inReplyTo string) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM messages
+WHERE bot_id = ? AND in_reply_to = ? AND direction = ?`,
+		botID, inReplyTo, DirectionOut).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("store: 统计回复数: %w", err)
+	}
+	return n, nil
+}
+
 // Peer 按 (bot_id, peer_id) 取一个会话；不存在时返回 ErrNotFound。
 func (s *Store) Peer(ctx context.Context, botID, peerID string) (Peer, error) {
 	if !platform.IsValidID(botID) {

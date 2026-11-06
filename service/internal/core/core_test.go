@@ -166,7 +166,7 @@ func (e *testEnv) seedPeer(t *testing.T) {
 		PeerKind:  platform.PeerGroup,
 		Direction: store.DirectionIn,
 		Type:      "text",
-		TS:        1000,
+		TS:        e.now.UnixMilli() - 10_000,
 		Plain:     "在吗",
 	})
 	if err != nil {
@@ -195,6 +195,49 @@ func TestListBots(t *testing.T) {
 	}
 	if b.Caps == nil || b.Limits == nil || b.Constraints == nil {
 		t.Fatalf("空集合应为 {} 而不是 nil: %+v", b)
+	}
+}
+
+func TestSendRejectsExpiredWindow(t *testing.T) {
+	e := newEnv(t)
+	e.seedBot(t, map[string]any{"can_initiate": false, "reply_window_s": float64(300), "max_replies_per_inbound": float64(5)})
+	if _, err := e.store.AppendMessage(context.Background(), store.Message{
+		BotID: testBotID, MsgID: "old-1", PeerID: testPeerID, PeerKind: platform.PeerGroup,
+		Direction: store.DirectionIn, Type: "text", TS: e.now.UnixMilli() - 3600_000, Plain: "一小时前",
+	}); err != nil {
+		t.Fatalf("写入旧消息: %v", err)
+	}
+
+	payload, _ := json.Marshal(protocol.MsgSend{
+		BotID: testBotID, PeerID: testPeerID,
+		Body:      protocol.Body{Plain: "迟到的回复"},
+		InReplyTo: "old-1",
+	})
+	_, perr := e.core.Send(context.Background(), server.Session{}, payload)
+	if perr == nil || perr.Code != protocol.CodeReplyWindowClosed {
+		t.Fatalf("期望 reply_window_closed，得到 %+v", perr)
+	}
+}
+
+func TestSendEnforcesReplyLimit(t *testing.T) {
+	e := newEnv(t)
+	e.seedBot(t, map[string]any{"can_initiate": false, "reply_window_s": float64(300), "max_replies_per_inbound": float64(1)})
+	e.seedPeer(t)
+
+	send := func() *protocol.Error {
+		payload, _ := json.Marshal(protocol.MsgSend{
+			BotID: testBotID, PeerID: testPeerID,
+			Body:      protocol.Body{Plain: "回复"},
+			InReplyTo: "in-1",
+		})
+		_, perr := e.core.Send(context.Background(), server.Session{}, payload)
+		return perr
+	}
+	if perr := send(); perr != nil {
+		t.Fatalf("第一次回复应成功: %+v", perr)
+	}
+	if perr := send(); perr == nil || perr.Code != protocol.CodeReplyWindowClosed {
+		t.Fatalf("第二次回复应被限制，得到 %+v", perr)
 	}
 }
 

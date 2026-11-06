@@ -7,6 +7,7 @@ import (
 
 import (
 	"github.com/Bailensn/LianT/service/internal/config"
+	"github.com/Bailensn/LianT/service/internal/store"
 )
 
 func initCommand() {
@@ -32,24 +33,12 @@ func initCommand() {
 		)
 	}
 
-	/*==bot.go==*/
-
-	// 初始化data数据库
-	db := openBotDB()
-	defer db.Close()
-	_, err = db.Exec(
-		`
-CREATE TABLE IF NOT EXISTS bots(
-bot_id INTEGER PRIMARY KEY,
-token TEXT NOT NULL,
-username TEXT,
-first_name TEXT
-)
-`,
-	)
+	// 数据库交给 store 迁移，避免这里再维护一份 schema。
+	db, err := store.Open(config.LoadConfig().Storage.Database)
 	if err != nil {
 		panic(err)
 	}
+	_ = db.Close()
 
 	fmt.Println(
 		"初始化完成",
