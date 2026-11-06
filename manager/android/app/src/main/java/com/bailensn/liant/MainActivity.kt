@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.bailensn.liant.ui.HomeScreen
+import com.bailensn.liant.ui.AppRoot
 import com.bailensn.liant.ui.theme.LianTTheme
 
 class MainActivity : ComponentActivity() {
@@ -13,7 +13,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             LianTTheme {
-                HomeScreen()
+                AppRoot()
             }
         }
     }
