@@ -1,5 +1,5 @@
 [versions]
-# AGP 9.5 最高支持 API 37；要求 Gradle 9.6+ / JDK 17+。
+# AGP 9.5；compileSdk 37.1（release(37){minorApiLevel=1}）；要求 Gradle 9.6+ / JDK 17+。
 agp = "9.5.1"
 cmake = "3.22.1"
 ndk = "30.0.16248370"
