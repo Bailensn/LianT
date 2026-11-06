@@ -119,7 +119,7 @@ class LocalStore(context: Context) :
                         last_ts = excluded.last_ts,
                         unread = conversations.unread + excluded.unread
                     """.trimIndent(),
-                    arrayOf(botId, peerId, peerKind, title, plain, ts, if (active) 0 else 1),
+                    arrayOf<Any?>(botId, peerId, peerKind, title, plain, ts, if (active) 0 else 1),
                 )
             }
             db.setTransactionSuccessful()
@@ -150,7 +150,7 @@ class LocalStore(context: Context) :
             )
             db.execSQL(
                 "UPDATE conversations SET last_plain = ?, last_ts = ? WHERE bot_id = ? AND peer_id = ?",
-                arrayOf(plain, ts, botId, peerId),
+                arrayOf<Any?>(plain, ts, botId, peerId),
             )
             db.setTransactionSuccessful()
         } finally {
