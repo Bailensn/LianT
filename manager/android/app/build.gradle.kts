@@ -78,6 +78,7 @@ dependencies {
     implementation(libs.miuix.nav)
     implementation(libs.miuix.blur)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.okhttp)
 
     testImplementation(libs.junit)
 }
