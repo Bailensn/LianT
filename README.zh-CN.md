@@ -6,6 +6,7 @@
 
 - 设计文档与决策记录：[DESIGN.md](docs/DESIGN.md)
 - 通信协议（草案）：[PROTOCOL.md](docs/PROTOCOL.md)
+- 界面规范（Android）：[UI-DESIGN.md](docs/UI-DESIGN.md)
 
 ## 许可证
 
