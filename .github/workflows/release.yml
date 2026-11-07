@@ -36,6 +36,21 @@ jobs:
           cache: true
           cache-dependency-path: service/go.sum
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build web console
+        working-directory: web
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          rm -rf ../service/internal/webui/dist
+          cp -r dist ../service/internal/webui/dist
+
       - name: Compute version
         id: meta
         run: |
@@ -93,79 +108,9 @@ jobs:
           name: service-dist
           path: dist/*
 
-  manager:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-    defaults:
-      run:
-        working-directory: manager/android
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.tag || github.ref }}
-
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: gradle
-          cache-dependency-path: |
-            manager/android/**/*.gradle.kts
-            manager/android/gradle/libs.versions.toml
-
-      - name: Compute version
-        id: meta
-        run: |
-          set -euo pipefail
-          if [ -n "${{ inputs.tag }}" ]; then
-            TAG="${{ inputs.tag }}"
-          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            TAG="${GITHUB_REF_NAME}"
-          else
-            TAG="v1.0.0-Alpha-$(git rev-parse --short=7 HEAD)"
-          fi
-          echo "version=${TAG}" >> "$GITHUB_OUTPUT"
-
-      - name: Compute version code
-        id: code
-        run: |
-          BASE=$(cat version-code-base.txt)
-          COUNT=$(curl -fsS -H "Authorization: Bearer ${{ github.token }}" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=1" | jq -r '.total_count')
-          CODE=$((COUNT - BASE))
-          if [ "$CODE" -lt 1 ]; then CODE=1; fi
-          echo "versionCode=${CODE}"
-          echo "code=${CODE}" >> "$GITHUB_OUTPUT"
-
-      - name: Configure Android SDK
-        run: |
-          SDKMGR=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
-          yes | "$SDKMGR" --licenses > /dev/null || true
-          "$SDKMGR" --install "platforms;android-37.1" "build-tools;37.0.0"
-
-      - name: Build debug APK
-        run: |
-          chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace \
-            -PversionName="${{ steps.meta.outputs.version }}" \
-            -PversionCode="${{ steps.code.outputs.code }}" \
-            assembleDebug
-
-      - name: Collect APK
-        run: |
-          mkdir -p ../../dist
-          cp app/build/outputs/apk/debug/app-debug.apk \
-             "../../dist/LianT-manager-${{ steps.meta.outputs.version }}.apk"
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: manager-dist
-          path: dist/*
 
   publish:
-    needs: [service, manager]
+    needs: [service]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v7

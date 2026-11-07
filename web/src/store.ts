@@ -1,0 +1,328 @@
+import { create } from 'zustand'
+import {
+  clearIdentity,
+  createKey,
+  loadIdentity,
+  parsePair,
+  saveIdentity,
+  type Identity,
+} from './lib/identity'
+import { LiantClient, pairDevice, type ConnState } from './lib/ws'
+
+export type Bot = {
+  bot_id: string
+  platform: string
+  username?: string
+  display_name?: string
+  status: string
+  caps?: string[]
+  constraints?: {
+    can_initiate?: boolean
+    reply_window_s?: number
+    max_replies_per_inbound?: number
+    requires_mention?: boolean
+  }
+  since?: number
+}
+
+export type Msg = {
+  msg_id: string
+  bot_id: string
+  peer_id: string
+  peer_kind: string
+  sender_name?: string
+  body: { plain: string; doc?: unknown }
+  ts: number
+  direction: 'in' | 'out'
+  in_reply_to?: string
+}
+
+export type Conversation = {
+  key: string
+  bot_id: string
+  peer_id: string
+  peer_kind: string
+  title: string
+  last?: Msg
+  unread: number
+}
+
+type State = {
+  identity: Identity | null
+  state: ConnState
+  detail: string
+  error: string
+  bots: Bot[]
+  msgs: Msg[]
+  read: Record<string, number>
+  booted: boolean
+}
+
+type Store = State & Actions
+
+type Actions = {
+  boot: () => Promise<void>
+  pair: (input: string, deviceName: string) => Promise<void>
+  unpair: () => Promise<void>
+  refreshBots: () => Promise<void>
+  addBot: (platform: string, credentials: Record<string, string>, label?: string) => Promise<void>
+  startBot: (id: string) => Promise<void>
+  stopBot: (id: string) => Promise<void>
+  removeBot: (id: string) => Promise<void>
+  send: (bot: Bot, peerId: string, peerKind: string, text: string, inReplyTo?: string) => Promise<void>
+  history: (botId: string, peerId: string) => Promise<void>
+  markRead: (key: string) => void
+  clearError: () => void
+}
+
+let client: LiantClient | null = null
+const KEYCLIENT = 'client'
+
+export const convKey = (bot: string, peer: string) => `${bot}|${peer}`
+
+export const useStore = create<State & Actions>((set, get) => ({
+  identity: null,
+  state: 'idle',
+  detail: '',
+  error: '',
+  bots: [],
+  msgs: [],
+  read: {},
+  booted: false,
+
+  async boot() {
+    if (get().booted) return
+    const identity = (await loadIdentity()) ?? null
+    const read = await loadKV<Record<string, number>>('read', {})
+    set({ identity, read, booted: true })
+    if (identity) await connect(identity, set, get)
+  },
+
+  async pair(input, deviceName) {
+    const p = parsePair(input)
+    if (!p) throw new Error('这段内容不是有效的配对信息')
+    if (p.exp && p.exp * 1000 < Date.now()) throw new Error('配对码已过期，请在服务端重新执行 pair')
+    const { key, pub } = await createKey()
+    const res = await pairDevice(p, deviceName || '网页端', pub, key)
+    const identity: Identity = {
+      deviceId: res.deviceId,
+      serviceId: res.serviceId,
+      serviceName: res.serviceName,
+      host: p.host,
+      port: p.port,
+      fp: p.fp,
+      key,
+      pub,
+    }
+    await saveIdentity(identity)
+    set({ identity, error: '' })
+    await connect(identity, set, get)
+  },
+
+  async unpair() {
+    client?.stop()
+    client = null
+    await clearIdentity()
+    set({ identity: null, state: 'idle', bots: [], msgs: [], detail: '' })
+  },
+
+  async refreshBots() {
+    if (!client) return
+    const res = await client.request<{ bots: Bot[] }>('bot.list', {})
+    set({ bots: res.bots ?? [] })
+  },
+
+  async addBot(platform, credentials, label) {
+    if (!client) throw new Error('尚未连接')
+    await client.request('bot.add', { platform, credentials, label })
+    await get().refreshBots()
+  },
+
+  async startBot(id) {
+    await client?.request('bot.start', { bot_id: id })
+    await get().refreshBots()
+  },
+
+  async stopBot(id) {
+    await client?.request('bot.stop', { bot_id: id })
+    await get().refreshBots()
+  },
+
+  async removeBot(id) {
+    await client?.request('bot.remove', { bot_id: id })
+    await get().refreshBots()
+  },
+
+  async send(bot, peerId, peerKind, text, inReplyTo) {
+    if (!client) throw new Error('尚未连接')
+    const res = await client.request<{ msg_id: string; ts: number }>('msg.send', {
+      bot_id: bot.bot_id,
+      peer_id: peerId,
+      body: { plain: text },
+      in_reply_to: inReplyTo,
+    })
+    const msg: Msg = {
+      msg_id: res.msg_id,
+      bot_id: bot.bot_id,
+      peer_id: peerId,
+      peer_kind: peerKind,
+      body: { plain: text },
+      ts: res.ts || Date.now(),
+      direction: 'out',
+      in_reply_to: inReplyTo,
+    }
+    append(set, get, msg)
+  },
+
+  async history(botId, peerId) {
+    if (!client) return
+    const res = await client.request<{ messages: Omit<Msg, 'direction'>[] }>('msg.list', {
+      bot_id: botId,
+      peer_id: peerId,
+      limit: 100,
+    })
+    for (const m of res.messages ?? []) {
+      append(set, get, { ...m, direction: 'in' })
+    }
+  },
+
+  markRead(key) {
+    const read = { ...get().read, [key]: Date.now() }
+    set({ read })
+    void putKV('read', read)
+  },
+
+  clearError() {
+    set({ error: '' })
+  },
+}))
+
+function append(set: (p: Partial<State>) => void, get: () => Store, msg: Msg) {
+  if (get().msgs.some((m) => m.msg_id === msg.msg_id)) return
+  const msgs = [...get().msgs, msg].sort((a, b) => a.ts - b.ts)
+  set({ msgs })
+  void saveMessage(msg)
+  if (msg.direction === 'in' && client) {
+    void client.request('msg.ack', { msg_id: msg.msg_id }).catch(() => {})
+  }
+}
+
+async function connect(
+  identity: Identity,
+  set: (p: Partial<State>) => void,
+  get: () => Store,
+) {
+  client?.stop()
+  client = new LiantClient(
+    LiantClient.wsUrl,
+    identity,
+    {
+      onState: (state, detail) => set({ state, detail: detail ?? '' }),
+      onEvent: (env) => {
+        if (env.type === 'msg.inbound' || env.type === 'event.msg') {
+          const p = env.payload as Omit<Msg, 'direction'>
+          append(set, get, { ...p, direction: 'in' })
+          return
+        }
+        if (env.type === 'event.bot') {
+          void get().refreshBots()
+          return
+        }
+        if (env.type === 'error') {
+          const e = env.payload as { message?: string }
+          set({ error: e.message || '服务端返回错误' })
+        }
+      },
+    },
+  )
+  try {
+    await client.start()
+    await get().refreshBots()
+  } catch (err) {
+    set({ state: 'error', detail: (err as Error).message })
+  }
+}
+
+export function getClient(): LiantClient | null {
+  return client
+}
+
+export { KEYCLIENT }
+
+// ---------- 本地存储 ----------
+
+function openDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('liant', 1)
+    req.onupgradeneeded = () => {
+      const db = req.result
+      if (!db.objectStoreNames.contains('identity')) db.createObjectStore('identity')
+      if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv')
+      if (!db.objectStoreNames.contains('messages')) {
+        const m = db.createObjectStore('messages', { keyPath: 'msg_id' })
+        m.createIndex('by_bot', 'bot_id')
+      }
+    }
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+async function loadKV<T>(key: string, fallback: T): Promise<T> {
+  const db = await openDB()
+  return new Promise((resolve) => {
+    const req = db.transaction('kv', 'readonly').objectStore('kv').get(key)
+    req.onsuccess = () => resolve((req.result as T) ?? fallback)
+    req.onerror = () => resolve(fallback)
+  })
+}
+
+async function putKV(key: string, value: unknown): Promise<void> {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('kv', 'readwrite')
+    tx.objectStore('kv').put(value, key)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+async function saveMessage(msg: Msg): Promise<void> {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('messages', 'readwrite')
+    tx.objectStore('messages').put(msg)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+export async function loadMessages(): Promise<Msg[]> {
+  const db = await openDB()
+  return new Promise((resolve) => {
+    const req = db.transaction('messages', 'readonly').objectStore('messages').getAll()
+    req.onsuccess = () => resolve((req.result as Msg[]) ?? [])
+    req.onerror = () => resolve([])
+  })
+}
+
+export function deriveConversations(msgs: Msg[], read: Record<string, number>): Conversation[] {
+  const map = new Map<string, Conversation>()
+  for (const m of msgs) {
+    const key = convKey(m.bot_id, m.peer_id)
+    const conv = map.get(key) ?? {
+      key,
+      bot_id: m.bot_id,
+      peer_id: m.peer_id,
+      peer_kind: m.peer_kind,
+      title: m.sender_name || m.peer_id,
+      unread: 0,
+      last: undefined,
+    }
+    if (!conv.last || m.ts >= conv.last.ts) conv.last = m
+    if (m.direction === 'in' && m.ts > (read[key] ?? 0)) conv.unread++
+    map.set(key, conv)
+  }
+  // 群聊标题优先用 sender_name，没有就用 peer_id。
+  return [...map.values()].sort((a, b) => (b.last?.ts ?? 0) - (a.last?.ts ?? 0))
+}

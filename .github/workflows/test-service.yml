@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - 'service/**'
+      - 'web/**'
       - '.github/workflows/test-service.yml'
   pull_request:
     paths:
       - 'service/**'
+      - 'web/**'
       - '.github/workflows/test-service.yml'
   workflow_dispatch:
 
@@ -28,6 +30,18 @@ jobs:
           go-version-file: service/go.mod
           cache: true
           cache-dependency-path: service/go.sum
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build web console
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+          rm -rf ../service/internal/webui/dist
+          cp -r dist ../service/internal/webui/dist
       - name: Vet
         run: go vet ./...
       - name: Test

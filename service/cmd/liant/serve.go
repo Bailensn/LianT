@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -21,8 +22,6 @@ import (
 	"time"
 
 	"github.com/Bailensn/LianT/service/internal/botrun"
-	"github.com/skip2/go-qrcode"
-
 	"github.com/Bailensn/LianT/service/internal/config"
 	"github.com/Bailensn/LianT/service/internal/core"
 	"github.com/Bailensn/LianT/service/internal/node"
@@ -32,6 +31,8 @@ import (
 	"github.com/Bailensn/LianT/service/internal/protocol"
 	"github.com/Bailensn/LianT/service/internal/server"
 	"github.com/Bailensn/LianT/service/internal/store"
+	"github.com/Bailensn/LianT/service/internal/webui"
+	"github.com/skip2/go-qrcode"
 )
 
 // nodeDir 放节点私钥与证书；与主密钥分开，轮换节点密钥不应影响数据解密。
@@ -254,10 +255,14 @@ func pairCommand(args []string) {
 		"nonce": code.Nonce,
 		"exp":   code.Expires.Unix(),
 	})
+	// 二维码直接编码网页端的配对链接：手机相机扫一下就能打开管理页。
+	link := fmt.Sprintf("https://%s:%d/#pair=%s", host, portOf(listenAddr(cfg)),
+		base64.RawURLEncoding.EncodeToString(payload))
 	fmt.Printf("配对码：%s，%d 秒内有效\n", code.Value, int(time.Until(code.Expires).Seconds()))
 	fmt.Printf("节点指纹：%s\n", id.Fingerprint())
-	fmt.Printf("二维码内容：%s\n", payload)
-	if qr, err := qrcode.New(string(payload), qrcode.Medium); err == nil {
+	fmt.Printf("管理页：%s\n", link)
+	fmt.Printf("配对信息：%s\n", payload)
+	if qr, err := qrcode.New(link, qrcode.Medium); err == nil {
 		fmt.Println(qr.ToSmallString(false))
 		if err := os.MkdirAll("data", 0o700); err == nil {
 			if err := qr.WriteFile(512, "data/pair-qr.png"); err == nil {
@@ -265,7 +270,7 @@ func pairCommand(args []string) {
 			}
 		}
 	}
-	fmt.Println("用 Manager 扫码/相册导入，或手工输入配对码；本终端会再确认一次。")
+	fmt.Println("手机扫上面的二维码打开管理页；首次打开要信任一次证书。本终端还会再确认一次。")
 
 	httpSrv := &http.Server{Handler: appHandler(srv, coreSvc), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
@@ -399,6 +404,8 @@ func appHandler(srv *server.Server, svc *core.Core) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/v1/ws", srv.Handler())
 	mux.Handle("/v1/media/", svc.MediaHandler())
+	// 其余路径交给内嵌的网页管理端；单页应用自己处理路由。
+	mux.Handle("/", webui.Handler())
 	return mux
 }
 

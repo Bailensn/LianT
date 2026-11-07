@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">LianT</string>
-    <string name="home_title">LianT</string>
-    <string name="home_empty_title">尚未连接 Service</string>
-    <string name="home_empty_hint">配对后，这里会显示 Bot 与会话。</string>
-</resources>
