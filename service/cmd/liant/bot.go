@@ -90,12 +90,11 @@ func botAdd(args []string) {
 	if spec, ok := adapter.(platform.CredentialSpec); ok {
 		fields = spec.CredentialFields()
 		for _, f := range fields {
-			flagName := strings.ReplaceAll(f.Key, "_", "-")
-			hint := f.Label
-			if !f.Secret {
-				hint += "（不要放密钥）"
+			// 密钥字段不注册参数：只要出现在 argv 就会进 history / ps。
+			if f.Secret {
+				continue
 			}
-			fieldValues[f.Key] = fs.String(flagName, "", hint)
+			fieldValues[f.Key] = fs.String(strings.ReplaceAll(f.Key, "_", "-"), "", f.Label)
 		}
 	}
 	if err := fs.Parse(args); err != nil {
