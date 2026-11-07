@@ -14,21 +14,11 @@ A self-hosted client and service for operating chat-platform bots (QQ first; Tel
 
 ## License
 
-This repository contains multiple licensed components.
+This project is licensed as a whole under the **GNU Affero General Public License v3.0 (AGPL-3.0)**,
+covering `service/`, `web/`, and every other file in the repository.
 
-### AGPL-3.0
+The management console is no longer a separately distributed, permissively licensed client:
+it is built into the Service binary and served as a web page. Offering a modified version
+over a network therefore requires publishing the corresponding source, as AGPL-3.0 states.
 
-The following components are licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**:
-
-- `service/`
-- Root-level files (unless otherwise specified)
-
-### Apache-2.0
-
-The front-end code under `web/` is licensed under the **Apache License 2.0 (Apache-2.0)**.
-
-Each license only applies to the corresponding directory and its contents.
-
-When modifying, distributing, or redistributing this project, please comply with the license requirements of the relevant components.
-
-See the `LICENSE` file in each directory for details.
+The full terms are in the root [LICENSE](LICENSE).

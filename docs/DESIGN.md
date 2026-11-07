@@ -19,7 +19,7 @@ LianT 让用户在自己服务器上托管多个 Bot，并在自己的设备上�
 | D4 | **ECDSA P-256 节点密钥 + 指纹配对 + 固定端口** | ed25519；随机端口 + token；反代自理 | Keystore 对 ed25519 支持不稳；随机端口会漂移；反代门槛高 | 要写配对流程与本地确认 |
 | D5 | **一 bot 一进程 + 启动 reconcile** | 单进程 goroutine；交给 systemd | 前者一 panic 全挂；后者失去「点一下就能管」 | 要补 PID、进程组、退避 |
 | D6-1 | **协议：单层 JSON envelope** | 保留双层 base64 | 旧债进 v1 | 旧客户端不能直连 |
-| D6-3 | **许可证** service = AGPL-3.0、manager = Apache-2.0 | 统一许可证 | 服务端 copyleft，客户端宽松 | README 写清边界 |
+| D6-3 | **许可证** 全仓库 AGPL-3.0 | 统一许可证 | 管理端已内嵌进 Service，不再有可独立分发的宽松客户端；网络提供服务也要开源 | README 写明 |
 | D6-4 | **Pages 彻底删除**（已执行，连带 `deploy-on-release.yml`） | 移出仓库 | 不再维护下载站 | 官网另建 |
 | D7 | **首发 QQ**，Telegram 作为 v1.1 的第二个适配器；预留 `platform.Adapter` 与命名空间 ID | 首发 Telegram；或完全不预留 | Telegram 不是当前真实场景；不预留则第二个平台动核心 | 核心多三个约束（§4.1） |
 | D8 | **预留消息格式适配器**：核心持 `NDoc`，平台标记的渲染/解析由 `format` 适配器负责；v1 只实现 `qq-plain` + 解析降级 | 直接在适配器里拼字符串；或做「万能 Markdown」 | 前者无法复用/单测；后者是提前抽象 | 核心多一层 `NDoc`；Manager 必须能渲染 `doc` |
@@ -273,8 +273,7 @@ LianT/
 │   │   └── store/        会话 / 消息 / 媒体（P0 创建）
 │   ├── go.mod
 │   └── .gitignore
-├── manager/              客户端（Apache-2.0）
-│   └── android/          Compose 骨架（P1，已从 Sort 拆出 UI 外壳）
+├── web/                  网页管理端（随 Service 一起内嵌，AGPL-3.0）
 └── .github/workflows/    service 构建（手动触发）
 ```
 

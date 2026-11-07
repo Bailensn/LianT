@@ -14,21 +14,11 @@
 
 ## 许可证
 
-本仓库采用多许可证结构。
+本项目整体采用 **GNU Affero General Public License v3.0 (AGPL-3.0)** 授权，
+覆盖 `service/`、`web/` 与其余全部文件。
 
-### AGPL-3.0
+这与项目形态一致：管理端已经合并进 Service 二进制，由 Service 通过网页提供，
+不再是可独立分发的宽松许可客户端。修改后通过网络提供服务，同样需要按 AGPL-3.0
+公开对应源码。
 
-以下目录及文件采用 **GNU Affero General Public License v3.0 (AGPL-3.0)** 授权：
-
-- `service/`
-- 根目录文件（除特别声明外）
-
-### Apache-2.0
-
-`web/` 目录下的前端代码与根目录中标注的文件采用 **Apache License 2.0 (Apache-2.0)** 授权。
-
-不同许可证仅适用于其对应目录及其中的代码。
-
-在修改、分发或重新发布本项目时，请遵守对应组件许可证中的要求。
-
-详细信息请查看各目录下的 `LICENSE` 文件。
+完整条款见根目录 [LICENSE](LICENSE)。
