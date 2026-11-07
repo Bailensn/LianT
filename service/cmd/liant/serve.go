@@ -83,6 +83,7 @@ func buildServer(
 		Pairer:    pairer,
 		Confirm:    confirm,
 		AllowNames: cfg.Pair.Allow,
+		Version:    version,
 		Audit: func(ctx context.Context, ev server.AuditEvent) {
 			if err := db.AddAudit(ctx, store.Audit{
 				Kind:     ev.Kind,

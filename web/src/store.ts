@@ -270,13 +270,32 @@ async function connect(
     {
       onState: (state, detail) => set({ state, detail: detail ?? '' }),
       onEvent: (env) => {
+        if (env.type === 'auth.ok') {
+          // 服务端换版本了说明刚重新部署，直接刷新一次拿到新前端。
+          const v = (env.payload as { version?: string }).version
+          if (v) {
+            const prev = localStorage.getItem('liant.server.version')
+            localStorage.setItem('liant.server.version', v)
+            if (prev && prev !== v) location.reload()
+          }
+          return
+        }
         if (env.type === 'msg.inbound' || env.type === 'event.msg') {
           const p = env.payload as Omit<Msg, 'direction'>
           append(set, get, { ...p, direction: 'in' })
           return
         }
         if (env.type === 'event.bot') {
-          void get().refreshBots()
+          // 服务端只推变化的那一台，按 bot_id 就地打补丁，不整表重拉。
+          const p = env.payload as { bot_id: string; status: string; reason?: string }
+          const bots = get().bots.map((b) => (b.bot_id === p.bot_id ? { ...b, status: p.status } : b))
+          set({ bots })
+          return
+        }
+        if (env.type === 'event.audit') {
+          const entry = env.payload as AuditEntry
+          set({ audit: [entry, ...get().audit].slice(0, 20) })
+          if (entry.kind === 'device.revoke' || entry.kind === 'pair.ok') void get().loadDevices()
           return
         }
         if (env.type === 'error') {
@@ -288,9 +307,20 @@ async function connect(
   )
   try {
     await client.start()
-    await get().refreshBots()
-    await get().loadDevices()
-    await get().loadAudit()
+    // 首屏一次拿全：bots + devices + audit，省掉三个来回。
+    try {
+      const snap = await client.request<{
+        bots: Bot[]
+        devices: Device[]
+        audit: AuditEntry[]
+      }>('state.snapshot', {})
+      set({ bots: snap.bots ?? [], devices: snap.devices ?? [], audit: snap.audit ?? [] })
+    } catch {
+      // 老服务端没有这个方法，退回逐个拉取。
+      await get().refreshBots()
+      await get().loadDevices()
+      await get().loadAudit()
+    }
   } catch (err) {
     set({ state: 'error', detail: (err as Error).message })
   }

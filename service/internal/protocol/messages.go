@@ -30,11 +30,14 @@ const (
 	TypeMsgAck     = "msg.ack"
 	TypeMediaFetch = "media.fetch"
 
+	TypeStateSnapshot = "state.snapshot"
+
 	TypeDeviceList   = "device.list"
 	TypeDeviceRevoke = "device.revoke"
 	TypeAuditList    = "audit.list"
 
-	TypeEventBot = "event.bot"
+	TypeEventBot   = "event.bot"
+	TypeEventAudit = "event.audit"
 	TypeEventMsg = "event.msg"
 
 	TypeError = "error"
@@ -127,6 +130,8 @@ type Retention struct {
 
 // AuthOK 表示认证通过并下发服务端能力。
 type AuthOK struct {
+	// Version 是服务端版本，客户端据此发现新部署并自动刷新页面。
+	Version string `json:"version,omitempty"`
 	ServiceTime int64     `json:"service_time"`
 	Caps        []string  `json:"caps"`
 	Retention   Retention `json:"retention"`
@@ -333,4 +338,12 @@ type AuditList struct {
 // AuditListOK 是 audit.list 的响应，新的在前。
 type AuditListOK struct {
 	Entries []AuditEntry `json:"entries"`
+}
+
+// StateSnapshot 是一次性把首屏需要的数据全给客户端，省掉三个来回。
+type StateSnapshot struct {
+	Bots    []Bot        `json:"bots"`
+	Devices []DeviceInfo `json:"devices"`
+	Audit   []AuditEntry `json:"audit"`
+	Caps    []string     `json:"caps"`
 }

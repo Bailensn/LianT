@@ -27,6 +27,49 @@ func (c *Core) ListDevices(ctx context.Context, _ server.Session, _ json.RawMess
 	return protocol.DeviceListOK{Devices: out}, nil
 }
 
+// Snapshot 一次返回首屏需要的全部数据。
+func (c *Core) Snapshot(ctx context.Context, _ server.Session, _ json.RawMessage) (any, *protocol.Error) {
+	bots, err := c.opt.Store.Bots(ctx)
+	if err != nil {
+		return nil, internal(err)
+	}
+	devs, err := c.opt.Store.Devices(ctx)
+	if err != nil {
+		return nil, internal(err)
+	}
+	entries, err := c.opt.Store.RecentAudit(ctx, 20)
+	if err != nil {
+		return nil, internal(err)
+	}
+
+	out := protocol.StateSnapshot{Caps: protocol.ServerCaps()}
+	out.Bots = make([]protocol.Bot, 0, len(bots))
+	for _, b := range bots {
+		out.Bots = append(out.Bots, toProtocolBot(b))
+	}
+	out.Devices = make([]protocol.DeviceInfo, 0, len(devs))
+	for _, d := range devs {
+		out.Devices = append(out.Devices, protocol.DeviceInfo{
+			DeviceID:   d.ID,
+			Name:       d.Name,
+			CreatedAt:  d.CreatedAt.UnixMilli(),
+			LastSeenAt: d.LastSeenAt.UnixMilli(),
+		})
+	}
+	out.Audit = make([]protocol.AuditEntry, 0, len(entries))
+	for _, e := range entries {
+		out.Audit = append(out.Audit, protocol.AuditEntry{
+			TS:       e.TS,
+			Kind:     e.Kind,
+			DeviceID: e.DeviceID,
+			Name:     e.Name,
+			IP:       e.IP,
+			Reason:   e.Reason,
+		})
+	}
+	return out, nil
+}
+
 // RevokeDevice 删除一台设备；它当前的连接会在下一次写入时被断开。
 func (c *Core) RevokeDevice(ctx context.Context, sess server.Session, raw json.RawMessage) (any, *protocol.Error) {
 	var req protocol.DeviceRevoke
@@ -42,12 +85,21 @@ func (c *Core) RevokeDevice(ctx context.Context, sess server.Session, raw json.R
 	if err := c.opt.Store.DeleteDevice(ctx, req.DeviceID); err != nil {
 		return nil, internal(err)
 	}
-	// 吊销本身也是一条安全事件。
-	_ = c.opt.Store.AddAudit(ctx, store.Audit{
+	// 吊销本身也是一条安全事件，顺便推给所有客户端。
+	entry := store.Audit{
 		Kind:     "device.revoke",
 		DeviceID: req.DeviceID,
 		Name:     "由 " + sess.ManagerID + " 吊销",
-	})
+	}
+	_ = c.opt.Store.AddAudit(ctx, entry)
+	if c.opt.Broadcaster != nil {
+		c.opt.Broadcaster.Broadcast(protocol.TypeEventAudit, protocol.AuditEntry{
+			TS:       entry.TS,
+			Kind:     entry.Kind,
+			DeviceID: entry.DeviceID,
+			Name:     entry.Name,
+		})
+	}
 	// 直接把吊销后的列表回给调用方，省一次往返。
 	return c.ListDevices(ctx, sess, nil)
 }

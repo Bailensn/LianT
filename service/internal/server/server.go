@@ -15,7 +15,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -73,6 +75,9 @@ type Options struct {
 
 	// Audit 记录安全事件；可为空。
 	Audit func(ctx context.Context, ev AuditEvent)
+
+	// Version 会随 auth.ok 下发，客户端用来判断是否需要刷新页面。
+	Version string
 
 	Retention  protocol.Retention
 	MaxDevices int
@@ -148,8 +153,9 @@ func New(opt Options) (*Server, error) {
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  4096,
 			WriteBufferSize: 4096,
-			// v1 只服务非浏览器客户端：带 Origin 的一律拒绝（协议 §10 第 1 条）。
-			CheckOrigin: func(r *http.Request) bool { return r.Header.Get("Origin") == "" },
+			// 网页端与 WSS 同源：只接受同源页面，其余带 Origin 的一律拒绝。
+			CheckOrigin:      sameOrigin,
+			EnableCompression: true,
 		},
 	}, nil
 }
@@ -222,12 +228,36 @@ type conn struct {
 }
 
 func (c *conn) audit(kind, deviceID, name, reason string) {
-	if c.s.opt.Audit == nil {
-		return
+	ev := AuditEvent{Kind: kind, DeviceID: deviceID, Name: name, IP: c.ip, Reason: reason}
+	if c.s.opt.Audit != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		c.s.opt.Audit(ctx, ev)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	c.s.opt.Audit(ctx, AuditEvent{Kind: kind, DeviceID: deviceID, Name: name, IP: c.ip, Reason: reason})
+	// 推给在线客户端，设置页不用手动刷新。
+	c.s.Broadcast(protocol.TypeEventAudit, protocol.AuditEntry{
+		TS:       c.s.now().UnixMilli(),
+		Kind:     kind,
+		DeviceID: deviceID,
+		Name:     name,
+		IP:       c.ip,
+		Reason:   reason,
+	})
+}
+
+// sameOrigin 只放行同源页面的 WebSocket 握手。
+//
+// 浏览器一定会带 Origin；命令行客户端不带，直接放行。
+func sameOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Host, r.Host)
 }
 
 func (c *conn) handshake() error {
@@ -316,6 +346,7 @@ func (c *conn) handleAuth(env protocol.Envelope, challenge protocol.AuthChalleng
 	c.s.addConn(c)
 	c.ws.SetReadDeadline(time.Time{})
 	return c.write(protocol.TypeAuthOK, env.ID, protocol.AuthOK{
+		Version:     c.s.opt.Version,
 		ServiceTime: c.s.now().UnixMilli(),
 		Caps:        protocol.ServerCaps(),
 		Retention:   c.s.opt.Retention,
