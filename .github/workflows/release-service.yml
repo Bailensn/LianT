@@ -1,15 +1,17 @@
 name: Release Service (pre-release)
 
-# tag 约定：service-v<版本>-<7位哈希>（兼容早期的 6 位），例如 service-v1.0.0-a1b2c3
+# 每次 push 到 main 自动发 pre-release：service-v1.0.0-Alpha-<7位哈希>
+# 也支持手动重发已有 tag；tag 形如 service-v1.0.0-Alpha-a1b2c3d
 on:
   push:
+    branches: [main]
     tags:
       - 'service-v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: '已存在的 tag（例如 service-v1.0.0-a1b2c3）'
-        required: true
+        description: '可选：重发某个已存在的 tag；留空则按当前提交自动生成'
+        required: false
 
 permissions:
   contents: write
@@ -34,13 +36,21 @@ jobs:
       - name: Compute version
         id: meta
         run: |
-          TAG="${{ inputs.tag || github.ref_name }}"
+          set -euo pipefail
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="service-v1.0.0-Alpha-$(git rev-parse --short=7 HEAD)"
+          fi
           VERSION="${TAG#service-}"
           if ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-(Alpha|Beta|RC[0-9]+)-[0-9a-f]{6,7}$'; then
-            echo "版本格式应为 v<主>.<次>.<修>-<Alpha|Beta|RCn>-<7位哈希>，得到：$VERSION" >&2
+            echo "版本格式应为 v<主>.<次>.<修>-<Alpha|Beta|RCn>-<6或7位哈希>，得到：$VERSION" >&2
             exit 1
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Install NDK (android 目标需要 cgo)
         run: |
@@ -78,7 +88,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
+          tag_name: ${{ steps.meta.outputs.tag }}
           name: LianT Service ${{ steps.meta.outputs.version }}
           prerelease: true
           files: dist/*

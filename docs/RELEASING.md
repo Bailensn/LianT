@@ -32,6 +32,13 @@ versionCode = total_runs - version-code-base.txt 里的基线   （最小 1）
 
 `versionName` 仍然保留完整的 `v1.0.0-Alpha-<hash>`。
 
+## 触发方式
+
+**每次 push 到 `main` 都会自动发对应组件的 pre-release**，版本固定为
+`v1.0.0-Alpha-<7 位哈希>`（基线不变，只换哈希）。不会发正式 release。
+
+也可以手动重发：`workflow_dispatch` 传已有 tag，或按下面的约定打 tag 推送。
+
 ## Tag
 
 每个组件独立打 tag，前缀区分：
