@@ -77,8 +77,10 @@ func buildServer(
 	if factory != nil {
 		devices = factory(db)
 	}
+	user, pass := basicAuthConfig(cfg)
 	srv, err := server.New(server.Options{
 		Identity:  id,
+		AutoPair:  user != "" && pass != "",
 		Devices:   devices,
 		Pairer:    pairer,
 		Confirm:    confirm,

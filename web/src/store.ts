@@ -7,7 +7,7 @@ import {
   saveIdentity,
   type Identity,
 } from './lib/identity'
-import { LiantClient, pairDevice, type ConnState } from './lib/ws'
+import { LiantClient, pairDevice, selfRegister, type ConnState } from './lib/ws'
 
 export type Bot = {
   bot_id: string
@@ -82,6 +82,7 @@ type Actions = {
   boot: () => Promise<void>
   reconnect: () => Promise<void>
   pair: (input: string, deviceName: string) => Promise<void>
+  pairAuto: (deviceName: string) => Promise<void>
   unpair: () => Promise<void>
   refreshBots: () => Promise<void>
   addBot: (platform: string, credentials: Record<string, string>, label?: string) => Promise<string>
@@ -143,6 +144,25 @@ export const useStore = create<State & Actions>((set, get) => ({
       host: p.host,
       port: p.port,
       fp: p.fp,
+      key,
+      pub,
+    }
+    await saveIdentity(identity)
+    set({ identity, error: '' })
+    await connect(identity, set, get)
+  },
+
+  async pairAuto(deviceName) {
+    const { key, pub } = await createKey()
+    const res = await selfRegister(deviceName || '网页端', pub)
+    const port = Number(location.port || (location.protocol === 'https:' ? 443 : 80))
+    const identity: Identity = {
+      deviceId: res.deviceId,
+      serviceId: res.serviceId,
+      serviceName: res.serviceName,
+      host: location.hostname,
+      port,
+      fp: res.serviceId,
       key,
       pub,
     }

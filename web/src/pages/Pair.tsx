@@ -4,6 +4,8 @@ import { createKey, parsePair } from '../lib/identity'
 
 export default function Pair() {
   const pair = useStore((s) => s.pair)
+  const pairAuto = useStore((s) => s.pairAuto)
+  const [autoBusy, setAutoBusy] = useState(false)
   const [text, setText] = useState('')
   const [name, setName] = useState('网页端')
   const [busy, setBusy] = useState(false)
@@ -44,6 +46,33 @@ export default function Pair() {
           在服务器上执行 <code className="rounded bg-[var(--bg-sunken)] px-1.5 py-0.5 font-mono text-[13px]">LianT pair</code>
           ，把终端里的配对信息粘贴到这里。
         </p>
+      </div>
+
+      <button
+        onClick={async () => {
+          setAutoBusy(true)
+          setError('')
+          try {
+            await pairAuto(name)
+          } catch (err) {
+            setError((err as Error).message)
+          } finally {
+            setAutoBusy(false)
+          }
+        }}
+        disabled={autoBusy}
+        className="h-12 w-full rounded-2xl bg-[var(--accent)] text-[17px] font-semibold text-white transition active:scale-[0.98] disabled:opacity-40"
+      >
+        {autoBusy ? '正在登记…' : '直接进入'}
+      </button>
+      <p className="mt-2 mb-6 px-1 text-[12px] leading-relaxed text-[var(--text-3)]">
+        服务端开启了登录认证时，不必再输配对码：这台浏览器会直接登记成一个设备。
+      </p>
+
+      <div className="mb-4 flex items-center gap-3">
+        <div className="h-px flex-1 bg-[var(--sep)]" />
+        <span className="text-[12px] text-[var(--text-3)]">或者用配对码</span>
+        <div className="h-px flex-1 bg-[var(--sep)]" />
       </div>
 
       <div className="card mb-4 overflow-hidden">
@@ -96,7 +125,7 @@ export default function Pair() {
         disabled={!parsed || busy}
         className="h-12 w-full rounded-2xl bg-[var(--accent)] text-[17px] font-semibold text-white transition active:scale-[0.98] disabled:opacity-40"
       >
-        {busy ? '正在配对…' : '连接'}
+        {busy ? '正在配对…' : '用配对码连接'}
       </button>
 
       <p className="mt-4 px-1 text-[12px] leading-relaxed text-[var(--text-3)]">

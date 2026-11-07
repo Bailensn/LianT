@@ -217,6 +217,53 @@ export function uuid(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+// 已登录 Basic 认证时的自助登记：不需要配对码，直接登记这台浏览器。
+export async function selfRegister(
+  name: string,
+  pub: string,
+): Promise<{ deviceId: string; serviceId: string; serviceName: string }> {
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
+  const ws = new WebSocket(`${scheme}://${location.host}/v1/ws`)
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      ws.close()
+      reject(new Error('登记超时'))
+    }, 15_000)
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        v: 1,
+        id: uuid(),
+        type: 'pair.request',
+        ts: Date.now(),
+        payload: { ticket: '', manager_name: name, manager_pub: pub, sig: '' },
+      }))
+    }
+    ws.onmessage = (ev) => {
+      let env: Envelope
+      try {
+        env = JSON.parse(String(ev.data))
+      } catch {
+        return
+      }
+      if (env.type === 'pair.ok') {
+        const ok = env.payload as { device_id: string; service_id: string; service_name: string }
+        window.clearTimeout(timer)
+        ws.close()
+        resolve({ deviceId: ok.device_id, serviceId: ok.service_id, serviceName: ok.service_name })
+      } else if (env.type === 'pair.denied') {
+        const d = env.payload as { reason: string }
+        window.clearTimeout(timer)
+        ws.close()
+        reject(new Error(d.reason === 'no_ticket' ? '服务端没有开启免配对码接入' : reasonText(d.reason)))
+      }
+    }
+    ws.onerror = () => {
+      window.clearTimeout(timer)
+      reject(new Error('无法连接到服务'))
+    }
+  })
+}
+
 // 一次性配对：连上后发 pair.request，成功返回 device_id。
 export async function pairDevice(
   p: PairPayload,

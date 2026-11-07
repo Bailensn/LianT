@@ -115,3 +115,48 @@ docker compose build --no-cache       # 重新构建
 - 网页端与 WSS 同源，反代必须同时转发 `/` 与 `/v1/ws`，不要只转发其中一个。
 - 换节点密钥等于换身份：卷里的 `data/node` 删掉后，所有已配对设备都要重新配对。
 - 镜像同时发布 `linux/amd64` 与 `linux/arm64`，树莓派和 x86 服务器都能直接跑。
+
+## 已有 Nginx / Caddy 时
+
+用覆盖文件把服务收到回环地址，交给宿主机反代：
+
+```bash
+LIANT_BASIC_AUTH='admin:换成你的密码' \
+  docker compose -f docker-compose.yml -f docker-compose.external-proxy.yml up -d
+```
+
+Nginx：
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name lt.lensn.xyz;
+
+    ssl_certificate     /etc/letsencrypt/live/lt.lensn.xyz/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/lt.lensn.xyz/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8443;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 1h;
+    }
+}
+```
+
+Caddy：
+
+```caddyfile
+lt.lensn.xyz {
+    reverse_proxy 127.0.0.1:8443
+}
+```
+
+两处必须都在：`/` 与 `/v1/ws` 走同一个 server 块，WebSocket 的 `Upgrade` 头不能丢。
+
+配了 `LIANT_BASIC_AUTH` 之后，浏览器登录完直接点「直接进入」即可，
+不需要配对码——服务端把「通过 Basic 认证」当作授权，设备自动登记并出现在设置页。

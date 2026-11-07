@@ -73,6 +73,10 @@ type Options struct {
 	// 空表示不限制（仍然需要终端确认）。
 	AllowNames []string
 
+	// AutoPair 允许已通过 HTTP 基本认证的连接跳过配对码直接登记设备。
+	// 只有在公网前面挂了 Basic 认证时才应该打开。
+	AutoPair bool
+
 	// Audit 记录安全事件；可为空。
 	Audit func(ctx context.Context, ev AuditEvent)
 
@@ -208,7 +212,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c := &conn{s: s, ws: ws, ip: ip}
+	c := &conn{s: s, ws: ws, ip: ip, autoPair: s.opt.AutoPair}
 	defer s.removeConn(c)
 	if err := c.handshake(); err != nil {
 		s.opt.Logf("握手结束: %v", err)
@@ -219,8 +223,9 @@ type conn struct {
 	s      *Server
 	ws     *websocket.Conn
 	ip     string
-	sess   Session
-	authed bool
+	sess     Session
+	authed   bool
+	autoPair bool
 	failed int
 
 	// 推送与响应可能来自不同 goroutine，写入口必须串行。
@@ -371,8 +376,11 @@ func (c *conn) handlePair(env protocol.Envelope) error {
 		return c.denyPair(env, "devices_full")
 	}
 
+	// 已通过 Basic 认证的网页端可以不带配对码直接登记。
+	auto := c.autoPair && req.Ticket == ""
+
 	pending, ok := c.s.opt.Pairer.Pending()
-	if !ok {
+	if !ok && !auto {
 		return c.denyPair(env, "no_ticket")
 	}
 	pub, err := node.ParsePublicKey(req.ManagerPub)
@@ -404,7 +412,8 @@ func (c *conn) handlePair(env protocol.Envelope) error {
 		return c.denyPair(env, "name_not_allowed")
 	}
 	fp := node.PinnedFingerprint(pub)
-	if !c.s.opt.Confirm(ctx, name, fp, pub) {
+	// 自动登记没有终端可确认，信任已经通过的那道 Basic 认证。
+	if !auto && !c.s.opt.Confirm(ctx, name, fp, pub) {
 		return c.denyPair(env, "denied")
 	}
 

@@ -1,0 +1,11 @@
+# 已经有自己的 Nginx / Caddy 时用这个覆盖文件：
+#
+#   LIANT_BASIC_AUTH='admin:密码' docker compose -f docker-compose.yml -f docker-compose.external-proxy.yml up -d
+#
+# 服务只监听 127.0.0.1:8443，由宿主机的反代转发并终止 TLS。
+services:
+  liant:
+    ports:
+      - "127.0.0.1:8443:8443"
+    environment:
+      LIANT_NO_TLS: "1"
