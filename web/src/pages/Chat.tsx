@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { convKey, useStore } from '../store'
 import { formatTime } from '../ui/Common'
@@ -15,6 +15,8 @@ export default function Chat() {
 
   const [text, setText] = useState('')
   const [collapsed, setCollapsed] = useState(false)
+  const [historyError, setHistoryError] = useState('')
+  const [loadingHistory, setLoadingHistory] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
@@ -32,9 +34,21 @@ export default function Chat() {
     markRead(key)
   }, [key, list.length, markRead])
 
-  useEffect(() => {
-    void history(botId, peerId)
+  const loadHistory = useCallback(async () => {
+    setHistoryError('')
+    setLoadingHistory(true)
+    try {
+      await history(botId, peerId)
+    } catch (err) {
+      setHistoryError((err as Error).message)
+    } finally {
+      setLoadingHistory(false)
+    }
   }, [botId, peerId, history])
+
+  useEffect(() => {
+    void loadHistory()
+  }, [loadHistory])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' })
@@ -94,7 +108,18 @@ export default function Chat() {
         className="flex-1 overflow-y-auto px-4 py-4 no-scrollbar"
         onScroll={(e) => setCollapsed(e.currentTarget.scrollTop > 24)}
       >
-        {list.length === 0 && (
+        {loadingHistory && list.length === 0 && (
+          <p className="mt-16 text-center text-[13px] text-[var(--text-3)]">正在加载历史…</p>
+        )}
+        {historyError && (
+          <div className="mx-2 mt-4 rounded-2xl bg-[color-mix(in_oklab,var(--danger)_12%,transparent)] p-3 text-[13px] leading-relaxed text-[var(--danger)]">
+            历史消息拉取失败：{historyError}
+            <button onClick={() => void loadHistory()} className="ml-2 underline">
+              重试
+            </button>
+          </div>
+        )}
+        {!loadingHistory && !historyError && list.length === 0 && (
           <p className="mt-16 text-center text-[13px] text-[var(--text-3)]">还没有消息</p>
         )}
         {list.map((m, i) => {
