@@ -22,6 +22,8 @@ services:
       TZ: Asia/Shanghai
       # 后台容器没有终端，配对确认由「能执行 pair」替代
       LIANT_CONFIRM: auto
+      # 公网暴露时请设置，格式 user:password；留空则不启用
+      LIANT_BASIC_AUTH: "${LIANT_BASIC_AUTH:-}"
     # 容器内不需要任何特权：无 capabilities、不可提权、根文件系统只读
     security_opt:
       - no-new-privileges:true

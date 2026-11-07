@@ -13,6 +13,8 @@ set -euo pipefail
 DIR="${LIANT_DIR:-$HOME/liant}"
 PORT="${LIANT_PORT:-8443}"
 DOMAIN="${LIANT_DOMAIN:-}"
+BASIC_USER="${LIANT_USER:-admin}"
+BASIC_PASS="${LIANT_PASSWORD:-}"
 IMAGE="${LIANT_IMAGE:-ghcr.io/bailensn/liant:latest}"
 
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -20,6 +22,10 @@ die() { printf '\033[1;31m错误:\033[0m %s\n' "$*" >&2; exit 1; }
 
 command -v docker >/dev/null 2>&1 || die "没有找到 docker，先安装 Docker：https://docs.docker.com/engine/install/"
 docker compose version >/dev/null 2>&1 || die "需要 docker compose 插件，而不是旧的 docker-compose"
+
+if [ -z "$BASIC_PASS" ]; then
+  BASIC_PASS=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16 || true)
+fi
 
 say "安装目录：$DIR"
 mkdir -p "$DIR"
@@ -46,6 +52,7 @@ services:
     environment:
       TZ: ${TZ:-Asia/Shanghai}
       LIANT_CONFIRM: auto
+      LIANT_BASIC_AUTH: "$BASIC_USER:$BASIC_PASS"
       LIANT_NO_TLS: "1"
     security_opt:
       - no-new-privileges:true
@@ -91,6 +98,7 @@ services:
     environment:
       TZ: ${TZ:-Asia/Shanghai}
       LIANT_CONFIRM: auto
+      LIANT_BASIC_AUTH: "$BASIC_USER:$BASIC_PASS"
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -127,6 +135,8 @@ cat <<EOF
 部署完成。
 
   管理页：$PUBLIC
+  账号：  $BASIC_USER
+  密码：  $BASIC_PASS
   数据卷：liant_data
   配置：  $DIR/docker-compose.yml
 
@@ -140,5 +150,7 @@ cat <<EOF
   docker compose logs -f liant     # 看日志
   docker compose restart liant     # 重启
   docker compose down              # 停止
+
+登录凭据存在 $DIR/docker-compose.yml 的 LIANT_BASIC_AUTH 里，忘了就改那里再 docker compose up -d。
 
 EOF

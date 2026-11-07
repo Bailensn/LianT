@@ -207,7 +207,7 @@ func serveCommand(args []string) {
 
 	go purgeLoop(db)
 
-	httpSrv := &http.Server{Handler: appHandler(srv, coreSvc), ReadHeaderTimeout: 10 * time.Second}
+	httpSrv := &http.Server{Handler: withBasicAuth(appHandler(srv, coreSvc), db, cfg), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		var err error
 		if plain {
@@ -357,7 +357,7 @@ func pairCommand(args []string) {
 		os.Exit(1)
 	}
 
-	httpSrv := &http.Server{Handler: appHandler(srv, coreSvc), ReadHeaderTimeout: 10 * time.Second}
+	httpSrv := &http.Server{Handler: withBasicAuth(appHandler(srv, coreSvc), db, cfg), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		var err error
 		if noTLSRequested(false) {
@@ -488,6 +488,36 @@ func interfaceIPv4() string {
 		}
 	}
 	return fallback
+}
+
+// basicAuthConfig 取账号密码：环境变量优先，其次配置文件。
+func basicAuthConfig(cfg config.Config) (string, string) {
+	if v := strings.TrimSpace(os.Getenv("LIANT_BASIC_AUTH")); v != "" {
+		if user, pass, ok := strings.Cut(v, ":"); ok {
+			return strings.TrimSpace(user), pass
+		}
+	}
+	return cfg.Auth.BasicUser, cfg.Auth.BasicPass
+}
+
+// withBasicAuth 在设置了账号密码时挂上 HTTP Basic 认证。
+func withBasicAuth(h http.Handler, db *store.Store, cfg config.Config) http.Handler {
+	user, pass := basicAuthConfig(cfg)
+	if user == "" && pass == "" {
+		return h
+	}
+	if user == "" || pass == "" {
+		slog.Error("基本认证只配了一半，已忽略", "user_set", user != "", "pass_set", pass != "")
+		return h
+	}
+	slog.Info("已启用 HTTP 基本认证", "user", user)
+	return basicAuth(h, user, pass, func(ip string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := db.AddAudit(ctx, store.Audit{Kind: "basic.fail", IP: ip}); err != nil {
+			slog.Warn("记录认证失败失败", "err", err)
+		}
+	})
 }
 
 // appHandler 同时挂 WSS 与媒体下载；两者共用同一个 TLS 端口。

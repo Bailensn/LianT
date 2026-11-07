@@ -40,6 +40,28 @@ echo "$GITHUB_TOKEN" | docker login ghcr.io -u <你的用户名> --password-stdi
 数据全在命名卷 `liant_data` 里，包含配置、节点密钥和 SQLite：
 升级镜像后数据仍在，删掉卷等于重新开始。
 
+## 账号密码
+
+暴露到公网时建议加一层 HTTP 基本认证，浏览器会弹出登录框：
+
+```yaml
+environment:
+  LIANT_BASIC_AUTH: "admin:换成你的密码"
+```
+
+一键脚本会自动生成随机密码并打印出来。认证挡在网页、`/v1/ws` 与媒体下载前面，
+同一来源每分钟失败 10 次后会被限流；失败会写进安全日志。
+
+不用 Docker 时等价命令：
+
+```bash
+export LIANT_BASIC_AUTH='admin:密码'
+./LianT serve
+# 或写进配置
+./LianT config set auth.user admin
+./LianT config set auth.pass 密码
+```
+
 ## 首次配对
 
 `pair` 需要终端交互，用一次性容器接进同一个卷：
