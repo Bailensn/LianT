@@ -5,7 +5,7 @@ plugins {
 
 // 版本由发布流水线用 -PversionName/-PversionCode 注入；本地默认 v1.0.0-Alpha。
 val appVersionName = providers.gradleProperty("versionName").getOrElse("v1.0.0-Alpha")
-val appVersionCode = providers.gradleProperty("versionCode").getOrElse("10000").toInt()
+val appVersionCode = providers.gradleProperty("versionCode").getOrElse("1000000").toInt()
 
 android {
     namespace = "com.bailensn.liant"
