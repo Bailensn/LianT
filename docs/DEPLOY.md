@@ -53,6 +53,9 @@ CLI 会直接拒绝密钥字段的 `--cred`。`--cred-file` 的内容形如：
 ./LianT pair --host liant.example.com   # 有域名/反代时
 ```
 
+配对成功后 `pair` **不会退出**，会继续以服务模式运行（Bot 也会被认领），
+所以之后不需要再单独 `serve`；要停止按 Ctrl+C。
+
 二维码里的 `host` 按「`--host` > `config.connect.address` > 本机非回环 IPv4 > 主机名」取值；
 自动探测只适合局域网，跨网必须显式给 `--host` 或先 `LianT config set connect.address …`。
 

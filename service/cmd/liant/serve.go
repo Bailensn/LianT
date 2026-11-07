@@ -138,27 +138,10 @@ func serveCommand(_ []string) {
 	}
 	defer db.Close()
 
-	manager, err := botrun.New(botrun.Options{
-		Store:  db,
-		Ingest: coreSvc,
-		OnStatus: func(botID string, st platform.Status) {
-			reason := st.Reason
-			srv.Broadcast(protocol.TypeEventBot, protocol.EventBot{
-				BotID:  botID,
-				Status: st.State,
-				Reason: reason,
-			})
-		},
-	})
+	manager, err := startBotManager(srv, db, coreSvc)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "初始化 Bot 管理器失败：", err)
 		os.Exit(1)
-	}
-	coreSvc.SetController(manager)
-	if started, err := manager.Reconcile(context.Background()); err != nil {
-		log.Printf("认领已有 Bot 失败: %v", err)
-	} else {
-		log.Printf("已认领 %d 个 Bot", started)
 	}
 	defer manager.Shutdown()
 
@@ -181,7 +164,32 @@ func serveCommand(_ []string) {
 	_ = httpSrv.Shutdown(ctx)
 }
 
-// pairCommand 打一次配对码，等手机配对成功后退出。
+// startBotManager 构造并认领 Bot；serve 与 pair 共用。
+func startBotManager(srv *server.Server, db *store.Store, coreSvc *core.Core) (*botrun.Manager, error) {
+	manager, err := botrun.New(botrun.Options{
+		Store:  db,
+		Ingest: coreSvc,
+		OnStatus: func(botID string, st platform.Status) {
+			srv.Broadcast(protocol.TypeEventBot, protocol.EventBot{
+				BotID:  botID,
+				Status: st.State,
+				Reason: st.Reason,
+			})
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	coreSvc.SetController(manager)
+	if started, err := manager.Reconcile(context.Background()); err != nil {
+		log.Printf("认领已有 Bot 失败: %v", err)
+	} else {
+		log.Printf("已认领 %d 个 Bot", started)
+	}
+	return manager, nil
+}
+
+// pairCommand 打一次配对码；配对成功后继续以服务模式运行。
 func pairCommand(args []string) {
 	cfg := loadConfigOrDie()
 
@@ -197,7 +205,7 @@ func pairCommand(args []string) {
 	}
 
 	watcher := &pairWatcher{done: make(chan struct{})}
-	srv, id, db, _, err := buildServer(confirmTerminal, pairer, func(db *store.Store) server.DeviceStore {
+	srv, id, db, coreSvc, err := buildServer(confirmTerminal, pairer, func(db *store.Store) server.DeviceStore {
 		watcher.Store = db
 		return watcher
 	})
@@ -241,7 +249,7 @@ func pairCommand(args []string) {
 	}
 	fmt.Println("用 Manager 扫码/相册导入，或手工输入配对码；本终端会再确认一次。")
 
-	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	httpSrv := &http.Server{Handler: appHandler(srv, coreSvc), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := serveTLS(httpSrv, id, listenAddr(cfg)); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fmt.Fprintln(os.Stderr, "服务退出：", err)
@@ -253,7 +261,7 @@ func pairCommand(args []string) {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	select {
 	case <-watcher.done:
-		fmt.Println("配对成功，设备已登记。")
+		fmt.Println("配对成功，设备已登记；继续运行服务（Ctrl+C 退出）。")
 	case <-time.After(time.Until(code.Expires) + 2*time.Minute):
 		fmt.Fprintln(os.Stderr, "等待配对超时。")
 		os.Exit(1)
@@ -261,6 +269,16 @@ func pairCommand(args []string) {
 		fmt.Fprintln(os.Stderr, "已取消。")
 		os.Exit(1)
 	}
+	// 配对完成后不要退出：Manager 会立刻换一条新连接认证，服务得还在。
+	manager, err := startBotManager(srv, db, coreSvc)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "初始化 Bot 管理器失败：", err)
+		os.Exit(1)
+	}
+	defer manager.Shutdown()
+	go purgeLoop(db)
+	<-stop
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(ctx)
