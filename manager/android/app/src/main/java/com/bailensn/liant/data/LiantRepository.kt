@@ -42,22 +42,32 @@ class LiantRepository(context: Context) {
         return SavedPairing(host, prefs.getInt(KEY_PORT, 8443), fingerprint, deviceId)
     }
 
-    /** 首次配对。成功后把连接参数落盘，并保留这条已认证的连接。 */
+    /**
+     * 首次配对。
+     *
+     * 终端的本地确认可能超过挑战有效期，所以配对连接只用来换 device_id，
+     * 拿到后立刻断开，再用一条新连接完成认证。
+     */
     suspend fun pair(qrText: String, managerName: String): SavedPairing {
         val ticket = PairingTicket.parse(qrText)
         require(!ticket.isExpired()) { "配对二维码已过期" }
-        val connection = LiantClient(ticket.host, ticket.port, ticket.fingerprint, identity)
-        val result = connection.pair(ticket, managerName)
-        client = connection
-        val saved = SavedPairing(ticket.host, ticket.port, ticket.fingerprint, result.deviceId)
+        val pairing = LiantClient(ticket.host, ticket.port, ticket.fingerprint, identity)
+        val deviceId = pairing.pair(ticket, managerName)
+        pairing.close()
+
+        val saved = SavedPairing(ticket.host, ticket.port, ticket.fingerprint, deviceId)
         persist(saved)
+
+        val connection = LiantClient(saved.host, saved.port, saved.fingerprint, identity)
+        connection.connect(saved.deviceId)
+        client = connection
         return saved
     }
 
-    /** 用已保存的设备身份重连并认证；旧连接会被关掉。 */
+    /** 用已保存的设备身份重连并认证；已连接时直接返回。 */
     suspend fun connect(): SavedPairing {
         val saved = savedPairing() ?: error("尚未配对")
-        client?.close()
+        if (client != null) return saved
         val connection = LiantClient(saved.host, saved.port, saved.fingerprint, identity)
         connection.connect(saved.deviceId)
         client = connection
