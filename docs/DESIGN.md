@@ -189,7 +189,7 @@ QQ 的“不能主动发起、只能窗口内回复”不能变成核心里的 `
 
 七步全通才算 v1：
 
-1. **配对**：Service 终端 `service pair` 出码 → Android 扫码 → 本地确认 → 显示指纹后四位。
+1. **配对**：Service 终端 `LianT pair` 出码 → Android 扫码（或粘贴 JSON）→ 终端本地确认 → 设备落库。
 2. **列 Bot**：一次 `bot.list` 拿到 id / platform / caps / constraints / 状态。
 3. **收消息**：QQ 群里 @ 机器人 发一条 → App 5 秒内出现，且在正确的 `(bot, peer)` 会话下。
 4. **本地入库**：杀进程重开，消息与格式仍在（Room）。
