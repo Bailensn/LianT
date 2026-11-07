@@ -30,15 +30,17 @@ class MessageNotifier(private val context: Context) {
 
     /** 权限未授予时静默返回，不抛异常、不打扰用户。 */
     @SuppressLint("MissingPermission")
-    fun notify(title: String, body: String) {
+    fun notify(title: String, body: String, botId: String, peerId: String) {
         if (!canPost()) return
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(EXTRA_FROM_NOTIFICATION, true)
+            putExtra(EXTRA_BOT_ID, botId)
+            putExtra(EXTRA_PEER_ID, peerId)
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
-            0,
+            (botId + peerId).hashCode(),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -57,6 +59,8 @@ class MessageNotifier(private val context: Context) {
             // 权限在判断之后被撤销：当作静默跳过。
         }
     }
+
+    fun isEnabled(): Boolean = canPost()
 
     private fun canPost(): Boolean {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
@@ -80,11 +84,23 @@ class MessageNotifier(private val context: Context) {
         )
     }
 
-    private companion object {
+    companion object {
         const val CHANNEL_ID = "messages"
         const val EXTRA_FROM_NOTIFICATION = "from_notification"
-        val counter = AtomicInteger(1000)
+        const val EXTRA_BOT_ID = "bot_id"
+        const val EXTRA_PEER_ID = "peer_id"
+        private val counter = AtomicInteger(1000)
 
         fun nextId(): Int = counter.incrementAndGet()
+
+        /** 不建实例也能问「通知现在能不能发」。 */
+        fun isEnabled(context: Context): Boolean {
+            if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+            return ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+        }
     }
 }

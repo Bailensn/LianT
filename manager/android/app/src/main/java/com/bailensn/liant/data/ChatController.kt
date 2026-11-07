@@ -84,7 +84,7 @@ class ChatController(context: Context, private val repository: LiantRepository) 
             } else {
                 senderName.ifBlank { "私聊 " + peerId.takeLast(6) }
             }
-            notifier.notify(title, plain)
+            notifier.notify(title, plain, botId, peerId)
         }
     }
 
@@ -100,30 +100,42 @@ class ChatController(context: Context, private val repository: LiantRepository) 
     suspend fun backfill() = withContext(Dispatchers.IO) {
         val cursors = store.conversationsForBackfill()
         for (cursor in cursors) {
+            var after = JSONObject()
+                .put("ts", cursor.lastTs)
+                .put("msg_id", cursor.lastMsgId)
+            var pages = 0
             try {
-                val payload = repository.listMessages(
-                    botId = cursor.botId,
-                    peerId = cursor.peerId,
-                    after = JSONObject()
-                        .put("ts", cursor.lastTs)
-                        .put("msg_id", cursor.lastMsgId),
-                    limit = 100,
-                )
-                val array = payload.optJSONArray("messages") ?: continue
-                for (i in 0 until array.length()) {
-                    val item = array.optJSONObject(i) ?: continue
-                    val msgId = item.optString("msg_id")
-                    if (msgId.isEmpty()) continue
-                    store.insertRemote(
+                while (pages < MAX_BACKFILL_PAGES) {
+                    val payload = repository.listMessages(
                         botId = cursor.botId,
                         peerId = cursor.peerId,
-                        msgId = msgId,
-                        direction = item.optString("direction", "in").ifEmpty { "in" },
-                        senderName = item.optString("sender_name"),
-                        plain = item.optJSONObject("body")?.optString("plain") ?: "",
-                        kind = item.optString("msg_type", "text"),
-                        ts = item.optLong("ts", System.currentTimeMillis()),
+                        after = after,
+                        limit = BACKFILL_PAGE_SIZE,
                     )
+                    val array = payload.optJSONArray("messages") ?: break
+                    if (array.length() == 0) break
+                    var lastTs = after.optLong("ts")
+                    var lastMsgId = after.optString("msg_id")
+                    for (i in 0 until array.length()) {
+                        val item = array.optJSONObject(i) ?: continue
+                        val msgId = item.optString("msg_id")
+                        if (msgId.isEmpty()) continue
+                        store.insertRemote(
+                            botId = cursor.botId,
+                            peerId = cursor.peerId,
+                            msgId = msgId,
+                            direction = item.optString("direction", "in").ifEmpty { "in" },
+                            senderName = item.optString("sender_name"),
+                            plain = item.optJSONObject("body")?.optString("plain") ?: "",
+                            kind = item.optString("msg_type", "text"),
+                            ts = item.optLong("ts", System.currentTimeMillis()),
+                        )
+                        lastTs = item.optLong("ts", lastTs)
+                        lastMsgId = msgId
+                    }
+                    if (!payload.optBoolean("has_more", false) || lastMsgId.isEmpty()) break
+                    after = JSONObject().put("ts", lastTs).put("msg_id", lastMsgId)
+                    pages++
                 }
             } catch (e: Exception) {
                 _error.value = "补拉失败：" + (e.message ?: e::class.java.simpleName)
@@ -167,3 +179,6 @@ class ChatController(context: Context, private val repository: LiantRepository) 
         _error.value = null
     }
 }
+
+private const val BACKFILL_PAGE_SIZE = 100
+private const val MAX_BACKFILL_PAGES = 20

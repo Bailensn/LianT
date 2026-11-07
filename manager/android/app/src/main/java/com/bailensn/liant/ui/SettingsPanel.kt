@@ -20,6 +20,8 @@ import com.bailensn.liant.data.SavedPairing
 @Composable
 fun SettingsPanel(
     saved: SavedPairing?,
+    notificationsEnabled: Boolean,
+    onOpenNotificationSettings: () -> Unit,
     onForget: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
@@ -43,6 +45,19 @@ fun SettingsPanel(
                 Text(saved.fingerprint, style = MaterialTheme.typography.bodySmall)
                 Text("设备 ID", style = MaterialTheme.typography.labelMedium)
                 Text(saved.deviceId, style = MaterialTheme.typography.bodySmall)
+            }
+            Text("通知", style = MaterialTheme.typography.labelMedium)
+            Text(
+                if (notificationsEnabled) "已开启（只有活跃 Bot 会响）" else "未开启，收不到系统通知",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (!notificationsEnabled) {
+                Button(
+                    onClick = onOpenNotificationSettings,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) {
+                    Text("去系统设置开启")
+                }
             }
             Button(
                 onClick = onForget,

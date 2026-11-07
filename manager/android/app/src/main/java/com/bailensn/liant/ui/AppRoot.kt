@@ -1,5 +1,8 @@
 package com.bailensn.liant.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +37,8 @@ import com.bailensn.liant.data.Conversation
 import com.bailensn.liant.data.LiantRepository
 import com.bailensn.liant.data.SavedPairing
 import com.bailensn.liant.net.ProtocolException
+import com.bailensn.liant.notify.DeepLink
+import com.bailensn.liant.notify.MessageNotifier
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -68,6 +73,7 @@ fun AppRoot() {
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var activeBotId by remember { mutableStateOf(repository.activeBotId()) }
+    var notificationsEnabled by remember { mutableStateOf(MessageNotifier.isEnabled(context)) }
 
     suspend fun loadBots() {
         botsBusy = true
@@ -121,6 +127,21 @@ fun AppRoot() {
 
     LaunchedEffect(tab, paired) {
         if (paired && tab == 1) loadBots()
+        if (tab == 2) notificationsEnabled = MessageNotifier.isEnabled(context)
+    }
+
+    // 通知点进来：找到对应会话就打开；会话还没补拉出来时等列表刷新后再试。
+    val deepLink by DeepLink.pending
+    LaunchedEffect(deepLink, conversations, paired) {
+        val target = deepLink ?: return@LaunchedEffect
+        if (!paired) return@LaunchedEffect
+        val conversation = conversations.firstOrNull {
+            it.botId == target.botId && it.peerId == target.peerId
+        } ?: return@LaunchedEffect
+        controller.open(conversation)
+        current = conversation
+        tab = 0
+        DeepLink.consume()
     }
 
     MaterialTheme {
@@ -192,6 +213,17 @@ fun AppRoot() {
 
                             else -> SettingsPanel(
                                 saved = saved,
+                                notificationsEnabled = notificationsEnabled,
+                                onOpenNotificationSettings = {
+                                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    try {
+                                        context.startActivity(intent)
+                                    } catch (_: ActivityNotFoundException) {
+                                        // 少数 ROM 没有这个设置页：静默失败，用户可自行去设置。
+                                    }
+                                },
                                 onForget = {
                                     repository.forget()
                                     controller.closeChat()
