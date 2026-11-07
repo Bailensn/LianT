@@ -38,10 +38,11 @@ jobs:
         id: code
         run: |
           BASE=$(cat version-code-base.txt)
-          COUNT=$(curl -fsS -H "Authorization: Bearer $GITHUB_TOKEN" \
+          COUNT=$(curl -fsS -H "Authorization: Bearer ${{ github.token }}" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=1" | jq -r '.total_count')
-          CODE=$((COUNT - BASE - 1))
-          if [ "$CODE" -lt 0 ]; then CODE=0; fi
+          # Android 要求 versionCode >= 1，所以计数从 1 开始。
+          CODE=$((COUNT - BASE))
+          if [ "$CODE" -lt 1 ]; then CODE=1; fi
           echo "versionCode=${CODE}"
           echo "code=${CODE}" >> "$GITHUB_OUTPUT"
 

@@ -19,15 +19,15 @@ v1.0.0-RC1-eeeeeee
 
 ## versionCode
 
-**从 0 开始**，每构建一次 +1：取仓库 Actions 总运行数，减去基线文件里的值。
+计数从 **1** 开始（Android 强制要求正整数，0 会被 Gradle 拒绝），每构建一次 +1：
 
 ```
-versionCode = total_runs - version-code-base.txt 里的基线 - 1
+versionCode = total_runs - version-code-base.txt 里的基线   （最小 1）
 ```
 
-- 基线在 `manager/android/version-code-base.txt`，当前是启用该方案时的运行数；
+- 基线在 `manager/android/version-code-base.txt`，是启用该方案时的运行数；
 - 之后任何工作流跑一次，`total_runs` +1，`versionCode` 就 +1；
-- 首次构建为 `0`，本地 `assembleDebug` 不查询接口，退回 `1`（仅开发用）；
+- 本地 `assembleDebug` 不查询接口，退回 `1`（仅开发用）；
 - 之前用「Unix 秒」生成的包（`1794054171` 那种）如果装过，需要卸载重装。
 
 `versionName` 仍然保留完整的 `v1.0.0-Alpha-<hash>`。
