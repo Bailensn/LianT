@@ -25,6 +25,8 @@ import top.yukonga.miuix.kmp.basic.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.rememberTextFieldState
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.Text
@@ -102,6 +104,7 @@ fun AppRoot() {
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var connected by remember { mutableStateOf(false) }
+    val backdrop = rememberLayerBackdrop()
     var activeBotId by remember { mutableStateOf(repository.activeBotId()) }
     var notificationsEnabled by remember { mutableStateOf(MessageNotifier.isEnabled(context)) }
 
@@ -243,8 +246,8 @@ fun AppRoot() {
                     },
                 )
 
-                else -> Column(Modifier.fillMaxSize().statusBarsPadding()) {
-                    Box(Modifier.weight(1f)) {
+                else -> Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                    Box(Modifier.fillMaxSize().padding(bottom = 96.dp).layerBackdrop(backdrop)) {
                         when (tab) {
                             0 -> ChatsScreen(
                                 connected = connected,
@@ -323,7 +326,12 @@ fun AppRoot() {
                             LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
                         }
                     }
-                    BottomTabBar(selected = tab, onSelect = { tab = it })
+                    BottomTabBar(
+                        backdrop = backdrop,
+                        selected = tab,
+                        onSelect = { tab = it },
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
                 }
             }
 
