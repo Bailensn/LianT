@@ -102,7 +102,7 @@ Manager                          Service
 | `msg.send` | M→S | **是** | `{bot_id, peer_id, body, in_reply_to?, operator_id?}` | `in_reply_to` 为触发本次回复的入站 `msg_id`（QQ 被动回复需要），缺席时按主动消息处理；`operator_id` 仅用于审计（哪台设备/哪个人回的），**永不下发平台** |
 | `msg.inbound` | S→M | — | `{bot_id, peer_id, peer_kind, sender_id?, msg_type, body, msg_id}` | `peer_kind` ∈ `private/group/channel`；媒体消息的 `body.plain` 是说明文字 |
 | `msg.ack` | M→S | 是 | `{msg_id}` | 客户端已落库；用于多端未读与缓存清理 |
-| `media.fetch` | M→S | 是 | `{bot_id, msg_id}` | 返回 `{url, exp, size, mime}`；从本地缓存返回，不再访问平台。调用方据 `size`/`mime` 决定是否下载（D10） |
+| `media.fetch` | M→S | 是 | `{bot_id, msg_id}` | 返回 `{url, exp, size, mime}`；从本地缓存返回，不再访问平台。`url` 可能是不带主机名的相对路径（如 `/v1/media/…?exp=&sig=`），客户端按当前连接的主机拼接；带签名、10 分钟有效。调用方据 `size`/`mime` 决定是否下载（D10） |
 | `event.bot` | S→M | — | `{bot_id, status, reason?}` | 单 bot 粒度状态变化 |
 | `event.msg` | S→M | — | 同 `msg.inbound` | 在线推送；**所有 Bot 都推**，通知由客户端按 D9 过滤 |
 | `error` | 双向 | — | `{code, message, retryable}` | 见 §7 |
@@ -152,6 +152,8 @@ Manager                          Service
 | `clock_skew` | 时间偏差过大 | 是 |
 | `bot_start_failed` | Bot 启动失败（附 `reason`） | 是 |
 | `upstream_error` | 平台 API 报错（附 `platform_code`） | 视情况 |
+| `media_expired` | 媒体已超过保留期 | 否 |
+| `media_evicted` | 媒体因单 Bot 空间不足被清理 | 否 |
 | `internal` | 服务端未预期错误 | 是 |
 
 ## 8. 历史与保留（D2 = 7 天缓冲 + 本地留档）

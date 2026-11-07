@@ -96,6 +96,8 @@ const (
 	CodeInternal              = "internal"
 	CodeUnknownType           = "unknown_type"
 	CodeFrameTooLarge         = "frame_too_large"
+	CodeMediaExpired          = "media_expired"
+	CodeMediaEvicted          = "media_evicted"
 )
 
 // Error 是 error 帧的 payload。

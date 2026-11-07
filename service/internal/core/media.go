@@ -147,7 +147,16 @@ func (c *Core) FetchMedia(ctx context.Context, _ server.Session, raw json.RawMes
 	if err != nil {
 		return nil, internal(err)
 	}
+	var expired, evicted bool
 	for _, item := range items {
+		switch item.State {
+		case store.MediaExpired:
+			expired = true
+			continue
+		case store.MediaEvicted:
+			evicted = true
+			continue
+		}
 		if item.State != store.MediaReady || item.Path == "" {
 			continue
 		}
@@ -159,7 +168,14 @@ func (c *Core) FetchMedia(ctx context.Context, _ server.Session, raw json.RawMes
 			MIME: item.MIME,
 		}, nil
 	}
-	return nil, bad(protocol.CodeNotFound, "媒体不存在或已被清理")
+	switch {
+	case expired:
+		return nil, bad(protocol.CodeMediaExpired, "媒体已超过保留期")
+	case evicted:
+		return nil, bad(protocol.CodeMediaEvicted, "媒体因空间不足被清理")
+	default:
+		return nil, bad(protocol.CodeNotFound, "媒体不存在或尚未下载完成")
+	}
 }
 
 func (c *Core) mediaURL(botID, msgID string, idx int, exp time.Time) string {
