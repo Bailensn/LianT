@@ -6,6 +6,7 @@ package qqbot
 
 import (
 	"bytes"
+	"errors"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -171,7 +172,12 @@ func (a *Adapter) accessToken(ctx context.Context, c credentials) (string, error
 
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("qqbot: 申请 token 失败: %w", err)
+		// 只保留网络层原因，别把整条 URL 糊到用户脸上。
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = urlErr.Err
+		}
+		return "", fmt.Errorf("连接 QQ 开放平台失败: %w", err)
 	}
 	defer resp.Body.Close()
 

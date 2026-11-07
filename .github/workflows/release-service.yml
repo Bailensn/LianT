@@ -30,18 +30,33 @@ jobs:
           cache: true
           cache-dependency-path: service/go.sum
 
+      - name: Install NDK (android 目标需要 cgo)
+        run: |
+          SDKMGR=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
+          yes | "$SDKMGR" --licenses > /dev/null || true
+          "$SDKMGR" --install "ndk;30.0.16248370"
+
       - name: Build
         run: |
           set -euo pipefail
           mkdir -p ../dist
+          NDK="$ANDROID_HOME/ndk/30.0.16248370"
+          CC_ANDROID="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
           TAG="${{ inputs.tag || github.ref_name }}"
           VERSION="${TAG#service-v}"
           LDFLAGS="-s -w -X main.version=${VERSION}"
           build() {
             GOOS=$1 GOARCH=$2 SUFFIX=$3
-            CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
-              go build -trimpath -ldflags="$LDFLAGS" \
-              -o "../dist/LianT-Service-${GOOS}-${GOARCH}${SUFFIX}" ./cmd/liant
+            if [ "$GOOS" = "android" ]; then
+              # cgo：Android 上纯 Go 解析器读不到 netd，DNS 会失败。
+              CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH CC="$CC_ANDROID" \
+                go build -trimpath -ldflags="$LDFLAGS" \
+                -o "../dist/LianT-Service-${GOOS}-${GOARCH}${SUFFIX}" ./cmd/liant
+            else
+              CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
+                go build -trimpath -ldflags="$LDFLAGS" \
+                -o "../dist/LianT-Service-${GOOS}-${GOARCH}${SUFFIX}" ./cmd/liant
+            fi
           }
           build linux amd64 ""
           build linux arm64 ""

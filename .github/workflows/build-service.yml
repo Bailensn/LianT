@@ -26,6 +26,10 @@ on:
         description: 'Darwin arm64'
         type: boolean
         default: false
+      android_arm64:
+        description: 'Android arm64 (cgo, 系统 DNS)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -157,3 +161,37 @@ jobs:
         with:
           name: LianT-Service-Darwin-arm64
           path: service/LianT-Service-Darwin-arm64
+
+  # ============================================================
+  # Android arm64（cgo：走系统 netd 解析，纯 Go 静态包在 Android 上解析不了 DNS）
+  # ============================================================
+  android-arm64:
+    if: ${{ inputs.android_arm64 }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: service
+    env:
+      BUILD_MODE: ${{ inputs.build_mode }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: service/go.mod
+          cache: true
+          cache-dependency-path: service/go.sum
+      - name: Install NDK
+        run: |
+          SDKMGR=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
+          yes | "$SDKMGR" --licenses > /dev/null || true
+          "$SDKMGR" --install "ndk;30.0.16248370"
+      - name: Build
+        run: |
+          NDK="$ANDROID_HOME/ndk/30.0.16248370"
+          CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+          CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC="$CC" \
+            go build -trimpath -o LianT-Service-Android-arm64 ./cmd/liant
+      - uses: actions/upload-artifact@v7
+        with:
+          name: LianT-Service-Android-arm64
+          path: service/LianT-Service-Android-arm64

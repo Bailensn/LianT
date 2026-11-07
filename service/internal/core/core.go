@@ -370,11 +370,13 @@ func (c *Core) AddBot(ctx context.Context, _ server.Session, raw json.RawMessage
 	acc, err := adapter.Validate(ctx, platform.Credentials(req.Credentials))
 	if err != nil {
 		if errors.Is(err, platform.ErrInvalidCredentials) {
-			return nil, bad(protocol.CodeInvalidPayload, "凭据被平台拒绝："+briefError(err))
+			// 去掉 platform 包的哨兵前缀，只留平台自己的话。
+			msg := strings.TrimPrefix(briefError(err), platform.ErrInvalidCredentials.Error()+": ")
+			return nil, bad(protocol.CodeInvalidPayload, msg)
 		}
 		return nil, &protocol.Error{
 			Code:      protocol.CodeUpstreamError,
-			Message:   "无法完成凭据校验：" + briefError(err),
+			Message:   briefError(err),
 			Retryable: true,
 		}
 	}

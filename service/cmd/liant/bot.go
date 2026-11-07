@@ -171,7 +171,7 @@ func botAdd(args []string) {
 	}
 	got, perr := svc.AddBot(context.Background(), server.Session{}, raw)
 	if perr != nil {
-		fmt.Fprintf(os.Stderr, "登记失败：%s %s\n", perr.Code, perr.Message)
+		fmt.Fprintln(os.Stderr, "登记失败：", perr.Message)
 		os.Exit(1)
 	}
 	fmt.Println("已登记", got.(protocol.BotRef).BotID)
