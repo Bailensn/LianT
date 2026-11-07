@@ -516,17 +516,13 @@ func (c *Core) refreshBotProfile(ctx context.Context, bot store.Bot) {
 	if !ok || c.opt.DecodeCredentials == nil {
 		return
 	}
-	raw, err := c.opt.DecodeCredentials(bot.Credentials)
+	creds, err := c.opt.DecodeCredentials(bot)
 	if err != nil {
-		return
-	}
-	var creds map[string]string
-	if err := json.Unmarshal(raw, &creds); err != nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
-	acc, err := adapter.Validate(ctx, platform.Credentials(creds))
+	acc, err := adapter.Validate(ctx, creds)
 	if err != nil {
 		return
 	}
