@@ -228,7 +228,7 @@ private fun InputBar(sending: Boolean, onSend: (String) -> Unit) {
                 val value = textState.text.toString().trim()
                 if (value.isNotEmpty()) {
                     onSend(value)
-                    textState.setTextAndPlaceCursorAtEnd("")
+                    textState.setAll("")
                 }
             },
             enabled = !sending && textState.text.isNotBlank(),

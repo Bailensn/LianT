@@ -348,7 +348,7 @@ private fun PairingRoute(
         val qrState = rememberTextFieldState()
         val nameState = rememberTextFieldState("我的手机")
         val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
-            result.contents?.let { qrState.setTextAndPlaceCursorAtEnd(it) }
+            result.contents?.let { qrState.setAll(it) }
         }
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
@@ -358,7 +358,7 @@ private fun PairingRoute(
                 scope.launch {
                     val text = withContext(Dispatchers.IO) { decodeQrFromUri(context, uri) }
                     if (text != null) {
-                        qrState.setTextAndPlaceCursorAtEnd(text)
+                        qrState.setAll(text)
                         importError = null
                     } else {
                         importError = "这张图里没找到二维码"
