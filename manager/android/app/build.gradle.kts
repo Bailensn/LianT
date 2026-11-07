@@ -12,7 +12,6 @@ android {
             minorApiLevel = 1
         }
     }
-    ndkVersion = libs.versions.ndk.get()
 
     defaultConfig {
         applicationId = "com.bailensn.liant"
@@ -22,10 +21,6 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        // 只出 arm64-v8a；模拟器用的 x86_64 不塞进同一个包。
-        ndk {
-            abiFilters += listOf("arm64-v8a")
-        }
     }
 
     buildTypes {
@@ -41,13 +36,6 @@ android {
 
     buildFeatures {
         compose = true
-    }
-
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = libs.versions.cmake.get()
-        }
     }
 
     compileOptions {
