@@ -4,7 +4,13 @@ import android.util.Base64
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -47,6 +53,7 @@ class LiantClient(
 
     private var socket: WebSocket? = null
     private var authInfo: JSONObject? = null
+    private var heartbeat: Job? = null
 
     /** 服务端事件（msg.inbound / event.bot）。 */
     val eventFlow: SharedFlow<JSONObject> get() = events
@@ -100,7 +107,25 @@ class LiantClient(
     suspend fun connect(deviceId: String): JSONObject {
         open()
         val ch = withTimeout(HANDSHAKE_TIMEOUT_MS) { challenge.await() }
-        return authenticate(ch, deviceId)
+        val info = authenticate(ch, deviceId)
+        startHeartbeat()
+        return info
+    }
+
+    /**
+     * 应用层心跳：每 30s 发一次 ping。
+     *
+     * 服务端 90s 收不到帧会断开；控制帧 ping/pong 在部分网络下会被丢，
+     * 业务帧更可靠，顺带也能及时发现写失败。
+     */
+    private fun startHeartbeat() {
+        heartbeat?.cancel()
+        heartbeat = CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+            while (isActive) {
+                delay(30_000)
+                runCatching { call("ping", JSONObject()) }
+            }
+        }
     }
 
     suspend fun botList(): JSONObject = call("bot.list", JSONObject()).payload
@@ -175,6 +200,7 @@ class LiantClient(
     }
 
     fun close() {
+        heartbeat?.cancel()
         socket?.close(1000, null)
         failAll(IOException("连接已关闭"))
     }
