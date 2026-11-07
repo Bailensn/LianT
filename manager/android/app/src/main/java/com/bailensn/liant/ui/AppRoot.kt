@@ -38,6 +38,7 @@ import com.bailensn.liant.data.ChatController
 import com.bailensn.liant.data.Conversation
 import com.bailensn.liant.data.LiantRepository
 import com.bailensn.liant.data.SavedPairing
+import com.bailensn.liant.net.ConnectionClosedException
 import com.bailensn.liant.net.ProtocolException
 import com.bailensn.liant.notify.DeepLink
 import com.bailensn.liant.notify.MessageNotifier
@@ -67,6 +68,7 @@ fun AppRoot() {
     val conversations by controller.conversations.collectAsState()
     val messages by controller.messages.collectAsState()
     val media by controller.media.collectAsState()
+    val mediaErrors by controller.mediaErrors.collectAsState()
     val controllerError by controller.error.collectAsState()
 
     var paired by remember { mutableStateOf(repository.savedPairing() != null) }
@@ -124,6 +126,10 @@ fun AppRoot() {
                 if (e is ProtocolException && (e.code == "unauthorized" || e.code == "forbidden")) {
                     break
                 }
+                // 关闭码 4001（认证失败）/ 4002（版本不兼容）重连也没用。
+                if (e is ConnectionClosedException && (e.code == 4001 || e.code == 4002)) {
+                    break
+                }
             }
             if (!isActive) break
             delay(backoffMillis(attempt))
@@ -137,6 +143,17 @@ fun AppRoot() {
             ConnectionService.start(context)
         } else {
             ConnectionService.stop(context)
+        }
+    }
+
+    fun openNotificationSettings() {
+        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            // 少数 ROM 没有这个设置页：静默失败，用户可自行去设置。
         }
     }
 
@@ -185,6 +202,7 @@ fun AppRoot() {
                     conversation = openConversation,
                     messages = messages,
                     media = media,
+                    mediaErrors = mediaErrors,
                     sending = sending,
                     onBack = {
                         controller.closeChat()
@@ -205,6 +223,8 @@ fun AppRoot() {
                         when (tab) {
                             0 -> ChatsScreen(
                                 conversations = conversations,
+                                notificationsEnabled = notificationsEnabled,
+                                onOpenNotificationSettings = ::openNotificationSettings,
                                 onOpen = { conversation ->
                                     scope.launch {
                                         controller.open(conversation)
@@ -230,16 +250,7 @@ fun AppRoot() {
                             else -> SettingsPanel(
                                 saved = saved,
                                 notificationsEnabled = notificationsEnabled,
-                                onOpenNotificationSettings = {
-                                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                                        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    try {
-                                        context.startActivity(intent)
-                                    } catch (_: ActivityNotFoundException) {
-                                        // 少数 ROM 没有这个设置页：静默失败，用户可自行去设置。
-                                    }
-                                },
+                                onOpenNotificationSettings = ::openNotificationSettings,
                                 onForget = {
                                     repository.forget()
                                     controller.closeChat()

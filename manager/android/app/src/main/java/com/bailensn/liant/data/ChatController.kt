@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.bailensn.liant.notify.MessageNotifier
+import com.bailensn.liant.net.ProtocolException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +36,10 @@ class ChatController(context: Context, private val repository: LiantRepository) 
     /** 已下载的图片，按 msg_id 缓存；过期/淘汰的不放进来，UI 继续显示占位。 */
     private val _media = MutableStateFlow<Map<String, Bitmap>>(emptyMap())
     val media: StateFlow<Map<String, Bitmap>> = _media.asStateFlow()
+
+    /** 图片没拉下来的原因：media_expired / media_evicted / failed。 */
+    private val _mediaErrors = MutableStateFlow<Map<String, String>>(emptyMap())
+    val mediaErrors: StateFlow<Map<String, String>> = _mediaErrors.asStateFlow()
 
     private var active: Conversation? = null
 
@@ -193,8 +198,10 @@ class ChatController(context: Context, private val repository: LiantRepository) 
                 if (bytes.size > MAX_IMAGE_BYTES) continue
                 val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: continue
                 _media.value = _media.value + (message.msgId to bitmap)
-            } catch (_: Exception) {
-                // 过期、被淘汰或断网：保留占位，等下次打开再试。
+                _mediaErrors.value = _mediaErrors.value - message.msgId
+            } catch (e: Exception) {
+                val code = (e as? ProtocolException)?.code ?: "failed"
+                _mediaErrors.value = _mediaErrors.value + (message.msgId to code)
             }
         }
     }

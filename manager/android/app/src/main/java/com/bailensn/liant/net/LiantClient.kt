@@ -16,6 +16,10 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 
+/** 连接被关闭；code 对应协议 §9 的 1000/4001/4002/4003。 */
+class ConnectionClosedException(val code: Int, reason: String) :
+    IOException("连接已关闭（$code $reason）")
+
 /** 协议错误（服务端 error 帧或客户端校验失败）。 */
 class ProtocolException(val code: String, message: String) : IOException(message)
 
@@ -217,7 +221,7 @@ class LiantClient(
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            failAll(IOException("连接已关闭（$code）"))
+            failAll(ConnectionClosedException(code, reason))
         }
     }
 

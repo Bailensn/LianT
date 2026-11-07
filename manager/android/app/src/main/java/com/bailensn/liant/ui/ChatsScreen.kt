@@ -41,6 +41,8 @@ import kotlin.math.absoluteValue
 @Composable
 fun ChatsScreen(
     conversations: List<Conversation>,
+    notificationsEnabled: Boolean,
+    onOpenNotificationSettings: () -> Unit,
     onOpen: (Conversation) -> Unit,
     onRefresh: () -> Unit,
 ) {
@@ -61,6 +63,25 @@ fun ChatsScreen(
             ) { Text("刷新") }
         }
         HorizontalDivider(thickness = 0.5.dp)
+        if (!notificationsEnabled) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.secondaryContainer)
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "通知未开启，后台收不到新消息提醒",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = onOpenNotificationSettings,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("去开启") }
+            }
+        }
         if (conversations.isEmpty()) {
             Column(
                 Modifier.fillMaxWidth().padding(32.dp),

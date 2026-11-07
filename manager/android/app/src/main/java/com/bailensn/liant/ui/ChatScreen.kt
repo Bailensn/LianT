@@ -56,6 +56,7 @@ fun ChatScreen(
     conversation: Conversation,
     messages: List<ChatMessage>,
     media: Map<String, Bitmap>,
+    mediaErrors: Map<String, String>,
     sending: Boolean,
     onBack: () -> Unit,
     onSend: (String) -> Unit,
@@ -113,7 +114,7 @@ fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 items(messages, key = { it.msgId }) { message ->
-                    MessageBubble(message, media)
+                    MessageBubble(message, media, mediaErrors)
                 }
             }
         }
@@ -125,7 +126,11 @@ fun ChatScreen(
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage, media: Map<String, Bitmap>) {
+private fun MessageBubble(
+    message: ChatMessage,
+    media: Map<String, Bitmap>,
+    mediaErrors: Map<String, String>,
+) {
     val outgoing = message.outgoing
     Row(
         Modifier.fillMaxWidth().padding(vertical = 2.dp),
@@ -172,7 +177,12 @@ private fun MessageBubble(message: ChatMessage, media: Map<String, Bitmap>) {
                     MediaThumb(
                         ratio = MediaRatio.FourThree,
                         modifier = Modifier.fillMaxWidth(),
-                        label = "图片·待下载",
+                        label = when (mediaErrors[message.msgId]) {
+                            "media_expired" -> "图片已过期"
+                            "media_evicted" -> "图片已清理（空间不足）"
+                            "failed" -> "图片加载失败"
+                            else -> "图片·待下载"
+                        },
                     )
                 }
                 if (message.plain.isNotBlank()) {
