@@ -4,6 +4,8 @@ import android.util.Base64
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.withTimeout
@@ -132,6 +134,30 @@ class LiantClient(
             payload.put("before", before)
         }
         return call("msg.list", payload).payload
+    }
+
+    /**
+     * 取媒体字节：先 media.fetch 拿签名地址，再用同一条钉过指纹的连接下载。
+     *
+     * 地址可能是相对路径，按当前连接的主机拼接。
+     */
+    suspend fun fetchMedia(botId: String, msgId: String): ByteArray {
+        val payload = call(
+            "media.fetch",
+            JSONObject().put("bot_id", botId).put("msg_id", msgId),
+        ).payload
+        var url = payload.optString("url")
+        if (url.isEmpty()) throw ProtocolException("media.fetch", "服务端没有返回地址")
+        if (url.startsWith("/")) url = "https://$host:$port$url"
+        val request = Request.Builder().url(url).build()
+        return withContext(Dispatchers.IO) {
+            http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IOException("媒体下载失败（${response.code}）")
+                }
+                response.body?.bytes() ?: throw IOException("媒体内容为空")
+            }
+        }
     }
 
     fun close() {

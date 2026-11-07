@@ -1,6 +1,8 @@
 package com.bailensn.liant.data
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.bailensn.liant.notify.MessageNotifier
@@ -30,6 +32,10 @@ class ChatController(context: Context, private val repository: LiantRepository) 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    /** 已下载的图片，按 msg_id 缓存；过期/淘汰的不放进来，UI 继续显示占位。 */
+    private val _media = MutableStateFlow<Map<String, Bitmap>>(emptyMap())
+    val media: StateFlow<Map<String, Bitmap>> = _media.asStateFlow()
+
     private var active: Conversation? = null
 
     suspend fun refresh() = withContext(Dispatchers.IO) {
@@ -41,6 +47,7 @@ class ChatController(context: Context, private val repository: LiantRepository) 
         store.markRead(conversation.botId, conversation.peerId)
         _messages.value = store.messages(conversation.botId, conversation.peerId)
         _conversations.value = store.conversations()
+        loadMedia(conversation.botId, conversation.peerId)
     }
 
     fun closeChat() {
@@ -74,6 +81,7 @@ class ChatController(context: Context, private val repository: LiantRepository) 
             _conversations.value = store.conversations()
             if (activeNow) {
                 _messages.value = store.messages(botId, peerId)
+                loadMedia(botId, peerId)
             }
         }
 
@@ -175,6 +183,22 @@ class ChatController(context: Context, private val repository: LiantRepository) 
         }
     }
 
+    /** 逐条拉图片；失败不报错，保持占位（服务端会区分 expired/evicted）。 */
+    private suspend fun loadMedia(botId: String, peerId: String) {
+        val images = store.messages(botId, peerId).filter { it.kind == "image" }
+        for (message in images) {
+            if (_media.value.containsKey(message.msgId)) continue
+            try {
+                val bytes = repository.fetchMedia(botId, message.msgId)
+                if (bytes.size > MAX_IMAGE_BYTES) continue
+                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: continue
+                _media.value = _media.value + (message.msgId to bitmap)
+            } catch (_: Exception) {
+                // 过期、被淘汰或断网：保留占位，等下次打开再试。
+            }
+        }
+    }
+
     fun clearError() {
         _error.value = null
     }
@@ -182,3 +206,5 @@ class ChatController(context: Context, private val repository: LiantRepository) 
 
 private const val BACKFILL_PAGE_SIZE = 100
 private const val MAX_BACKFILL_PAGES = 20
+
+private const val MAX_IMAGE_BYTES = 5 * 1024 * 1024

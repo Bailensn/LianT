@@ -1,8 +1,11 @@
 package com.bailensn.liant.ui
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,6 +42,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bailensn.liant.data.ChatMessage
@@ -50,6 +55,7 @@ import com.bailensn.liant.data.Conversation
 fun ChatScreen(
     conversation: Conversation,
     messages: List<ChatMessage>,
+    media: Map<String, Bitmap>,
     sending: Boolean,
     onBack: () -> Unit,
     onSend: (String) -> Unit,
@@ -151,11 +157,24 @@ private fun MessageBubble(message: ChatMessage) {
                 Spacer(Modifier.size(2.dp))
             }
             if (message.kind == "image") {
-                MediaThumb(
-                    ratio = MediaRatio.FourThree,
-                    modifier = Modifier.fillMaxWidth(),
-                    label = "图片·待下载",
-                )
+                val bitmap = media[message.msgId]
+                if (bitmap != null) {
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "图片消息",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(MediaRatio.FourThree.value)
+                            .clip(RoundedCornerShape(8.dp)),
+                    )
+                } else {
+                    MediaThumb(
+                        ratio = MediaRatio.FourThree,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = "图片·待下载",
+                    )
+                }
                 if (message.plain.isNotBlank()) {
                     Spacer(Modifier.size(4.dp))
                     Text(

@@ -39,6 +39,7 @@ import com.bailensn.liant.data.SavedPairing
 import com.bailensn.liant.net.ProtocolException
 import com.bailensn.liant.notify.DeepLink
 import com.bailensn.liant.notify.MessageNotifier
+import com.bailensn.liant.service.ConnectionService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -61,6 +62,7 @@ fun AppRoot() {
 
     val conversations by controller.conversations.collectAsState()
     val messages by controller.messages.collectAsState()
+    val media by controller.media.collectAsState()
     val controllerError by controller.error.collectAsState()
 
     var paired by remember { mutableStateOf(repository.savedPairing() != null) }
@@ -125,6 +127,15 @@ fun AppRoot() {
         }
     }
 
+    // 配对后挂前台服务；解除配对时停掉。
+    LaunchedEffect(paired) {
+        if (paired) {
+            ConnectionService.start(context)
+        } else {
+            ConnectionService.stop(context)
+        }
+    }
+
     LaunchedEffect(tab, paired) {
         if (paired && tab == 1) loadBots()
         if (tab == 2) notificationsEnabled = MessageNotifier.isEnabled(context)
@@ -169,6 +180,7 @@ fun AppRoot() {
                 openConversation != null -> ChatScreen(
                     conversation = openConversation,
                     messages = messages,
+                    media = media,
                     sending = sending,
                     onBack = {
                         controller.closeChat()
