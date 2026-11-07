@@ -180,6 +180,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c := &conn{s: s, ws: ws, ip: ip}
+	defer s.removeConn(c)
 	if err := c.handshake(); err != nil {
 		s.opt.Logf("握手结束: %v", err)
 	}
