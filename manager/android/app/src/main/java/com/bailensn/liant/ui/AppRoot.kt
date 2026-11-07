@@ -326,12 +326,13 @@ fun AppRoot() {
                             LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
                         }
                     }
-                    BottomTabBar(
-                        backdrop = backdrop,
-                        selected = tab,
-                        onSelect = { tab = it },
-                        modifier = Modifier.align(Alignment.BottomCenter),
-                    )
+                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+                        BottomTabBar(
+                            backdrop = backdrop,
+                            selected = tab,
+                            onSelect = { tab = it },
+                        )
+                    }
                 }
             }
 

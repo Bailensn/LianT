@@ -56,7 +56,6 @@ fun ChatsScreen(
             Text(
                 "消息",
                 style = MiuixTheme.textStyles.title1,
-                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
             TextButton(

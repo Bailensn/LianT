@@ -42,7 +42,6 @@ fun BotListPanel(
             Text(
                 "Bot",
                 style = MiuixTheme.textStyles.title1,
-                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
             Button(onClick = onRefresh, enabled = !busy, modifier = Modifier.heightIn(min = 48.dp)) {

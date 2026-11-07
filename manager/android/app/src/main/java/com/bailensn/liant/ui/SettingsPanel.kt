@@ -29,7 +29,6 @@ fun SettingsPanel(
         Text(
             "设置",
             style = MiuixTheme.textStyles.title1,
-            fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
         )
         HorizontalDivider(thickness = 0.5.dp)
