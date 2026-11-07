@@ -177,7 +177,7 @@ function BotRow({
           <button
             onClick={onToggle}
             disabled={!online}
-            className={`h-8 rounded-full px-3 text-[13px] font-medium disabled:opacity-40 ${
+            className={`h-10 rounded-full px-4 text-[14px] font-medium disabled:opacity-40 ${
               running ? 'bg-[var(--bg-sunken)] text-[var(--text)]' : 'bg-[var(--accent)] text-white'
             }`}
           >

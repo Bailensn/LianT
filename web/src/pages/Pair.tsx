@@ -123,7 +123,7 @@ export default function Pair() {
       <button
         onClick={submit}
         disabled={!parsed || busy}
-        className="h-12 w-full rounded-2xl bg-[var(--accent)] text-[17px] font-semibold text-white transition active:scale-[0.98] disabled:opacity-40"
+        className="h-11 w-full rounded-2xl bg-[var(--bg-sunken)] text-[16px] font-medium text-[var(--text)] transition active:scale-[0.98] disabled:opacity-40"
       >
         {busy ? '正在配对…' : '用配对码连接'}
       </button>

@@ -82,7 +82,7 @@ export default function Settings() {
                       onClick={() => {
                         if (confirm(`吊销「${d.name || d.device_id}」？`)) void revokeDevice(d.device_id)
                       }}
-                      className="h-8 rounded-full bg-[color-mix(in_oklab,var(--danger)_14%,transparent)] px-3 text-[13px] font-medium text-[var(--danger)] active:opacity-60"
+                      className="h-10 rounded-full bg-[color-mix(in_oklab,var(--danger)_14%,transparent)] px-4 text-[14px] font-medium text-[var(--danger)] active:opacity-60"
                     >
                       吊销
                     </button>
