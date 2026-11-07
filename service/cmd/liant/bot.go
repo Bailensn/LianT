@@ -74,14 +74,14 @@ func botAdd(args []string) {
 	platformName := prescanPlatform(args)
 	adapter, ok := platform.Get(platformName)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "没有注册的平台 %q（已注册：%s）\n", platformName, strings.Join(platform.Names(), ", "))
+		fmt.Fprintf(os.Stderr, "没有注册的平台 %q，已注册：%s\n", platformName, strings.Join(platform.Names(), ", "))
 		os.Exit(1)
 	}
 
 	fs := flag.NewFlagSet("bot add", flag.ExitOnError)
 	fs.String("platform", platformName, "平台名")
 	label := fs.String("label", "", "显示名，可选")
-	credFile := fs.String("cred-file", "", "凭据 JSON 文件（建议 chmod 600）；脚本里用它，别把密钥放命令行")
+	credFile := fs.String("cred-file", "", "凭据 JSON 文件，建议 chmod 600；脚本里用它，别把密钥放命令行")
 	var extra credFlags
 	fs.Var(&extra, "cred", "非密钥字段 key=value；密钥请交互输入或用 --cred-file")
 
@@ -119,7 +119,7 @@ func botAdd(args []string) {
 			os.Exit(1)
 		}
 		if isSecretField(fields, key) {
-			fmt.Fprintln(os.Stderr, "密钥不要写在命令行上（会进 shell history / ps），请去掉这一项：")
+			fmt.Fprintln(os.Stderr, "密钥不要写在命令行上，会进 shell history 和 ps；请去掉这一项：")
 			fmt.Fprintln(os.Stderr, "  交互输入：直接回车让它提示；或 --cred-file 指定 0600 的 JSON 文件")
 			os.Exit(1)
 		}
@@ -142,7 +142,7 @@ func botAdd(args []string) {
 		}
 		secret, err := promptSecret(f.Label)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "读取 %s 失败：%v（脚本请用 --cred-file）\n", f.Label, err)
+			fmt.Fprintf(os.Stderr, "读取 %s 失败：%v；脚本请用 --cred-file\n", f.Label, err)
 			os.Exit(1)
 		}
 		values[f.Key] = secret
@@ -248,5 +248,5 @@ func botRemove(args []string) {
 		fmt.Fprintln(os.Stderr, "删除失败：", err)
 		os.Exit(1)
 	}
-	fmt.Println("已删除", args[0], "（消息与媒体记录一并删除）")
+	fmt.Println("已删除", args[0], "，消息与媒体记录一并删除")
 }

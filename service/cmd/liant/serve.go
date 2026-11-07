@@ -221,7 +221,7 @@ func pairCommand(args []string) {
 		os.Exit(1)
 	}
 	if cfg.Connect.Address == "" && *hostFlag == "" {
-		fmt.Printf("自动检测到本机地址：%s（手机需能访问它；跨网请用 --host）\n", host)
+		fmt.Printf("自动检测到本机地址：%s，手机需能访问它；跨网请用 --host\n", host)
 	}
 	if isLoopbackHost(host) {
 		fmt.Fprintf(os.Stderr, "警告：%s 是回环地址，只有 Service 本机能访问；手机请改用 --host <局域网或公网地址>\n", host)
@@ -236,7 +236,7 @@ func pairCommand(args []string) {
 		"nonce": code.Nonce,
 		"exp":   code.Expires.Unix(),
 	})
-	fmt.Printf("配对码：%s（%d 秒内有效）\n", code.Value, int(time.Until(code.Expires).Seconds()))
+	fmt.Printf("配对码：%s，%d 秒内有效\n", code.Value, int(time.Until(code.Expires).Seconds()))
 	fmt.Printf("节点指纹：%s\n", id.Fingerprint())
 	fmt.Printf("二维码内容：%s\n", payload)
 	if qr, err := qrcode.New(string(payload), qrcode.Medium); err == nil {
@@ -261,7 +261,7 @@ func pairCommand(args []string) {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	select {
 	case <-watcher.done:
-		fmt.Println("配对成功，设备已登记；继续运行服务（Ctrl+C 退出）。")
+		fmt.Println("配对成功，设备已登记；继续运行服务，Ctrl+C 退出。")
 	case <-time.After(time.Until(code.Expires) + 2*time.Minute):
 		fmt.Fprintln(os.Stderr, "等待配对超时。")
 		os.Exit(1)

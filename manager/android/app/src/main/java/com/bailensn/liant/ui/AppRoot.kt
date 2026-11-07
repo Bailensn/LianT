@@ -393,7 +393,7 @@ private fun PairingRoute(
         OutlinedTextField(
             value = qr,
             onValueChange = { qr = it },
-            label = { Text("二维码 JSON（也可以手动粘贴）") },
+            label = { Text("二维码 JSON，也可以手动粘贴") },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,
             maxLines = 8,

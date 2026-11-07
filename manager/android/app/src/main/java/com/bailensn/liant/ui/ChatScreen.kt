@@ -179,7 +179,7 @@ private fun MessageBubble(
                         modifier = Modifier.fillMaxWidth(),
                         label = when (mediaErrors[message.msgId]) {
                             "media_expired" -> "图片已过期"
-                            "media_evicted" -> "图片已清理（空间不足）"
+                            "media_evicted" -> "空间不足，图片已清理"
                             "failed" -> "图片加载失败"
                             else -> "图片·待下载"
                         },

@@ -18,7 +18,7 @@ import org.json.JSONObject
 
 /** 连接被关闭；code 对应协议 §9 的 1000/4001/4002/4003。 */
 class ConnectionClosedException(val code: Int, reason: String) :
-    IOException("连接已关闭（$code $reason）")
+    IOException("连接已关闭 $code $reason")
 
 /** 协议错误（服务端 error 帧或客户端校验失败）。 */
 class ProtocolException(val code: String, message: String) : IOException(message)
@@ -167,7 +167,7 @@ class LiantClient(
         return withContext(Dispatchers.IO) {
             http.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    throw IOException("媒体下载失败（${response.code}）")
+                    throw IOException("媒体下载失败 ${response.code}")
                 }
                 response.body?.bytes() ?: throw IOException("媒体内容为空")
             }

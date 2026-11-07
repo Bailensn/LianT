@@ -49,7 +49,7 @@ fun SettingsPanel(
             }
             Text("通知", style = MaterialTheme.typography.labelMedium)
             Text(
-                if (notificationsEnabled) "已开启（只有活跃 Bot 会响）" else "未开启，收不到系统通知",
+                if (notificationsEnabled) "已开启，只有活跃 Bot 会响" else "未开启，收不到系统通知",
                 style = MaterialTheme.typography.bodySmall,
             )
             if (!notificationsEnabled) {

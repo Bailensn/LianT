@@ -11,5 +11,5 @@ import (
 var version = "dev"
 
 func versionCommand() {
-	fmt.Printf("LianT Service %s (%s %s/%s)\n", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	fmt.Printf("LianT Service %s · %s %s/%s\n", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }

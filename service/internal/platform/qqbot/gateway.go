@@ -69,7 +69,7 @@ func (a *Adapter) session(ctx context.Context, c credentials, hooks platform.Hoo
 	conn, resp, err := websocket.DefaultDialer.DialContext(ctx, gateway, nil)
 	if err != nil {
 		if resp != nil {
-			return fmt.Errorf("qqbot: 连接网关失败 (%d): %w", resp.StatusCode, err)
+			return fmt.Errorf("qqbot: 连接网关失败，HTTP %d: %w", resp.StatusCode, err)
 		}
 		return fmt.Errorf("qqbot: 连接网关失败: %w", err)
 	}
