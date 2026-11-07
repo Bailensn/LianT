@@ -1,0 +1,25 @@
+# 单容器跑起来就完事：内置自签证书监听 8443。
+#
+#   docker compose up -d
+#
+# 首次配对（终端会打印二维码和配对链接）：
+#   docker compose run --rm liant pair --host 192.168.1.50
+#
+# 想要正式证书和域名，见 docker-compose.proxy.yml。
+services:
+  liant:
+    # 用官方镜像；想从源码构建就把这行换成 build: .
+    image: ghcr.io/bailensn/liant:latest
+    container_name: liant
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    volumes:
+      # 配置、密钥、数据库都在 /app 下；改用 bind mount 时注意目录权限
+      - liant_data:/app
+      # 也可以用：- ./data:/app
+    environment:
+      TZ: Asia/Shanghai
+
+volumes:
+  liant_data:

@@ -1,0 +1,34 @@
+# 反代部署：Caddy 在前面终止 TLS 并自动申请证书，LianT 只提供明文。
+#
+#   LIANT_DOMAIN=liant.example.com docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
+#
+# 首次配对：
+#   docker compose -f docker-compose.yml -f docker-compose.proxy.yml run --rm \
+#     -e LIANT_NO_TLS=1 liant pair --public-url https://$LIANT_DOMAIN
+services:
+  liant:
+    ports: []
+    environment:
+      LIANT_NO_TLS: "1"
+    expose:
+      - "8443"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: liant-caddy
+    restart: unless-stopped
+    depends_on:
+      - liant
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      LIANT_DOMAIN: ${LIANT_DOMAIN:?请设置 LIANT_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -117,6 +117,31 @@ func listenAddr(cfg config.Config) string {
 	return addr
 }
 
+// noTLSRequested 判断是否关闭内置 TLS。
+//
+// 只用于容器里由反向代理终止 TLS 的部署：代理到本进程走明文，
+// 浏览器看到的仍是代理签发的正式证书。
+func noTLSRequested(flagValue bool) bool {
+	if flagValue {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LIANT_NO_TLS"))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// servePlain 起明文监听，仅用于反代场景。
+func servePlain(srv *http.Server, addr string) error {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("监听 %s: %w", addr, err)
+	}
+	slog.Warn("以明文模式监听，请确保前面有反向代理终止 TLS", "addr", addr)
+	return srv.Serve(ln)
+}
+
 // serveTLS 用节点证书起 TLS 监听；协议要求 TLS 1.3 起。
 func serveTLS(srv *http.Server, id *node.Identity, addr string) error {
 	ln, err := net.Listen("tcp", addr)
@@ -135,7 +160,9 @@ func serveTLS(srv *http.Server, id *node.Identity, addr string) error {
 func serveCommand(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	daemonize := fs.Bool("d", false, "转入后台运行，日志写 data/liant.log，可用 LianT stop 停止")
+	noTLS := fs.Bool("no-tls", false, "不启用内置 TLS，仅用于由反向代理终止 TLS 的部署；也可用环境变量 LIANT_NO_TLS=1")
 	_ = fs.Parse(args)
+	plain := noTLSRequested(*noTLS)
 
 	if *daemonize && !isDaemonChild() {
 		if err := startDaemon([]string{"serve"}); err != nil {
@@ -168,7 +195,13 @@ func serveCommand(args []string) {
 
 	httpSrv := &http.Server{Handler: appHandler(srv, coreSvc), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
-		if err := serveTLS(httpSrv, id, listenAddr(cfg)); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		var err error
+		if plain {
+			err = servePlain(httpSrv, listenAddr(cfg))
+		} else {
+			err = serveTLS(httpSrv, id, listenAddr(cfg))
+		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fmt.Fprintln(os.Stderr, "服务退出：", err)
 			os.Exit(1)
 		}
@@ -214,6 +247,7 @@ func pairCommand(args []string) {
 
 	fs := flag.NewFlagSet("pair", flag.ExitOnError)
 	hostFlag := fs.String("host", "", "二维码里通告的主机名或 IP；留空则用 connect.address 或自动探测")
+	publicURL := fs.String("public-url", "", "对外访问地址，如 https://liant.example.com；反代部署时用它生成配对链接")
 	_ = fs.Parse(args)
 
 	pairer := pairing.New()
@@ -256,8 +290,17 @@ func pairCommand(args []string) {
 		"exp":   code.Expires.Unix(),
 	})
 	// 二维码直接编码网页端的配对链接：手机相机扫一下就能打开管理页。
-	link := fmt.Sprintf("https://%s:%d/#pair=%s", host, portOf(listenAddr(cfg)),
-		base64.RawURLEncoding.EncodeToString(payload))
+	base := ""
+	if pub := strings.TrimSpace(*publicURL); pub != "" {
+		base = strings.TrimRight(pub, "/")
+	} else {
+		scheme := "https"
+		if noTLSRequested(false) {
+			scheme = "http"
+		}
+		base = fmt.Sprintf("%s://%s:%d", scheme, host, portOf(listenAddr(cfg)))
+	}
+	link := fmt.Sprintf("%s/#pair=%s", base, base64.RawURLEncoding.EncodeToString(payload))
 	fmt.Printf("配对码：%s，%d 秒内有效\n", code.Value, int(time.Until(code.Expires).Seconds()))
 	fmt.Printf("节点指纹：%s\n", id.Fingerprint())
 	fmt.Printf("管理页：%s\n", link)
@@ -274,7 +317,13 @@ func pairCommand(args []string) {
 
 	httpSrv := &http.Server{Handler: appHandler(srv, coreSvc), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
-		if err := serveTLS(httpSrv, id, listenAddr(cfg)); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		var err error
+		if noTLSRequested(false) {
+			err = servePlain(httpSrv, listenAddr(cfg))
+		} else {
+			err = serveTLS(httpSrv, id, listenAddr(cfg))
+		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fmt.Fprintln(os.Stderr, "服务退出：", err)
 			os.Exit(1)
 		}
