@@ -196,14 +196,39 @@ class ChatController(context: Context, private val repository: LiantRepository) 
             try {
                 val bytes = repository.fetchMedia(botId, message.msgId)
                 if (bytes.size > MAX_IMAGE_BYTES) continue
-                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: continue
-                _media.value = _media.value + (message.msgId to bitmap)
+                // 气泡只有 280dp 宽，没必要把 4000px 的原图整张解进内存。
+                val bitmap = decodeScaled(bytes) ?: continue
+                _media.value = capMedia(_media.value + (message.msgId to bitmap))
                 _mediaErrors.value = _mediaErrors.value - message.msgId
             } catch (e: Exception) {
                 val code = (e as? ProtocolException)?.code ?: "failed"
                 _mediaErrors.value = _mediaErrors.value + (message.msgId to code)
             }
         }
+    }
+
+    /** 先读尺寸再按 2 的幂降采样，目标长边约 1080px。 */
+    private fun decodeScaled(bytes: ByteArray): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        var width = bounds.outWidth
+        var height = bounds.outHeight
+        while (width / 2 >= TARGET_IMAGE_EDGE && height / 2 >= TARGET_IMAGE_EDGE) {
+            width /= 2
+            height /= 2
+            sample *= 2
+        }
+        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    }
+
+    /** 简单 LRU-ish 上限：超出就丢掉最早插入的几张，避免多会话累积吃内存。 */
+    private fun capMedia(current: Map<String, Bitmap>): Map<String, Bitmap> {
+        if (current.size <= MAX_CACHED_BITMAPS) return current
+        val keep = current.entries.drop(current.size - MAX_CACHED_BITMAPS)
+        return keep.associate { it.key to it.value }
     }
 
     fun clearError() {
@@ -215,3 +240,5 @@ private const val BACKFILL_PAGE_SIZE = 100
 private const val MAX_BACKFILL_PAGES = 20
 
 private const val MAX_IMAGE_BYTES = 5 * 1024 * 1024
+private const val TARGET_IMAGE_EDGE = 1080
+private const val MAX_CACHED_BITMAPS = 60
