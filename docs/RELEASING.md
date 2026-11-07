@@ -34,25 +34,25 @@ versionCode = total_runs - version-code-base.txt 里的基线   （最小 1）
 
 ## 触发方式
 
-**每次 push 到 `main` 都会自动发对应组件的 pre-release**，版本固定为
-`v1.0.0-Alpha-<7 位哈希>`（基线不变，只换哈希）。不会发正式 release。
+**每次 push 到 `main` 都会自动发一个 pre-release**，版本固定为
+`v1.0.0-Alpha-<7 位哈希>`（基线不变，只换哈希）。Service 二进制和 Manager APK
+**放在同一个 release 里**，不再分开发。不会发正式 release。
 
 也可以手动重发：`workflow_dispatch` 传已有 tag，或按下面的约定打 tag 推送。
 
 ## Tag
 
-每个组件独立打 tag，前缀区分：
+统一一个 tag，不再带组件前缀：
 
 ```
-service-v1.0.0-Alpha-eeeeeee
-manager-v1.0.0-Alpha-eeeeeee
+v1.0.0-Alpha-eeeeeee
 ```
 
 打 tag 会触发对应发布流水线（`Release Service` / `Release Manager`），构建产物并挂到
 pre-release 上；也可以之后用 `workflow_dispatch` 传已有 tag 补发。
 
 ```bash
-git tag -a service-v1.0.0-Alpha-$(git rev-parse --short=7 HEAD) -m "LianT Service v1.0.0-Alpha"
+git tag -a v1.0.0-Alpha-$(git rev-parse --short=7 HEAD) -m "LianT v1.0.0-Alpha"
 git push origin --tags
 ```
 
