@@ -6,6 +6,7 @@ package core
 
 import (
 	"context"
+	"log/slog"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -325,6 +326,9 @@ func (c *Core) Ingest(ctx context.Context, botID string, in platform.Inbound) (b
 	inserted, err := c.opt.Store.AppendMessage(ctx, msg)
 	if err != nil {
 		return false, err
+	}
+	if inserted {
+		slog.Info("收到消息", "bot", botID, "peer", in.Peer.ID, "msg", in.MessageID)
 	}
 	if inserted && c.opt.Broadcaster != nil {
 		c.opt.Broadcaster.Broadcast(protocol.TypeMsgInbound, toProtocolMessage(msg))
