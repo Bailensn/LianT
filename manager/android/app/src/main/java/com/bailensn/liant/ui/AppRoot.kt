@@ -196,7 +196,7 @@ fun AppRoot() {
         DeepLink.consume()
     }
 
-    MaterialTheme {
+    run {
         Box(Modifier.fillMaxSize()) {
             val openConversation = current
             when {
