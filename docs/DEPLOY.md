@@ -36,8 +36,13 @@
 ## 4. 配对手机
 
 ```bash
-./LianT pair
+./LianT pair                    # 自动探测本机 IPv4，适合手机和服务器同一网络
+./LianT pair --host 1.2.3.4     # 指定手机可达的地址
+./LianT pair --host liant.example.com   # 有域名/反代时
 ```
+
+二维码里的 `host` 按「`--host` > `config.connect.address` > 本机非回环 IPv4 > 主机名」取值；
+自动探测只适合局域网，跨网必须显式给 `--host` 或先 `LianT config set connect.address …`。
 
 终端会打印配对码、节点指纹和一段二维码 JSON；在 Manager 里粘贴 JSON（或以后扫码）。
 手机连上后终端要求输入 `y` 确认，成功即把设备公钥写入 `devices` 表并退出。

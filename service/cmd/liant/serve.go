@@ -7,10 +7,12 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -178,8 +180,12 @@ func serveCommand(_ []string) {
 }
 
 // pairCommand 打一次配对码，等手机配对成功后退出。
-func pairCommand(_ []string) {
+func pairCommand(args []string) {
 	cfg := loadConfigOrDie()
+
+	fs := flag.NewFlagSet("pair", flag.ExitOnError)
+	hostFlag := fs.String("host", "", "二维码里通告的主机名或 IP；留空则用 connect.address 或自动探测")
+	_ = fs.Parse(args)
 
 	pairer := pairing.New()
 	code, err := pairer.Issue()
@@ -199,9 +205,18 @@ func pairCommand(_ []string) {
 	}
 	defer db.Close()
 
+	host := pairHost(*hostFlag, cfg)
+	if host == "" {
+		fmt.Fprintln(os.Stderr, "无法自动确定对外地址，请用：LianT pair --host <手机可达的 IP 或域名>")
+		os.Exit(1)
+	}
+	if cfg.Connect.Address == "" && *hostFlag == "" {
+		fmt.Printf("自动检测到本机地址：%s（手机需能访问它；跨网请用 --host）\n", host)
+	}
+
 	payload, _ := json.Marshal(map[string]any{
 		"v":     protocol.Version,
-		"host":  cfg.Connect.Address,
+		"host":  host,
 		"port":  portOf(listenAddr(cfg)),
 		"fp":    id.Fingerprint(),
 		"ticket": code.Value,
@@ -239,6 +254,66 @@ func pairCommand(_ []string) {
 }
 
 // mustOpenStore 打开配置里的数据库；CLI 命令共用。
+// pairHost 决定二维码里写什么主机名：命令行 > 配置 > 本机非回环 IPv4 > 主机名。
+func pairHost(flagHost string, cfg config.Config) string {
+	if h := strings.TrimSpace(flagHost); h != "" {
+		return h
+	}
+	if h := addressHost(cfg.Connect.Address); h != "" {
+		return h
+	}
+	if ip := localIPv4(); ip != "" {
+		return ip
+	}
+	if name, err := os.Hostname(); err == nil {
+		return name
+	}
+	return ""
+}
+
+// addressHost 兼容 https://host:port、host:port 与裸 host 三种写法。
+func addressHost(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return ""
+	}
+	if strings.Contains(addr, "://") {
+		if u, err := url.Parse(addr); err == nil {
+			return u.Hostname()
+		}
+	}
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		return h
+	}
+	return addr
+}
+
+// localIPv4 返回第一个私有网段的非回环 IPv4，供同一局域网内扫码使用。
+func localIPv4() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	var fallback string
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip := ipNet.IP.To4()
+		if ip == nil || ip.IsLoopback() {
+			continue
+		}
+		if ip.IsPrivate() {
+			return ip.String()
+		}
+		if fallback == "" {
+			fallback = ip.String()
+		}
+	}
+	return fallback
+}
+
 // appHandler 同时挂 WSS 与媒体下载；两者共用同一个 TLS 端口。
 func appHandler(srv *server.Server, svc *core.Core) http.Handler {
 	mux := http.NewServeMux()
