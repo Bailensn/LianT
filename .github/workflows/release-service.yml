@@ -34,10 +34,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ../dist
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#service-v}"
+          LDFLAGS="-s -w -X main.version=${VERSION}"
           build() {
             GOOS=$1 GOARCH=$2 SUFFIX=$3
             CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
-              go build -trimpath -ldflags="-s -w" \
+              go build -trimpath -ldflags="$LDFLAGS" \
               -o "../dist/LianT-Service-${GOOS}-${GOARCH}${SUFFIX}" ./cmd/liant
           }
           build linux amd64 ""

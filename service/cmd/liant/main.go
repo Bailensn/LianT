@@ -16,6 +16,8 @@ func main() {
 	switch args[1] {
 	case "init":
 		initCommand()
+	case "version":
+		versionCommand()
 	case "config":
 		config.ConfigCommand(args[2:])
 	case "serve":
