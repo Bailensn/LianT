@@ -165,6 +165,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.Close()
 	ws.SetReadLimit(protocol.MaxFrame + 4096)
+	// 客户端空闲时不发数据，靠 ping/pong 续命，避免 90s 空闲超时误杀。
+	ws.SetPongHandler(func(string) error {
+		ws.SetReadDeadline(s.now().Add(idleTimeout))
+		return nil
+	})
 
 	ip := remoteIP(r)
 	if !s.limiter.Allow(ip) {
@@ -358,6 +363,9 @@ func (c *conn) denyPair(env protocol.Envelope, reason string) error {
 }
 
 func (c *conn) loop() error {
+	done := make(chan struct{})
+	defer close(done)
+	go c.pingLoop(done)
 	for {
 		env, err := c.read()
 		if err != nil {
@@ -426,6 +434,25 @@ func (c *conn) tooManyAttempts() error {
 	c.ws.WriteControl(websocket.CloseMessage,
 		websocket.FormatCloseMessage(closeAuthFailed, "too many attempts"), c.s.now().Add(writeTimeout))
 	return errors.New("server: 认证失败次数过多")
+}
+
+// pingLoop 每 30s 发一次控制帧 ping；pong 会刷新读超时。
+func (c *conn) pingLoop(done <-chan struct{}) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			c.wmu.Lock()
+			err := c.ws.WriteControl(websocket.PingMessage, nil, c.s.now().Add(writeTimeout))
+			c.wmu.Unlock()
+			if err != nil {
+				return
+			}
+		}
+	}
 }
 
 func (c *conn) read() (protocol.Envelope, error) {
@@ -509,6 +536,9 @@ func (s *Server) Broadcast(typ string, payload any) {
 
 	for _, c := range conns {
 		if err := c.write(typ, "", payload); err != nil {
+			// 写失败说明连接已死，直接摘掉，别留着反复报错。
+			s.removeConn(c)
+			_ = c.ws.Close()
 			s.opt.Logf("推送 %s 失败: %v", typ, err)
 		}
 	}

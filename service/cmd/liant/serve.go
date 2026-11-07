@@ -9,7 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -80,7 +80,9 @@ func buildServer(
 		Pairer:    pairer,
 		Confirm:   confirm,
 		Retention: retention(),
-		Logf:      log.Printf,
+		Logf: func(format string, args ...any) {
+			slog.Warn(fmt.Sprintf(format, args...))
+		},
 	})
 	if err != nil {
 		db.Close()
@@ -124,12 +126,28 @@ func serveTLS(srv *http.Server, id *node.Identity, addr string) error {
 		Certificates: []tls.Certificate{id.Certificate()},
 		MinVersion:   tls.VersionTLS13,
 	}
-	log.Printf("WSS 监听 %s，指纹 %s", addr, id.Fingerprint())
+	slog.Info("WSS 监听", "addr", addr, "fingerprint", id.Fingerprint())
 	return srv.Serve(tls.NewListener(ln, tlsConf))
 }
 
 // serveCommand 前台运行 WSS 服务端。
-func serveCommand(_ []string) {
+func serveCommand(args []string) {
+	fs := flag.NewFlagSet("serve", flag.ExitOnError)
+	daemonize := fs.Bool("d", false, "转入后台运行，日志写 data/liant.log，可用 LianT stop 停止")
+	_ = fs.Parse(args)
+
+	if *daemonize && !isDaemonChild() {
+		if err := startDaemon([]string{"serve"}); err != nil {
+			fmt.Fprintln(os.Stderr, "转后台失败：", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if isDaemonChild() {
+		_ = writePidFile(os.Getpid())
+		defer removePidFile()
+	}
+
 	cfg := loadConfigOrDie()
 	srv, id, db, coreSvc, err := buildServer(confirmTerminal, nil, nil)
 	if err != nil {
@@ -158,7 +176,7 @@ func serveCommand(_ []string) {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
-	log.Println("收到退出信号，正在关闭…")
+	slog.Info("收到退出信号，正在关闭")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(ctx)
@@ -182,9 +200,9 @@ func startBotManager(srv *server.Server, db *store.Store, coreSvc *core.Core) (*
 	}
 	coreSvc.SetController(manager)
 	if started, err := manager.Reconcile(context.Background()); err != nil {
-		log.Printf("认领已有 Bot 失败: %v", err)
+		slog.Warn("认领已有 Bot 失败", "err", err)
 	} else {
-		log.Printf("已认领 %d 个 Bot", started)
+		slog.Info("已认领 Bot", "count", started)
 	}
 	return manager, nil
 }
@@ -389,16 +407,16 @@ func purgeLoop(db *store.Store) {
 	purge := func() {
 		res, err := db.Purge(context.Background(), store.DefaultRetention(), time.Now())
 		if err != nil {
-			log.Printf("清理失败: %v", err)
+			slog.Warn("清理失败", "err", err)
 			return
 		}
 		for _, path := range res.Files {
 			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-				log.Printf("删除媒体文件失败 %s: %v", path, err)
+				slog.Warn("删除媒体文件失败", "path", path, "err", err)
 			}
 		}
 		if res.Messages > 0 || res.MediaExpired > 0 || res.MediaEvicted > 0 {
-			log.Printf("清理完成：消息 %d，过期媒体 %d，淘汰媒体 %d", res.Messages, res.MediaExpired, res.MediaEvicted)
+			slog.Info("清理完成", "messages", res.Messages, "media_expired", res.MediaExpired, "media_evicted", res.MediaEvicted)
 		}
 	}
 	purge()

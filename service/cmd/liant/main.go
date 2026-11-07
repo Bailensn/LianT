@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/Bailensn/LianT/service/internal/config"
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	args := os.Args
 	if len(args) < 2 {
 		fmt.Println("请输入命令")
@@ -24,6 +26,8 @@ func main() {
 		serveCommand(args[2:])
 	case "pair":
 		pairCommand(args[2:])
+	case "stop":
+		stopCommand()
 	case "bot":
 		botCommand(args[2:])
 	default:

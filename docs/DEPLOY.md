@@ -68,7 +68,9 @@ CLI 会直接拒绝密钥字段的 `--cred`。`--cred-file` 的内容形如：
 ## 5. 常驻运行
 
 ```bash
-./LianT serve
+./LianT serve        # 前台
+./LianT serve -d     # 后台：日志 data/liant.log，pid data/liant.pid
+./LianT stop         # 停止后台服务
 ```
 
 启动时会认领状态为 `running/starting` 的 Bot，失败按 1s→30s 退避重试；
