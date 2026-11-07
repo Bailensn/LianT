@@ -45,6 +45,7 @@ services:
       - liant_data:/app
     environment:
       TZ: ${TZ:-Asia/Shanghai}
+      LIANT_CONFIRM: auto
       LIANT_NO_TLS: "1"
     security_opt:
       - no-new-privileges:true
@@ -89,6 +90,7 @@ services:
       - liant_data:/app
     environment:
       TZ: ${TZ:-Asia/Shanghai}
+      LIANT_CONFIRM: auto
     security_opt:
       - no-new-privileges:true
     cap_drop:

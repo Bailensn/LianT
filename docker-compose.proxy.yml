@@ -10,6 +10,7 @@ services:
     ports: []
     environment:
       LIANT_NO_TLS: "1"
+      LIANT_CONFIRM: auto
     expose:
       - "8443"
 

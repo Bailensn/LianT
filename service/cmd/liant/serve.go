@@ -191,11 +191,7 @@ func serveCommand(args []string) {
 	}
 
 	cfg := loadConfigOrDie()
-	confirm := confirmTerminal
-	if !isInteractive() {
-		confirm = confirmAuto
-	}
-	srv, id, db, coreSvc, err := buildServer(confirm, nil, nil)
+	srv, id, db, coreSvc, err := buildServer(confirmPolicy(), nil, nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "启动失败：", err)
 		os.Exit(1)
@@ -270,7 +266,7 @@ func pairCommand(args []string) {
 
 	pairer := pairing.New()
 	watcher := &pairWatcher{done: make(chan struct{})}
-	srv, id, db, coreSvc, err := buildServer(confirmTerminal, pairer, func(db *store.Store) server.DeviceStore {
+	srv, id, db, coreSvc, err := buildServer(confirmPolicy(), pairer, func(db *store.Store) server.DeviceStore {
 		watcher.Store = db
 		return watcher
 	})
@@ -593,10 +589,26 @@ func (p *pairWatcher) PutDevice(ctx context.Context, d store.Device) error {
 // isInteractive 判断 stdin 是不是终端。
 func isInteractive() bool {
 	fi, err := os.Stdin.Stat()
-	if err != nil {
+	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
 		return false
 	}
-	return fi.Mode()&os.ModeCharDevice != 0
+	// /dev/null 也是字符设备，但它连不上任何终端。
+	return fi.Name() != "null"
+}
+
+// confirmPolicy 决定配对确认方式：LIANT_CONFIRM=auto|terminal 显式指定，
+// 否则看 stdin 是不是终端。
+func confirmPolicy() func(context.Context, string, string, *ecdsa.PublicKey) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LIANT_CONFIRM"))) {
+	case "auto", "yes":
+		return confirmAuto
+	case "terminal", "tty":
+		return confirmTerminal
+	}
+	if isInteractive() {
+		return confirmTerminal
+	}
+	return confirmAuto
 }
 
 // confirmAuto 用于无终端场景（Docker 后台运行）。
