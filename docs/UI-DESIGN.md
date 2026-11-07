@@ -1,44 +1,46 @@
-# UI 设计规范（Manager / Android）
+# UI 设计规范（网页管理端）
 
-来源：[Ludi-Herry/mobile-design-system-skill](https://github.com/Ludi-Herry/mobile-design-system-skill)
-（移动端 iOS HIG / Android Material 3 执行级 Skill）。本文只记录**本项目如何落地**，
-规范原文与推理在那边，不复制结论。
+从 Android/Compose 迁到网页后，界面规范按 iOS HIG 的移动端惯例落地：
+**留白优先、层级靠背景而不是描边、动效克制**。本文只记录本项目的执行口径。
 
 ## 硬门禁与本仓库的对应实现
 
-| 规范条款 | Compose 落地 |
+| 规范条款 | Web 落地 |
 | --- | --- |
-| 顶部避让状态栏/灵动岛 | 根布局 `Modifier.statusBarsPadding()`；`Scaffold` 的 `TopAppBar` 自带状态栏 insets |
-| 底部避让 Home Bar / 手势条 | `BottomTabBar` 与输入条用 `navigationBarsPadding()`；输入条改用 `WindowInsets.safeDrawing.only(Bottom)`，避免与 `imePadding` 叠加 |
-| 软键盘不遮挡输入 | `enableEdgeToEdge` + `windowSoftInputMode="adjustResize"` + 输入条 `windowInsetsPadding(safeDrawing.only(Bottom))`；配对页可滚动 |
-| 最小触控热区 48×48dp | 所有按钮/可点项 `heightIn(min = 48.dp)`；列表行 `padding(vertical = 10.dp)` 后 ≥64dp |
-| 相邻可点项留白 ≥8dp | 顶部操作 `Arrangement.spacedBy(8.dp)` / TabBar 等分 |
-| 0.5dp 微边框 | `HorizontalDivider(thickness = 0.5.dp)`，颜色用 `outlineVariant` |
-| 3–5 槽位 TabBar | `BottomTabBar`：消息 / Bot / 设置 |
-| 空态与失败出口 | 会话空态给说明、Bot 空态给「重新加载」、错误条常驻底部 |
-| 同心圆角 | 气泡圆角按方向收角（外角 12dp、贴边角 2dp） |
-| 单一主 CTA | 配对页只有一个全宽「配对」按钮；设置页的「解除配对」是唯一危险操作 |
+| 顶部避让状态栏/灵动岛 | 页面容器 `pt-[max(1rem,env(safe-area-inset-top))]` |
+| 底部避让 Home Bar / 手势条 | 悬浮底栏与输入条 `pb-[max(…,env(safe-area-inset-bottom))]` |
+| 软键盘不遮挡输入 | 视口 `viewport-fit=cover`；聊天输入条贴底，键盘弹起时由浏览器自动上推 |
+| 最小触控热区 44×44 | 按钮 `h-11`，列表行 `min-h-[56px]` |
+| 相邻可点项留白 ≥8dp | 列表行内部 `gap-3`；底栏项之间 `gap-1` 加内边距 |
+| 0.5px 微边框 | `--sep` 变量，浅色 `rgb(0 0 0 / .07)`，深色 `rgb(255 255 255 / .1)` |
+| 3–5 槽位底栏 | 会话 / 机器人 / 设置，悬浮玻璃胶囊，选中态用品牌色底 |
+| 空态与失败出口 | 每个列表都有空态文案；断线时顶部常驻说明条并自动重连 |
+| 同心圆角 | 卡片 `--radius-card`，内部按钮 12–16，气泡 18 |
+| 单一主 CTA | 配对页只有一个全宽「连接」按钮 |
+
+## 视觉语言
+
+- **背景分层**：页面底色 `--bg`，卡片 `--bg-elevated`，按下态 `--bg-sunken`。
+  用背景差表达层级，不靠投影；只有悬浮底栏带一层柔和投影。
+- **强调色**：单一品牌蓝 `--accent`，只用于主按钮、选中态、未读数。
+- **文字层级**：34px 加粗大标题（iOS 大标题）、16px 正文、13px 次级、11–12px 辅助。
+- **玻璃**：底栏与聊天页头部用 `backdrop-filter: saturate(1.8) blur(24px)`，
+  底下必须有滚动内容才有意义，不要铺在纯色背景上。
+- **动效**：只在首屏与面板出现时用 220ms 的 `rise`，不做滚动视差、不做循环动画。
+- **深浅色**：只跟随系统 `prefers-color-scheme`，深色背景是纯黑（OLED 省电），
+  卡片用 `#1c1c1e` 提亮一级。
 
 ## 新增界面时必须自查
 
-1. 是否避让了顶部状态栏与底部手势条？
-2. 每个可点元素热区是否 ≥48dp？相邻是否 ≥8dp？
-3. 键盘弹起时输入框与主按钮是否仍可见/可点？
-4. 分割线是否 0.5dp？圆角是否内外同心？
+1. 顶部与底部是否避让了安全区？
+2. 每个可点元素热区是否 ≥44px？相邻项是否留够间距？
+3. 键盘弹起时输入框与主按钮是否仍可见？
+4. 分隔线是否 1px 半透明？圆角是否内外同心？
 5. 空列表、断网、超时是否都有明确文案与操作出口？
 6. 一屏是否只有 1 个全宽主按钮？
 
-## 已按规范落地
+## 与协议的关系
 
-- **图片消息**：`MediaThumb` 只接受 `1:1 / 4:3 / 16:9` 三档，加载前后占位同尺寸，避免布局跳动；
-  消息类型由 `messages.kind` 区分（DB v2）。
-- **底部抽屉**：`ChatDetailSheet` 使用 `ModalBottomSheet`，36×4dp 拖拽条、内容 60% 高度，
-  遮罩吞掉手势、底层列表不会跟着滚；信息类允许点遮罩关闭，表单类必须改成只能点「取消/保存」。
-- **失败出口**：监听断开、未配对、Bot 空态都有可点的重试/重新加载入口。
-- **媒体加载**：`media.fetch` 后经同一条钉指纹连接下载，解码后按 4:3 裁切填进占位盒；
-  失败保留占位，不打断聊天。
-
-## 待补
-
-- 图片预览若用全屏浮层，需按 30%/60%/80% 三档做二级抽屉。
-- `media_expired` / `media_evicted` 现在统一显示「待下载」，后续在占位盒上区分文案。
+- 界面只按 `caps` / `constraints` 渲染，不内置平台假设；
+  QQ 的「被动回复 5 分钟窗口」由 `constraints.reply_window_s` 驱动，聊天页头部显示倒计时。
+- 「当前活跃机器人」是客户端本地状态，切换不重连。

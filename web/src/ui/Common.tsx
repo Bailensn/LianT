@@ -8,14 +8,14 @@ export function Page({ title, action, children }: { title: string; action?: Reac
         <h1 className="text-[34px] leading-[1.1] font-bold tracking-tight">{title}</h1>
         {action}
       </header>
-      <div className="flex-1 overflow-y-auto overscroll-contain px-4 pb-32 no-scrollbar">{children}</div>
+      <div className="flex-1 overflow-y-auto overscroll-contain px-4 pb-40 no-scrollbar">{children}</div>
     </div>
   )
 }
 
 export function Group({ title, children, footer }: { title?: string; footer?: string; children: ReactNode }) {
   return (
-    <section className="mb-7 animate-rise">
+    <section className="mb-7">
       {title && <h2 className="px-4 pb-2 text-[13px] font-medium tracking-wide text-[var(--text-2)]">{title}</h2>}
       <div className="card overflow-hidden">{children}</div>
       {footer && <p className="px-4 pt-2 text-[13px] leading-snug text-[var(--text-3)]">{footer}</p>}

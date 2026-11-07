@@ -6,7 +6,7 @@
 
 - 设计文档与决策记录：[DESIGN.md](docs/DESIGN.md)
 - 通信协议（草案）：[PROTOCOL.md](docs/PROTOCOL.md)
-- 界面规范（Android）：[UI-DESIGN.md](docs/UI-DESIGN.md)
+- 界面规范（网页端）：[UI-DESIGN.md](docs/UI-DESIGN.md)
 - 部署说明：[DEPLOY.md](docs/DEPLOY.md)
 - 发布规则：[RELEASING.md](docs/RELEASING.md)
 
@@ -23,9 +23,7 @@
 
 ### Apache-2.0
 
-以下目录采用 **Apache License 2.0 (Apache-2.0)** 授权：
-
-- `manager/`
+`web/` 目录下的前端代码与根目录中标注的文件采用 **Apache License 2.0 (Apache-2.0)** 授权。
 
 不同许可证仅适用于其对应目录及其中的代码。
 

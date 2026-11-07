@@ -1,9 +1,8 @@
 @import 'tailwindcss';
 
 @theme {
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'Noto Sans SC',
-    'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  /* 只写泛型：点名具体字体时，部分 Android WebView 会把中文回落到衬线体。 */
+  --font-sans: sans-serif;
   --radius-card: 1.25rem;
   --color-accent: oklch(0.62 0.19 259);
 }
@@ -74,19 +73,4 @@ body {
 
 .no-scrollbar::-webkit-scrollbar {
   display: none;
-}
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.animate-rise {
-  animation: rise 0.22s cubic-bezier(0.32, 0.72, 0, 1) both;
 }

@@ -94,7 +94,7 @@ export default function Bots() {
       {adding && (
         <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setAdding(false)}>
           <div
-            className="animate-rise w-full rounded-t-[28px] bg-[var(--bg)] pb-[max(1rem,env(safe-area-inset-bottom))]"
+            className="w-full rounded-t-[28px] bg-[var(--bg)] pb-[max(1rem,env(safe-area-inset-bottom))]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-[var(--text-3)]/40" />
