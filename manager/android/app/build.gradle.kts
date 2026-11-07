@@ -3,9 +3,11 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// 版本由发布流水线用 -PversionName/-PversionCode 注入；本地默认 v1.0.0-Alpha。
+// versionName 由发布流水线注入，本地默认 v1.0.0-Alpha。
+// versionCode 不跟版本号挂钩：任何模式的构建都用「当前 Unix 秒」，天然单调递增。
 val appVersionName = providers.gradleProperty("versionName").getOrElse("v1.0.0-Alpha")
-val appVersionCode = providers.gradleProperty("versionCode").getOrElse("1000000").toInt()
+val appVersionCode = providers.gradleProperty("versionCode").map { it.toInt() }
+    .getOrElse((System.currentTimeMillis() / 1000).toInt())
 
 android {
     namespace = "com.bailensn.liant"

@@ -43,19 +43,8 @@ jobs:
             echo "版本格式应为 v<主>.<次>.<修>-<Alpha|Beta|RCn>-<6或7位哈希>，得到：$VERSION" >&2
             exit 1
           fi
-          MAJOR="${BASH_REMATCH[1]}"
-          MINOR="${BASH_REMATCH[2]}"
-          PATCH="${BASH_REMATCH[3]}"
-          CHANNEL="${BASH_REMATCH[4]}"
-          RC="${BASH_REMATCH[5]}"
-          BASE=$((10#$MAJOR * 1000000 + 10#$MINOR * 1000 + 10#$PATCH))
-          case "$CHANNEL" in
-            Alpha) CODE=$BASE ;;
-            Beta) CODE=$((BASE + 100)) ;;
-            RC*) CODE=$((BASE + 200 + 10#$RC)) ;;
-          esac
+          # versionCode 由 Gradle 取构建时刻的 Unix 秒，这里不再传。
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "code=${CODE}" >> "$GITHUB_OUTPUT"
 
       - name: Configure Android SDK
         run: |
@@ -68,7 +57,6 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace \
             -PversionName="${{ steps.meta.outputs.version }}" \
-            -PversionCode="${{ steps.meta.outputs.code }}" \
             assembleDebug
 
       - name: Collect APK
