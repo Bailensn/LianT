@@ -1,0 +1,13 @@
+{
+  "name": "LianT",
+  "short_name": "LianT",
+  "description": "自托管 Bot 运营客户端",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f2f2f7",
+  "theme_color": "#f2f2f7",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

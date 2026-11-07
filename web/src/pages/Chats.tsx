@@ -23,6 +23,7 @@ export default function Chats() {
   const state = useStore((s) => s.state)
   const detail = useStore((s) => s.detail)
   const bots = useStore((s) => s.bots)
+  const reconnect = useStore((s) => s.reconnect)
   const convs = deriveConversations(msgs, read)
   const st = stateText(state)
   const running = bots.filter((b) => b.status === 'running').length
@@ -42,6 +43,12 @@ export default function Chats() {
           <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-2)]">
             {detail || '正在尝试重新连接，收到的新消息会在恢复后补齐。'}
           </p>
+          <button
+            onClick={() => void reconnect()}
+            className="mt-3 h-9 rounded-full bg-[var(--accent)] px-4 text-[13px] font-medium text-white active:opacity-70"
+          >
+            立即重试
+          </button>
         </div>
       )}
 

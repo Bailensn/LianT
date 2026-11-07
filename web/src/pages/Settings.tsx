@@ -7,6 +7,7 @@ export default function Settings() {
   const detail = useStore((s) => s.detail)
   const bots = useStore((s) => s.bots)
   const unpair = useStore((s) => s.unpair)
+  const reconnect = useStore((s) => s.reconnect)
 
   if (!identity) return null
   const online = state === 'online'
@@ -20,6 +21,8 @@ export default function Settings() {
           trailing={<Badge tone={online ? 'ok' : 'warn'}>{online ? '在线' : state === 'reconnecting' ? '重连中' : '离线'}</Badge>}
         />
         <Divider />
+        {!online && <Row title="重新连接" subtitle="断开时点这里立刻重试" onClick={() => void reconnect()} />}
+        {!online && <Divider />}
         <Row title="服务指纹" subtitle={identity.fp || '未知'} />
         <Divider />
         <Row title="设备标识" subtitle={identity.deviceId} />

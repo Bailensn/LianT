@@ -62,6 +62,7 @@ type Store = State & Actions
 
 type Actions = {
   boot: () => Promise<void>
+  reconnect: () => Promise<void>
   pair: (input: string, deviceName: string) => Promise<void>
   unpair: () => Promise<void>
   refreshBots: () => Promise<void>
@@ -94,8 +95,16 @@ export const useStore = create<State & Actions>((set, get) => ({
     if (get().booted) return
     const identity = (await loadIdentity()) ?? null
     const read = await loadKV<Record<string, number>>('read', {})
-    set({ identity, read, booted: true })
+    const msgs = await loadMessages()
+    set({ identity, read, msgs, booted: true })
     if (identity) await connect(identity, set, get)
+  },
+
+  async reconnect() {
+    const identity = get().identity
+    if (!identity) return
+    set({ state: 'connecting', detail: '' })
+    await connect(identity, set, get)
   },
 
   async pair(input, deviceName) {
