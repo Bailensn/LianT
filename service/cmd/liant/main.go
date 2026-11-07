@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/Bailensn/LianT/service/internal/config"
-	"github.com/Bailensn/LianT/service/internal/supervisor"
 )
 
 func main() {
@@ -23,14 +22,8 @@ func main() {
 		serveCommand(args[2:])
 	case "pair":
 		pairCommand(args[2:])
-	case "service":
-		supervisor.ServiceCommand(args[2:])
 	case "bot":
 		botCommand(args[2:])
-	case "botstart":
-		supervisor.BotCommand(args[2:])
-	case "service-daemon":
-		supervisor.StartDaemon()
 	default:
 		fmt.Println("未知命令")
 	}
