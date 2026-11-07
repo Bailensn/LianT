@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import top.yukonga.miuix.kmp.basic.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.Text
@@ -344,10 +345,10 @@ private fun PairingRoute(
     ) {
         Text("LianT", style = MiuixTheme.textStyles.title2)
         Text("在 Service 终端运行 LianT pair，粘贴打印出的二维码内容")
-        var qr by remember { mutableStateOf("") }
-        var name by remember { mutableStateOf("我的手机") }
+        val qrState = rememberTextFieldState()
+        val nameState = rememberTextFieldState("我的手机")
         val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
-            result.contents?.let { qr = it }
+            result.contents?.let { qrState.setTextAndPlaceCursorAtEnd(it) }
         }
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
@@ -357,7 +358,7 @@ private fun PairingRoute(
                 scope.launch {
                     val text = withContext(Dispatchers.IO) { decodeQrFromUri(context, uri) }
                     if (text != null) {
-                        qr = text
+                        qrState.setTextAndPlaceCursorAtEnd(text)
                         importError = null
                     } else {
                         importError = "这张图里没找到二维码"
@@ -392,24 +393,27 @@ private fun PairingRoute(
             Text(it, color = MiuixTheme.colorScheme.error, style = MiuixTheme.textStyles.footnote1)
         }
         TextField(
-            value = qr,
-            onValueChange = { value -> qr = value },
+            state = qrState,
             label = "二维码 JSON，也可以手动粘贴",
             useLabelAsPlaceholder = true,
             modifier = Modifier.fillMaxWidth(),
             lineLimits = TextFieldLineLimits.MultiLine(minHeightInLines = 3, maxHeightInLines = 8),
         )
         TextField(
-            value = name,
-            onValueChange = { value -> name = value },
+            state = nameState,
             label = "设备名",
             useLabelAsPlaceholder = true,
             modifier = Modifier.fillMaxWidth(),
             lineLimits = TextFieldLineLimits.SingleLine,
         )
         Button(
-            onClick = { onPair(qr.trim(), name.trim().ifEmpty { "未命名设备" }) },
-            enabled = !busy && qr.isNotBlank(),
+            onClick = {
+                onPair(
+                    qrState.text.toString().trim(),
+                    nameState.text.toString().trim().ifEmpty { "未命名设备" },
+                )
+            },
+            enabled = !busy && qrState.text.isNotBlank(),
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         ) {
             Text(if (busy) "等待 Service 确认…" else "配对")

@@ -33,6 +33,7 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -205,7 +206,7 @@ private fun MessageBubble(
 
 @Composable
 private fun InputBar(sending: Boolean, onSend: (String) -> Unit) {
-    var text by remember { mutableStateOf("") }
+    val textState = rememberTextFieldState()
     Row(
         Modifier
             .fillMaxWidth()
@@ -215,23 +216,22 @@ private fun InputBar(sending: Boolean, onSend: (String) -> Unit) {
         verticalAlignment = Alignment.Bottom,
     ) {
         TextField(
-            value = text,
-            onValueChange = { value -> text = value },
+            state = textState,
             modifier = Modifier.weight(1f),
-            label = if (text.isEmpty()) "输入消息" else "",
+            label = if (textState.text.isEmpty()) "输入消息" else "",
             useLabelAsPlaceholder = true,
             lineLimits = TextFieldLineLimits.MultiLine(minHeightInLines = 1, maxHeightInLines = 4),
         )
         Spacer(Modifier.size(8.dp))
         Button(
             onClick = {
-                val value = text.trim()
+                val value = textState.text.toString().trim()
                 if (value.isNotEmpty()) {
                     onSend(value)
-                    text = ""
+                    textState.setTextAndPlaceCursorAtEnd("")
                 }
             },
-            enabled = !sending && text.isNotBlank(),
+            enabled = !sending && textState.text.isNotBlank(),
             modifier = Modifier.heightIn(min = 48.dp),
         ) {
             Text(if (sending) "发送中" else "发送")
