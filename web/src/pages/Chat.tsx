@@ -14,6 +14,7 @@ export default function Chat() {
   const state = useStore((s) => s.state)
 
   const [text, setText] = useState('')
+  const [collapsed, setCollapsed] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
@@ -61,7 +62,11 @@ export default function Chat() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="glass sticky top-0 z-10 flex items-center gap-2 border-b border-[var(--sep)] px-2 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2">
+      <header
+        className={`glass sticky top-0 z-10 flex items-center gap-2 border-b px-2 transition-[padding] duration-200 ${
+          collapsed ? 'border-[var(--sep)] py-1.5' : 'border-transparent pt-[max(0.5rem,env(safe-area-inset-top))] pb-2'
+        }`}
+      >
         <button
           onClick={() => nav(-1)}
           className="flex h-10 items-center gap-0.5 rounded-xl px-2 text-[var(--accent)] active:opacity-60 md:hidden"
@@ -72,8 +77,8 @@ export default function Chat() {
           <span className="text-[16px]">返回</span>
         </button>
         <div className="min-w-0 flex-1 text-center">
-          <p className="truncate text-[16px] font-semibold">{title}</p>
-          <p className="truncate text-[11px] text-[var(--text-2)]">
+          <p className={`truncate font-semibold transition-all duration-200 ${collapsed ? 'text-[15px]' : 'text-[17px]'}`}>{title}</p>
+          <p className={`truncate overflow-hidden text-[11px] text-[var(--text-2)] transition-all duration-200 ${collapsed ? 'max-h-0 opacity-0' : 'max-h-4 opacity-100'}`}>
             {bot?.display_name || bot?.username || botId}
             {windowLeft !== null ? ` · ${
               windowLeft > 0
@@ -85,7 +90,10 @@ export default function Chat() {
         <div className="hidden w-[68px] md:block" />
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 no-scrollbar">
+      <div
+        className="flex-1 overflow-y-auto px-4 py-4 no-scrollbar"
+        onScroll={(e) => setCollapsed(e.currentTarget.scrollTop > 24)}
+      >
         {list.length === 0 && (
           <p className="mt-16 text-center text-[13px] text-[var(--text-3)]">还没有消息</p>
         )}

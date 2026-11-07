@@ -17,7 +17,7 @@ export function Page({ title, action, children }: { title: string; action?: Reac
 
 export function Group({ title, children, footer }: { title?: string; footer?: string; children: ReactNode }) {
   return (
-    <section className="mb-7">
+    <section className="mb-8">
       {title && <h2 className="px-4 pb-2 text-[13px] font-medium tracking-wide text-[var(--text-2)]">{title}</h2>}
       <div className="card overflow-hidden">{children}</div>
       {footer && <p className="px-4 pt-2 text-[13px] leading-snug text-[var(--text-3)]">{footer}</p>}
