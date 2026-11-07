@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"github.com/Bailensn/LianT/service/internal/botrun"
+	"github.com/skip2/go-qrcode"
+
 	"github.com/Bailensn/LianT/service/internal/config"
 	"github.com/Bailensn/LianT/service/internal/core"
 	"github.com/Bailensn/LianT/service/internal/node"
@@ -226,7 +228,15 @@ func pairCommand(args []string) {
 	fmt.Printf("配对码：%s（%d 秒内有效）\n", code.Value, int(time.Until(code.Expires).Seconds()))
 	fmt.Printf("节点指纹：%s\n", id.Fingerprint())
 	fmt.Printf("二维码内容：%s\n", payload)
-	fmt.Println("用 Manager 扫码，或手工输入配对码；本终端会再确认一次。")
+	if qr, err := qrcode.New(string(payload), qrcode.Medium); err == nil {
+		fmt.Println(qr.ToSmallString(false))
+		if err := os.MkdirAll("data", 0o700); err == nil {
+			if err := qr.WriteFile(512, "data/pair-qr.png"); err == nil {
+				fmt.Println("二维码图片：data/pair-qr.png")
+			}
+		}
+	}
+	fmt.Println("用 Manager 扫码/相册导入，或手工输入配对码；本终端会再确认一次。")
 
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {

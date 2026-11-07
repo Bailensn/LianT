@@ -1,12 +1,17 @@
 package com.bailensn.liant.ui
 
 import android.content.ActivityNotFoundException
+import android.content.Context
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -43,6 +48,13 @@ import com.bailensn.liant.net.ProtocolException
 import com.bailensn.liant.notify.DeepLink
 import com.bailensn.liant.notify.MessageNotifier
 import com.bailensn.liant.service.ConnectionService
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.DecodeHintType
+import com.google.zxing.MultiFormatReader
+import com.google.zxing.NotFoundException
+import com.google.zxing.RGBLuminanceSource
+import com.google.zxing.common.HybridBinarizer
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.CancellationException
@@ -50,7 +62,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 客户端根：未配对 → 配对页；已配对 → 消息 / Bot / 设置 三栏 + 底部 TabBar。
@@ -334,20 +348,47 @@ private fun PairingRoute(
         val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
             result.contents?.let { qr = it }
         }
-        Button(
-            onClick = {
-                scanner.launch(
-                    ScanOptions().apply {
-                        setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                        setPrompt("把 Service 终端上的配对二维码放进框内")
-                        setBeepEnabled(false)
-                        setOrientationLocked(false)
-                    },
-                )
-            },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        ) {
-            Text("扫码")
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+        var importError by remember { mutableStateOf<String?>(null) }
+        val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            if (uri != null) {
+                scope.launch {
+                    val text = withContext(Dispatchers.IO) { decodeQrFromUri(context, uri) }
+                    if (text != null) {
+                        qr = text
+                        importError = null
+                    } else {
+                        importError = "这张图里没找到二维码"
+                    }
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    scanner.launch(
+                        ScanOptions().apply {
+                            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                            setPrompt("把 Service 终端上的配对二维码放进框内")
+                            setBeepEnabled(false)
+                            setOrientationLocked(false)
+                        },
+                    )
+                },
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+            ) {
+                Text("扫码")
+            }
+            Button(
+                onClick = { picker.launch("image/*") },
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+            ) {
+                Text("相册导入")
+            }
+        }
+        importError?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
         OutlinedTextField(
             value = qr,
@@ -377,3 +418,33 @@ private fun PairingRoute(
 /** 1s → 2s → 4s … → 30s 退避（协议 §9）。 */
 private fun backoffMillis(attempt: Int): Long =
     (1000L shl attempt.coerceAtMost(5)).coerceAtMost(30_000L)
+
+private fun decodeQrFromUri(context: Context, uri: Uri): String? = runCatching {
+    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+    decodeQr(bytes)
+}.getOrNull()
+
+private fun decodeQr(bytes: ByteArray): String? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sample = 1
+    while (bounds.outWidth / (sample * 2) >= 2048 && bounds.outHeight / (sample * 2) >= 2048) {
+        sample *= 2
+    }
+    val options = BitmapFactory.Options().apply { inSampleSize = sample }
+    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null
+    val pixels = IntArray(bitmap.width * bitmap.height)
+    bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+    val source = RGBLuminanceSource(bitmap.width, bitmap.height, pixels)
+    val image = BinaryBitmap(HybridBinarizer(source))
+    val hints = mapOf<DecodeHintType, Any>(
+        DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
+        DecodeHintType.TRY_HARDER to true,
+    )
+    return try {
+        MultiFormatReader().decode(image, hints).text
+    } catch (_: NotFoundException) {
+        null
+    }
+}

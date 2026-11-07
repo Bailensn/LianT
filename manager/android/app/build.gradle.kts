@@ -75,6 +75,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
     implementation(libs.zxing.embedded)
+    implementation(libs.zxing.core)
 
     testImplementation(libs.junit)
 }

@@ -39,8 +39,6 @@ class LiantClient(
 
     data class Reply(val type: String, val payload: JSONObject)
 
-    data class PairResult(val deviceId: String, val auth: JSONObject)
-
     private val http: OkHttpClient = TlsPinning.client(pinnedFingerprint)
     private val pending = ConcurrentHashMap<String, CompletableDeferred<Reply>>()
     private val challenge = CompletableDeferred<Challenge>()
@@ -67,8 +65,13 @@ class LiantClient(
         socket = http.newWebSocket(request, listener)
     }
 
-    /** 首次配对：用二维码里的 ticket + nonce 换取 device_id，然后立刻认证。 */
-    suspend fun pair(ticket: PairingTicket, managerName: String): PairResult {
+    /**
+     * 首次配对：用二维码里的 ticket + nonce 换取 device_id。
+     *
+     * 只做配对、不做认证——终端确认可能超过挑战的 60 秒有效期，
+     * 认证必须换一条新连接重新拿 challenge。
+     */
+    suspend fun pair(ticket: PairingTicket, managerName: String): String {
         open()
         val ch = withTimeout(HANDSHAKE_TIMEOUT_MS) { challenge.await() }
 
@@ -90,8 +93,7 @@ class LiantClient(
         if (deviceId.isEmpty()) {
             throw ProtocolException("pair.ok", "服务端没有返回 device_id")
         }
-        val auth = authenticate(ch, deviceId)
-        return PairResult(deviceId, auth)
+        return deviceId
     }
 
     /** 已配对设备重连并认证。 */
