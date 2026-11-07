@@ -18,8 +18,8 @@ android {
         // miuix-blur 依赖 RuntimeShader（API 33），这是本项目的硬下限。
         minSdk = 33
         targetSdk = 37
-        versionCode = 3
-        versionName = "0.1.3"
+        versionCode = 4
+        versionName = "0.1.4"
 
     }
 

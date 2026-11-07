@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- 与自建 Service 建立 WSS 连接 -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -32,6 +33,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- ZXing 库清单把扫码页写死成 sensorLandscape；覆盖成跟随系统旋转。 -->
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="user"
+            tools:replace="android:screenOrientation" />
 
         <service
             android:name=".service.ConnectionService"
