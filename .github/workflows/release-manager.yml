@@ -72,4 +72,82 @@ jobs:
           name: LianT Manager ${{ steps.meta.outputs.version }}
           prerelease: true
           files: dist/*
+          fail_on_unmatched_files: true          if ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-(Alpha|Beta|RC[0-9]+)-[0-9a-f]{6,7}$'; then
+            echo "版本格式应为 v<主>.<次>.<修>-<Alpha|Beta|RCn>-<6或7位哈希>，得到：$VERSION" >&2
+            exit 1
+          fi
+Manager (pre-release)
+
+# tag 约定：manager-v<版本>-<6位哈希>，例如 manager-v1.0.0-a1b2c3
+on:
+  push:
+    tags:
+      - 'manager-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '已存在的 tag（例如 manager-v1.0.0-a1b2c3）'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: manager/android
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            manager/android/**/*.gradle.kts
+            manager/android/gradle/libs.versions.toml
+
+      - name: Compute version
+        id: meta
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#manager-}"
+          BASE="${VERSION%%-*}"
+          BASE="${BASE#v}"
+          IFS=. read -r MAJOR MINOR PATCH <<< "$BASE"
+          CODE=$((10#$MAJOR * 10000 + 10#$MINOR * 100 + 10#$PATCH))
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "code=${CODE}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure Android SDK
+        run: |
+          SDKMGR=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
+          yes | "$SDKMGR" --licenses > /dev/null || true
+          "$SDKMGR" --install "platforms;android-37.1" "build-tools;37.0.0"
+
+      - name: Build debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace \
+            -PversionName="${{ steps.meta.outputs.version }}" \
+            -PversionCode="${{ steps.meta.outputs.code }}" \
+            assembleDebug
+
+      - name: Collect APK
+        run: |
+          mkdir -p ../../dist
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             "../../dist/LianT-manager-${{ steps.meta.outputs.version }}.apk"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: LianT Manager ${{ steps.meta.outputs.version }}
+          prerelease: true
+          files: dist/*
           fail_on_unmatched_files: true

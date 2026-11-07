@@ -3,8 +3,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// 版本由发布流水线用 -PversionName/-PversionCode 注入；本地默认 v1.0.0。
-val appVersionName = providers.gradleProperty("versionName").getOrElse("v1.0.0")
+// 版本由发布流水线用 -PversionName/-PversionCode 注入；本地默认 v1.0.0-Alpha。
+val appVersionName = providers.gradleProperty("versionName").getOrElse("v1.0.0-Alpha")
 val appVersionCode = providers.gradleProperty("versionCode").getOrElse("10000").toInt()
 
 android {
