@@ -48,7 +48,8 @@ func (c *Core) RevokeDevice(ctx context.Context, sess server.Session, raw json.R
 		DeviceID: req.DeviceID,
 		Name:     "由 " + sess.ManagerID + " 吊销",
 	})
-	return protocol.DeviceListOK{}, nil
+	// 直接把吊销后的列表回给调用方，省一次往返。
+	return c.ListDevices(ctx, sess, nil)
 }
 
 // ListAudit 返回最近的安全事件。
