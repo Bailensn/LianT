@@ -296,6 +296,8 @@ function reasonText(reason: string): string {
       return '公钥格式不被接受'
     case 'invalid_sig':
       return '签名校验失败'
+    case 'name_not_allowed':
+      return '这台设备的名称不在服务端白名单里'
     default:
       return `配对失败：${reason}`
   }

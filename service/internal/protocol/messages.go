@@ -30,6 +30,10 @@ const (
 	TypeMsgAck     = "msg.ack"
 	TypeMediaFetch = "media.fetch"
 
+	TypeDeviceList   = "device.list"
+	TypeDeviceRevoke = "device.revoke"
+	TypeAuditList    = "audit.list"
+
 	TypeEventBot = "event.bot"
 	TypeEventMsg = "event.msg"
 
@@ -287,4 +291,46 @@ type EventBot struct {
 	BotID  string `json:"bot_id"`
 	Status string `json:"status"`
 	Reason string `json:"reason,omitempty"`
+}
+
+// ==========================
+// 设备与审计
+// ==========================
+
+// DeviceInfo 是一台已配对设备的对外描述，不含公钥。
+type DeviceInfo struct {
+	DeviceID   string `json:"device_id"`
+	Name       string `json:"name"`
+	CreatedAt  int64  `json:"created_at"`
+	LastSeenAt int64  `json:"last_seen_at"`
+}
+
+// DeviceListOK 是 device.list 的响应。
+type DeviceListOK struct {
+	Devices []DeviceInfo `json:"devices"`
+}
+
+// DeviceRevoke 是 device.revoke 的请求。
+type DeviceRevoke struct {
+	DeviceID string `json:"device_id"`
+}
+
+// AuditEntry 是一条安全事件。
+type AuditEntry struct {
+	TS       int64  `json:"ts"`
+	Kind     string `json:"kind"`
+	DeviceID string `json:"device_id,omitempty"`
+	Name     string `json:"name,omitempty"`
+	IP       string `json:"ip,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// AuditList 是 audit.list 的请求。
+type AuditList struct {
+	Limit int `json:"limit,omitempty"`
+}
+
+// AuditListOK 是 audit.list 的响应，新的在前。
+type AuditListOK struct {
+	Entries []AuditEntry `json:"entries"`
 }

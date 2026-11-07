@@ -37,6 +37,22 @@ export type Msg = {
   in_reply_to?: string
 }
 
+export type Device = {
+  device_id: string
+  name: string
+  created_at: number
+  last_seen_at: number
+}
+
+export type AuditEntry = {
+  ts: number
+  kind: string
+  device_id?: string
+  name?: string
+  ip?: string
+  reason?: string
+}
+
 export type Conversation = {
   key: string
   bot_id: string
@@ -53,6 +69,8 @@ type State = {
   detail: string
   error: string
   bots: Bot[]
+  devices: Device[]
+  audit: AuditEntry[]
   msgs: Msg[]
   read: Record<string, number>
   booted: boolean
@@ -72,6 +90,9 @@ type Actions = {
   removeBot: (id: string) => Promise<void>
   send: (bot: Bot, peerId: string, peerKind: string, text: string, inReplyTo?: string) => Promise<void>
   history: (botId: string, peerId: string) => Promise<void>
+  loadDevices: () => Promise<void>
+  revokeDevice: (id: string) => Promise<void>
+  loadAudit: () => Promise<void>
   markRead: (key: string) => void
   clearError: () => void
 }
@@ -87,6 +108,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   detail: '',
   error: '',
   bots: [],
+  devices: [],
+  audit: [],
   msgs: [],
   read: {},
   booted: false,
@@ -183,6 +206,24 @@ export const useStore = create<State & Actions>((set, get) => ({
     append(set, get, msg)
   },
 
+  async loadDevices() {
+    if (!client) return
+    const res = await client.request<{ devices: Device[] }>('device.list', {})
+    set({ devices: res.devices ?? [] })
+  },
+
+  async revokeDevice(id) {
+    await client?.request('device.revoke', { device_id: id })
+    await get().loadDevices()
+    await get().loadAudit()
+  },
+
+  async loadAudit() {
+    if (!client) return
+    const res = await client.request<{ entries: AuditEntry[] }>('audit.list', { limit: 20 })
+    set({ audit: res.entries ?? [] })
+  },
+
   async history(botId, peerId) {
     if (!client) return
     const res = await client.request<{ messages: Omit<Msg, 'direction'>[] }>('msg.list', {
@@ -247,6 +288,8 @@ async function connect(
   try {
     await client.start()
     await get().refreshBots()
+    await get().loadDevices()
+    await get().loadAudit()
   } catch (err) {
     set({ state: 'error', detail: (err as Error).message })
   }

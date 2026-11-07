@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 import (
@@ -30,6 +31,11 @@ type Config struct {
 		Database string `json:"database"`
 		Key      string `json:"key"`
 	} `json:"storage"`
+	// Pair 是配对策略。
+	Pair struct {
+		// Allow 非空时只允许名字匹配其中任意 glob 的设备配对。
+		Allow []string `json:"allow"`
+	} `json:"pair"`
 	Connect struct {
 		Url string `json:"url"`
 		// Address 覆盖对外通告的 WSS 地址；留空则由启动时自动探测。
@@ -155,6 +161,15 @@ func ConfigCommand(
 			cfg.Connect.Address = args[2]
 		case "connect.listen":
 			cfg.Connect.Listen = args[2]
+		case "pair.allow":
+			// 逗号分隔的设备名 glob；留空表示不限制。
+			var allow []string
+			for _, part := range strings.Split(args[2], ",") {
+				if v := strings.TrimSpace(part); v != "" {
+					allow = append(allow, v)
+				}
+			}
+			cfg.Pair.Allow = allow
 		default:
 			fmt.Println(
 				"未知配置",

@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"path"
 	"sync"
 	"time"
 
@@ -66,10 +67,26 @@ type Options struct {
 	// 终端实现里它应当把名称与指纹打到屏幕上并等待输入。
 	Confirm func(ctx context.Context, name, fingerprint string, pub *ecdsa.PublicKey) bool
 
+	// AllowNames 非空时，只有名字匹配其中任意一个 glob 的设备才允许配对。
+	// 空表示不限制（仍然需要终端确认）。
+	AllowNames []string
+
+	// Audit 记录安全事件；可为空。
+	Audit func(ctx context.Context, ev AuditEvent)
+
 	Retention  protocol.Retention
 	MaxDevices int
 	Now        func() time.Time
 	Logf       func(format string, args ...any)
+}
+
+// AuditEvent 是一次与安全相关的事件。
+type AuditEvent struct {
+	Kind     string
+	DeviceID string
+	Name     string
+	IP       string
+	Reason   string
 }
 
 // Method 是一个已认证的方法处理器；返回的 any 会被编码成响应 payload。
@@ -204,6 +221,15 @@ type conn struct {
 	wmu sync.Mutex
 }
 
+func (c *conn) audit(kind, deviceID, name, reason string) {
+	if c.s.opt.Audit == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	c.s.opt.Audit(ctx, AuditEvent{Kind: kind, DeviceID: deviceID, Name: name, IP: c.ip, Reason: reason})
+}
+
 func (c *conn) handshake() error {
 	challenge, err := c.s.newChallenge()
 	if err != nil {
@@ -251,6 +277,7 @@ func (c *conn) handleAuth(env protocol.Envelope, challenge protocol.AuthChalleng
 	if err != nil {
 		c.failed++
 		c.s.limiter.Fail(c.ip)
+		c.audit("auth.fail", req.ManagerID, "", "设备未授权")
 		c.writeErrorFor(env, protocol.CodeUnauthorized, "设备未授权", nil)
 		return c.tooManyAttempts()
 	}
@@ -275,6 +302,7 @@ func (c *conn) handleAuth(env protocol.Envelope, challenge protocol.AuthChalleng
 	if err := node.Verify(pub, msg, sig); err != nil {
 		c.failed++
 		c.s.limiter.Fail(c.ip)
+		c.audit("auth.fail", dev.ID, dev.Name, "签名校验失败")
 		c.writeErrorFor(env, protocol.CodeUnauthorized, "签名校验失败", nil)
 		return c.tooManyAttempts()
 	}
@@ -282,6 +310,7 @@ func (c *conn) handleAuth(env protocol.Envelope, challenge protocol.AuthChalleng
 	if err := c.s.opt.Devices.TouchDevice(ctx, dev.ID); err != nil {
 		c.s.opt.Logf("更新设备在线时间失败: %v", err)
 	}
+	c.audit("auth.ok", dev.ID, dev.Name, "")
 	c.sess = Session{ManagerID: dev.ID}
 	c.authed = true
 	c.s.addConn(c)
@@ -339,6 +368,10 @@ func (c *conn) handlePair(env protocol.Envelope) error {
 	if name == "" {
 		name = "未命名设备"
 	}
+	if !nameAllowed(name, c.s.opt.AllowNames) {
+		c.audit("pair.denied", "", name, "设备名不在白名单")
+		return c.denyPair(env, "name_not_allowed")
+	}
 	fp := node.PinnedFingerprint(pub)
 	if !c.s.opt.Confirm(ctx, name, fp, pub) {
 		return c.denyPair(env, "denied")
@@ -357,6 +390,7 @@ func (c *conn) handlePair(env protocol.Envelope) error {
 		c.s.opt.Logf("登记设备失败: %v", err)
 		return c.denyPair(env, "internal")
 	}
+	c.audit("pair.ok", deviceID, name, "")
 	return c.write(protocol.TypePairOK, env.ID, protocol.PairOK{
 		ServiceID:    c.s.opt.Identity.Fingerprint(),
 		ServiceName:  "LianT Service",
@@ -366,7 +400,21 @@ func (c *conn) handlePair(env protocol.Envelope) error {
 }
 
 func (c *conn) denyPair(env protocol.Envelope, reason string) error {
+	c.audit("pair.denied", "", "", reason)
 	return c.write(protocol.TypePairDenied, env.ID, protocol.PairDenied{Reason: reason})
+}
+
+// nameAllowed 用 glob 匹配设备名；白名单为空表示不限制。
+func nameAllowed(name string, allow []string) bool {
+	if len(allow) == 0 {
+		return true
+	}
+	for _, pattern := range allow {
+		if ok, err := path.Match(pattern, name); err == nil && ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *conn) loop() error {

@@ -2,6 +2,21 @@
 
 镜像里已经包含 Service 与网页管理端，不需要额外装 Node 或 Go。
 
+## 一键部署
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | bash
+```
+
+脚本会检查 Docker、生成 compose 文件、拉镜像、启动，并打印配对命令。
+带域名：
+
+```bash
+LIANT_DOMAIN=liant.example.com curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | bash
+```
+
+会自动起 Caddy 申请证书，之后不再有自签证书警告。
+
 ## 直接跑
 
 ```bash

@@ -6,6 +6,7 @@
 package pairing
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
@@ -44,12 +45,30 @@ type session struct {
 	used    bool
 }
 
+// Store 是配对码的持久化后端。
+//
+// 有了它，配对码可以跨进程共享：`pair` 在一个容器里生成，
+// 正在 `serve` 的另一个容器照样能兑付——Docker 部署必须这样才能配对。
+type Store interface {
+	SavePendingPair(ctx context.Context, code, nonce string, expires time.Time) error
+	LoadPendingPair(ctx context.Context) (code, nonce string, expires time.Time, err error)
+	ClearPendingPair(ctx context.Context) error
+}
+
 // Pairer 维护当前唯一一个待处理的配对会话。
 type Pairer struct {
 	mu      sync.Mutex
 	now     func() time.Time
 	ttl     time.Duration
 	current *session
+	store   Store
+}
+
+// SetStore 让配对码落库，从而在多个进程之间共享。
+func (p *Pairer) SetStore(s Store) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.store = s
 }
 
 // New 返回一个使用默认有效期（60 秒）的 Pairer。
@@ -78,6 +97,11 @@ func (p *Pairer) Issue() (Code, error) {
 	defer p.mu.Unlock()
 	expires := p.now().Add(p.ttl)
 	p.current = &session{code: code, nonce: nonce, expires: expires}
+	if p.store != nil {
+		if err := p.store.SavePendingPair(context.Background(), code, nonce, expires); err != nil {
+			return Code{}, fmt.Errorf("pairing: 保存配对码: %w", err)
+		}
+	}
 	return Code{Value: code, Nonce: nonce, Expires: expires}, nil
 }
 
@@ -85,6 +109,9 @@ func (p *Pairer) Issue() (Code, error) {
 func (p *Pairer) Redeem(code, nonce string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.store != nil {
+		return p.redeemFromStore(code, nonce)
+	}
 	if p.current == nil {
 		return ErrNoTicket
 	}
@@ -101,10 +128,36 @@ func (p *Pairer) Redeem(code, nonce string) error {
 	return nil
 }
 
+func (p *Pairer) redeemFromStore(code, nonce string) error {
+	gotCode, gotNonce, expires, err := p.store.LoadPendingPair(context.Background())
+	if err != nil {
+		return ErrNoTicket
+	}
+	if !p.now().Before(expires) {
+		_ = p.store.ClearPendingPair(context.Background())
+		return ErrExpired
+	}
+	if subtle.ConstantTimeCompare([]byte(code), []byte(gotCode)) != 1 ||
+		subtle.ConstantTimeCompare([]byte(nonce), []byte(gotNonce)) != 1 {
+		return ErrMismatch
+	}
+	if err := p.store.ClearPendingPair(context.Background()); err != nil {
+		return ErrUsed
+	}
+	return nil
+}
+
 // Pending 返回当前配对码的副本（已使用或过期时 ok=false），供终端展示。
 func (p *Pairer) Pending() (Code, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.store != nil {
+		code, nonce, expires, err := p.store.LoadPendingPair(context.Background())
+		if err != nil || !p.now().Before(expires) {
+			return Code{}, false
+		}
+		return Code{Value: code, Nonce: nonce, Expires: expires}, true
+	}
 	if p.current == nil || p.current.used || !p.now().Before(p.current.expires) {
 		return Code{}, false
 	}

@@ -110,6 +110,9 @@ func (c *Core) Register(s *server.Server) {
 	s.Register(protocol.TypeBotStop, c.StopBot)
 	s.Register(protocol.TypeBotStatus, c.BotStatus)
 	s.Register(protocol.TypeMediaFetch, c.FetchMedia)
+	s.Register(protocol.TypeDeviceList, c.ListDevices)
+	s.Register(protocol.TypeDeviceRevoke, c.RevokeDevice)
+	s.Register(protocol.TypeAuditList, c.ListAudit)
 }
 
 // DecodeCredentials 用主密钥解密 Bot 凭据 JSON，供 supervisor 启动适配器时使用。

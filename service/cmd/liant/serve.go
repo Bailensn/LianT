@@ -71,6 +71,8 @@ func buildServer(
 	if pairer == nil {
 		pairer = pairing.New()
 	}
+	// 配对码写进数据库，这样另一个进程（例如 serve）也能兑付。
+	pairer.SetStore(db)
 	var devices server.DeviceStore = db
 	if factory != nil {
 		devices = factory(db)
@@ -79,7 +81,19 @@ func buildServer(
 		Identity:  id,
 		Devices:   devices,
 		Pairer:    pairer,
-		Confirm:   confirm,
+		Confirm:    confirm,
+		AllowNames: cfg.Pair.Allow,
+		Audit: func(ctx context.Context, ev server.AuditEvent) {
+			if err := db.AddAudit(ctx, store.Audit{
+				Kind:     ev.Kind,
+				DeviceID: ev.DeviceID,
+				Name:     ev.Name,
+				IP:       ev.IP,
+				Reason:   ev.Reason,
+			}); err != nil {
+				slog.Warn("写审计事件失败", "err", err)
+			}
+		},
 		Retention: retention(),
 		Logf: func(format string, args ...any) {
 			slog.Warn(fmt.Sprintf(format, args...))
@@ -177,7 +191,11 @@ func serveCommand(args []string) {
 	}
 
 	cfg := loadConfigOrDie()
-	srv, id, db, coreSvc, err := buildServer(confirmTerminal, nil, nil)
+	confirm := confirmTerminal
+	if !isInteractive() {
+		confirm = confirmAuto
+	}
+	srv, id, db, coreSvc, err := buildServer(confirm, nil, nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "启动失败：", err)
 		os.Exit(1)
@@ -251,12 +269,6 @@ func pairCommand(args []string) {
 	_ = fs.Parse(args)
 
 	pairer := pairing.New()
-	code, err := pairer.Issue()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "生成配对码失败：", err)
-		os.Exit(1)
-	}
-
 	watcher := &pairWatcher{done: make(chan struct{})}
 	srv, id, db, coreSvc, err := buildServer(confirmTerminal, pairer, func(db *store.Store) server.DeviceStore {
 		watcher.Store = db
@@ -267,6 +279,25 @@ func pairCommand(args []string) {
 		os.Exit(1)
 	}
 	defer db.Close()
+
+	// 已经有服务在跑时，配对码交给它兑付，本进程只负责生成和等待。
+	delegated := false
+	if ln, err := net.Listen("tcp", listenAddr(cfg)); err != nil {
+		if errors.Is(err, syscall.EADDRINUSE) {
+			delegated = true
+		} else {
+			fmt.Fprintln(os.Stderr, "检测端口失败：", err)
+			os.Exit(1)
+		}
+	} else {
+		_ = ln.Close()
+	}
+
+	code, err := pairer.Issue()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "生成配对码失败：", err)
+		os.Exit(1)
+	}
 
 	host := pairHost(*hostFlag, cfg)
 	if host == "" {
@@ -314,6 +345,21 @@ func pairCommand(args []string) {
 		}
 	}
 	fmt.Println("手机扫上面的二维码打开管理页；首次打开要信任一次证书。本终端还会再确认一次。")
+
+	if delegated {
+		fmt.Println("检测到服务已在运行，这条配对码交给它处理。")
+		before, _ := db.CountDevices(context.Background())
+		deadline := time.Now().Add(time.Until(code.Expires) + 2*time.Minute)
+		for time.Now().Before(deadline) {
+			time.Sleep(500 * time.Millisecond)
+			if n, err := db.CountDevices(context.Background()); err == nil && n > before {
+				fmt.Println("配对成功，设备已登记。")
+				return
+			}
+		}
+		fmt.Fprintln(os.Stderr, "等待配对超时。")
+		os.Exit(1)
+	}
 
 	httpSrv := &http.Server{Handler: appHandler(srv, coreSvc), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
@@ -493,6 +539,9 @@ func purgeLoop(db *store.Store) {
 				slog.Warn("删除媒体文件失败", "path", path, "err", err)
 			}
 		}
+		if err := db.PruneAudit(context.Background(), 2000); err != nil {
+			slog.Warn("清理审计事件失败", "err", err)
+		}
 		if res.Messages > 0 || res.MediaExpired > 0 || res.MediaEvicted > 0 {
 			slog.Info("清理完成", "messages", res.Messages, "media_expired", res.MediaExpired, "media_evicted", res.MediaEvicted)
 		}
@@ -541,6 +590,24 @@ func (p *pairWatcher) PutDevice(ctx context.Context, d store.Device) error {
 }
 
 // confirmTerminal 在终端显示设备名与指纹，要求本地确认。
+// isInteractive 判断 stdin 是不是终端。
+func isInteractive() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// confirmAuto 用于无终端场景（Docker 后台运行）。
+//
+// 配对码只可能由 `LianT pair` 生成并显示在终端，能拿着它来配对本身就意味着
+// 操作者已经确认；这里放行并留审计记录。
+func confirmAuto(_ context.Context, name, fingerprint string, _ *ecdsa.PublicKey) bool {
+	slog.Warn("无终端，自动批准配对", "name", name, "fingerprint", fingerprint)
+	return true
+}
+
 func confirmTerminal(_ context.Context, name, fingerprint string, _ *ecdsa.PublicKey) bool {
 	fmt.Printf("\n配对请求：%s\n设备指纹：%s\n", name, fingerprint)
 	if len(fingerprint) >= 9 {

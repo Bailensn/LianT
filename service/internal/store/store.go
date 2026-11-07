@@ -212,4 +212,20 @@ var schemaV1 = []string{
 		PRIMARY KEY (bot_id, msg_id, idx),
 		FOREIGN KEY (bot_id, msg_id) REFERENCES messages(bot_id, msg_id) ON DELETE CASCADE
 	)`,
+	`CREATE TABLE IF NOT EXISTS audit (
+		id        INTEGER PRIMARY KEY AUTOINCREMENT,
+		ts        INTEGER NOT NULL,
+		kind      TEXT NOT NULL,
+		device_id TEXT NOT NULL DEFAULT '',
+		name      TEXT NOT NULL DEFAULT '',
+		ip        TEXT NOT NULL DEFAULT '',
+		reason    TEXT NOT NULL DEFAULT ''
+	)`,
+	`CREATE INDEX IF NOT EXISTS audit_ts ON audit (ts)`,
+	`CREATE TABLE IF NOT EXISTS pair_pending (
+		id      INTEGER PRIMARY KEY CHECK (id = 1),
+		code    TEXT NOT NULL,
+		nonce   TEXT NOT NULL,
+		expires INTEGER NOT NULL
+	)`,
 }
