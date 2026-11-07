@@ -197,7 +197,7 @@ func (m *Manager) loop(ctx context.Context, b store.Bot, r *run) {
 			},
 			OnStatus: func(st platform.Status) { m.setStatus(ctx, b.ID, st) },
 		}
-		err = adapter.Run(ctx, acc, creds, hooks)
+		err = m.runAdapter(ctx, adapter, acc, creds, hooks)
 		if ctx.Err() != nil {
 			m.setStatus(ctx, b.ID, platform.Status{State: platform.StateStopped})
 			return
@@ -227,6 +227,23 @@ func (m *Manager) loop(ctx context.Context, b store.Bot, r *run) {
 		}
 		b = next
 	}
+}
+
+// runAdapter 隔离适配器 panic：D11 的代价是进程内运行，至少要保证一个
+// 适配器崩溃不会带走整个 serve。
+func (m *Manager) runAdapter(
+	ctx context.Context,
+	adapter platform.Adapter,
+	acc platform.Account,
+	creds platform.Credentials,
+	hooks platform.Hooks,
+) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("适配器 panic: %v", r)
+		}
+	}()
+	return adapter.Run(ctx, acc, creds, hooks)
 }
 
 // setStatus 写库并通知外部；ctx 可能已取消，所以写库用独立超时。

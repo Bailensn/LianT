@@ -7,6 +7,7 @@ A self-hosted client and service for operating chat-platform bots (QQ first; Tel
 - Design and decisions: [DESIGN.md](docs/DESIGN.md)
 - Wire protocol (draft): [PROTOCOL.md](docs/PROTOCOL.md)
 - UI rules (Android): [UI-DESIGN.md](docs/UI-DESIGN.md)
+- Deployment: [DEPLOY.md](docs/DEPLOY.md)
 
 ## License
 

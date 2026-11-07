@@ -7,7 +7,6 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	golang.org/x/crypto v0.58.0
 	golang.org/x/term v0.47.0
-	gopkg.in/telebot.v4 v4.0.0-beta.10
 )
 
 require (
