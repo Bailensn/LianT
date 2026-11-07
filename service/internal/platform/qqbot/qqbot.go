@@ -63,10 +63,11 @@ func (a *Adapter) Validate(ctx context.Context, creds platform.Credentials) (pla
 	if err != nil {
 		return platform.Account{}, err
 	}
-	if _, err := a.accessToken(ctx, c); err != nil {
+	token, err := a.accessToken(ctx, c)
+	if err != nil {
 		return platform.Account{}, err
 	}
-	return platform.Account{
+	acc := platform.Account{
 		ID:          c.appID,
 		DisplayName: "QQ Bot " + c.appID,
 		Caps:        []string{platform.CapText},
@@ -79,7 +80,37 @@ func (a *Adapter) Validate(ctx context.Context, creds platform.Credentials) (pla
 			"max_replies_per_inbound": 5,
 			"requires_mention":      true,
 		},
-	}, nil
+	}
+	// 拉一次机器人自身资料，拿平台昵称；失败不影响登记。
+	if name, err := a.fetchProfile(ctx, c, token); err == nil && name != "" {
+		acc.Username = name
+		acc.DisplayName = name
+	}
+	return acc, nil
+}
+
+// fetchProfile 读取机器人自己的昵称（/users/@me）。
+func (a *Adapter) fetchProfile(ctx context.Context, c credentials, token string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.apiBaseFor(c)+"/users/@me", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "QQBot "+token)
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("qqbot: /users/@me 返回 %d", resp.StatusCode)
+	}
+	var out struct {
+		Username string `json:"username"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", err
+	}
+	return out.Username, nil
 }
 
 // SendText 按会话类型选择发送端点。

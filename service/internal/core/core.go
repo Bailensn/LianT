@@ -441,11 +441,14 @@ func (c *Core) StartBot(ctx context.Context, _ server.Session, raw json.RawMessa
 	if ctl == nil {
 		return nil, bad(protocol.CodeInternal, "运行管理器未启用")
 	}
-	if _, err := c.opt.Store.Bot(ctx, req.BotID); errors.Is(err, store.ErrNotFound) {
+	bot, err := c.opt.Store.Bot(ctx, req.BotID)
+	if errors.Is(err, store.ErrNotFound) {
 		return nil, bad(protocol.CodeNotFound, "Bot 不存在")
 	} else if err != nil {
 		return nil, internal(err)
 	}
+	// 启动前顺手刷新一次平台昵称，失败不影响启动。
+	c.refreshBotProfile(ctx, bot)
 	if err := ctl.Start(ctx, req.BotID); err != nil {
 		return nil, &protocol.Error{
 			Code:      protocol.CodeBotStartFailed,
@@ -505,6 +508,34 @@ func toProtocolMessage(m store.Message) protocol.MsgInbound {
 		TS:         m.TS,
 		Direction:  m.Direction,
 	}
+}
+
+// refreshBotProfile 用已存凭据重新校验并更新昵称。
+func (c *Core) refreshBotProfile(ctx context.Context, bot store.Bot) {
+	adapter, ok := c.opt.Adapter(bot.Platform)
+	if !ok || c.opt.DecodeCredentials == nil {
+		return
+	}
+	raw, err := c.opt.DecodeCredentials(bot.Credentials)
+	if err != nil {
+		return
+	}
+	var creds map[string]string
+	if err := json.Unmarshal(raw, &creds); err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	acc, err := adapter.Validate(ctx, platform.Credentials(creds))
+	if err != nil {
+		return
+	}
+	if acc.DisplayName == "" || (acc.DisplayName == bot.DisplayName && acc.Username == bot.Username) {
+		return
+	}
+	bot.Username = acc.Username
+	bot.DisplayName = acc.DisplayName
+	_ = c.opt.Store.UpsertBot(ctx, bot)
 }
 
 func toProtocolBot(b store.Bot) protocol.Bot {
