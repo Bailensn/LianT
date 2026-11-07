@@ -54,19 +54,41 @@ class LiantRepository(context: Context) {
         return saved
     }
 
-    /** 用已保存的设备身份重连并认证。 */
+    /** 用已保存的设备身份重连并认证；旧连接会被关掉。 */
     suspend fun connect(): SavedPairing {
         val saved = savedPairing() ?: error("尚未配对")
+        client?.close()
         val connection = LiantClient(saved.host, saved.port, saved.fingerprint, identity)
         connection.connect(saved.deviceId)
         client = connection
         return saved
     }
 
+    /** 当前活跃 Bot：只有它发系统通知（D9）。 */
+    fun activeBotId(): String? = prefs.getString(KEY_ACTIVE_BOT, null)
+
+    fun setActiveBotId(botId: String) {
+        prefs.edit().putString(KEY_ACTIVE_BOT, botId).apply()
+    }
+
     fun isConnected(): Boolean = client != null
 
     /** 服务端推送事件（msg.inbound / event.bot）；未连接时为空。 */
     fun events(): kotlinx.coroutines.flow.SharedFlow<JSONObject>? = client?.eventFlow
+
+    /** 连接关闭/失败信号；未连接时为空。 */
+    fun closed(): kotlinx.coroutines.flow.SharedFlow<Throwable?>? = client?.closed
+
+    suspend fun listMessages(
+        botId: String,
+        peerId: String,
+        before: JSONObject? = null,
+        after: JSONObject? = null,
+        limit: Int = 100,
+    ): JSONObject {
+        val connection = client ?: error("连接尚未建立")
+        return connection.listMessages(botId, peerId, before = before, after = after, limit = limit)
+    }
 
     suspend fun bots(): List<BotSummary> {
         val connection = client ?: error("连接尚未建立")
@@ -120,5 +142,6 @@ class LiantRepository(context: Context) {
         const val KEY_PORT = "port"
         const val KEY_FP = "fingerprint"
         const val KEY_DEVICE = "device_id"
+        const val KEY_ACTIVE_BOT = "active_bot_id"
     }
 }

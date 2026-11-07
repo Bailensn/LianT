@@ -16,6 +16,14 @@ data class Conversation(
     val unread: Int,
 )
 
+/** 补拉游标：会话最近一条消息的 (ts, msg_id)。 */
+data class BackfillCursor(
+    val botId: String,
+    val peerId: String,
+    val lastTs: Long,
+    val lastMsgId: String,
+)
+
 /** 气泡里的一条消息。 */
 data class ChatMessage(
     val msgId: String,
@@ -47,6 +55,7 @@ class LocalStore(context: Context) :
                 title TEXT NOT NULL,
                 last_plain TEXT NOT NULL,
                 last_ts INTEGER NOT NULL,
+                last_msg_id TEXT NOT NULL DEFAULT '',
                 unread INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (bot_id, peer_id)
             )
@@ -77,6 +86,10 @@ class LocalStore(context: Context) :
         if (oldVersion < 2) {
             // v2 增加消息类型，用于图片/表情等按比例渲染。
             db.execSQL("ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'")
+        }
+        if (oldVersion < 3) {
+            // v3 记录会话最后一条消息的 id，作为断线补拉的游标。
+            db.execSQL("ALTER TABLE conversations ADD COLUMN last_msg_id TEXT NOT NULL DEFAULT ''")
         }
     }
 
@@ -118,15 +131,16 @@ class LocalStore(context: Context) :
                 }
                 db.execSQL(
                     """
-                    INSERT INTO conversations (bot_id, peer_id, peer_kind, title, last_plain, last_ts, unread)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO conversations (bot_id, peer_id, peer_kind, title, last_plain, last_ts, last_msg_id, unread)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(bot_id, peer_id) DO UPDATE SET
                         peer_kind = excluded.peer_kind,
                         last_plain = excluded.last_plain,
                         last_ts = excluded.last_ts,
+                        last_msg_id = excluded.last_msg_id,
                         unread = conversations.unread + excluded.unread
                     """.trimIndent(),
-                    arrayOf<Any?>(botId, peerId, peerKind, title, plain, ts, if (active) 0 else 1),
+                    arrayOf<Any?>(botId, peerId, peerKind, title, plain, ts, msgId, if (active) 0 else 1),
                 )
             }
             db.setTransactionSuccessful()
@@ -157,8 +171,8 @@ class LocalStore(context: Context) :
                 SQLiteDatabase.CONFLICT_IGNORE,
             )
             db.execSQL(
-                "UPDATE conversations SET last_plain = ?, last_ts = ? WHERE bot_id = ? AND peer_id = ?",
-                arrayOf<Any?>(plain, ts, botId, peerId),
+                "UPDATE conversations SET last_plain = ?, last_ts = ?, last_msg_id = ? WHERE bot_id = ? AND peer_id = ?",
+                arrayOf<Any?>(plain, ts, msgId, botId, peerId),
             )
             db.setTransactionSuccessful()
         } finally {
@@ -211,6 +225,78 @@ class LocalStore(context: Context) :
         return out
     }
 
+    /**
+     * 把服务端补拉到的消息落库；按 (bot, peer, msg) 幂等。
+     *
+     * 只前进不后退：比本地更旧的补拉不会覆盖会话摘要；也不加未读，
+     * 因为历史消息不应制造红点。
+     */
+    fun insertRemote(
+        botId: String,
+        peerId: String,
+        msgId: String,
+        direction: String,
+        senderName: String,
+        plain: String,
+        kind: String,
+        ts: Long,
+    ): Boolean {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val inserted = db.insertWithOnConflict(
+                "messages",
+                null,
+                ContentValues().apply {
+                    put("bot_id", botId)
+                    put("peer_id", peerId)
+                    put("msg_id", msgId)
+                    put("direction", direction)
+                    put("sender_name", senderName)
+                    put("plain", plain)
+                    put("kind", kind)
+                    put("ts", ts)
+                },
+                SQLiteDatabase.CONFLICT_IGNORE,
+            ) != -1L
+            if (inserted) {
+                db.execSQL(
+                    """
+                    UPDATE conversations
+                    SET last_plain = ?, last_ts = ?, last_msg_id = ?
+                    WHERE bot_id = ? AND peer_id = ?
+                      AND (last_ts < ? OR (last_ts = ? AND last_msg_id < ?))
+                    """.trimIndent(),
+                    arrayOf<Any?>(plain, ts, msgId, botId, peerId, ts, ts, msgId),
+                )
+            }
+            db.setTransactionSuccessful()
+            return inserted
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** 补拉用的会话游标：每个会话只取 (last_ts, last_msg_id) 之后的消息。 */
+    fun conversationsForBackfill(): List<BackfillCursor> {
+        val out = mutableListOf<BackfillCursor>()
+        readableDatabase.query(
+            "conversations",
+            arrayOf("bot_id", "peer_id", "last_ts", "last_msg_id"),
+            null, null, null, null, "last_ts ASC",
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                out += BackfillCursor(
+                    botId = cursor.getString(0),
+                    peerId = cursor.getString(1),
+                    lastTs = cursor.getLong(2),
+                    lastMsgId = cursor.getString(3),
+                )
+            }
+        }
+        return out
+    }
+
     fun markRead(botId: String, peerId: String) {
         writableDatabase.execSQL(
             "UPDATE conversations SET unread = 0 WHERE bot_id = ? AND peer_id = ?",
@@ -233,6 +319,6 @@ class LocalStore(context: Context) :
 
     private companion object {
         const val DB_NAME = "liant.db"
-        const val DB_VERSION = 2
+        const val DB_VERSION = 3
     }
 }

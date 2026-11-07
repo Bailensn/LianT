@@ -1,5 +1,6 @@
 package com.bailensn.liant.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,7 +28,9 @@ import com.bailensn.liant.data.BotSummary
 fun BotListPanel(
     bots: List<BotSummary>,
     busy: Boolean,
+    activeBotId: String?,
     onRefresh: () -> Unit,
+    onSelectActive: (String) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -45,6 +48,12 @@ fun BotListPanel(
             }
         }
         HorizontalDivider(thickness = 0.5.dp)
+        Text(
+            "点一个 Bot 设为当前；只有当前 Bot 的新消息会发系统通知。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
         if (bots.isEmpty()) {
             Column(
                 Modifier.fillMaxWidth().padding(32.dp),
@@ -64,18 +73,32 @@ fun BotListPanel(
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(16.dp)) {
             items(bots, key = { it.botId }) { bot ->
-                Card {
-                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                        Text(
-                            bot.displayName.ifEmpty { bot.botId },
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Spacer(Modifier.padding(top = 2.dp))
-                        Text(
-                            "${bot.platform} · ${bot.status}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                val current = bot.botId == activeBotId
+                Card(
+                    Modifier.fillMaxWidth().clickable { onSelectActive(bot.botId) },
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                bot.displayName.ifEmpty { bot.botId },
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                "${bot.platform} · ${bot.status}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (current) {
+                            Text(
+                                "当前",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
                 }
             }

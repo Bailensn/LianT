@@ -33,6 +33,12 @@ import com.bailensn.liant.data.ChatController
 import com.bailensn.liant.data.Conversation
 import com.bailensn.liant.data.LiantRepository
 import com.bailensn.liant.data.SavedPairing
+import com.bailensn.liant.net.ProtocolException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -61,6 +67,7 @@ fun AppRoot() {
     var busy by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var activeBotId by remember { mutableStateOf(repository.activeBotId()) }
 
     suspend fun loadBots() {
         botsBusy = true
@@ -74,19 +81,42 @@ fun AppRoot() {
         }
     }
 
+    // 连接 → 收事件 → 等断开 → 退避重连 → 补拉。整个循环随 paired 取消。
     LaunchedEffect(paired) {
         if (!paired) return@LaunchedEffect
         busy = true
-        error = null
-        try {
-            if (!repository.isConnected()) repository.connect()
-            controller.refresh()
-        } catch (e: Exception) {
-            error = e.message ?: e::class.java.simpleName
-        } finally {
-            busy = false
+        var attempt = 0
+        while (true) {
+            try {
+                repository.connect()
+                controller.refresh()
+                controller.backfill()
+                busy = false
+                error = null
+                attempt = 0
+                coroutineScope {
+                    val collector = launch {
+                        repository.events()?.collect { envelope ->
+                            controller.handleEvent(envelope)
+                        }
+                    }
+                    repository.closed()?.first()
+                    collector.cancel()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                busy = false
+                error = e.message ?: e::class.java.simpleName
+                // 协议 §9：认证失败（4001）不重连，重试只会一直撞墙。
+                if (e is ProtocolException && (e.code == "unauthorized" || e.code == "forbidden")) {
+                    break
+                }
+            }
+            if (!isActive) break
+            delay(backoffMillis(attempt))
+            attempt++
         }
-        repository.events()?.collect { envelope -> controller.handleEvent(envelope) }
     }
 
     LaunchedEffect(tab, paired) {
@@ -152,7 +182,12 @@ fun AppRoot() {
                             1 -> BotListPanel(
                                 bots = bots,
                                 busy = botsBusy,
+                                activeBotId = activeBotId,
                                 onRefresh = { scope.launch { loadBots() } },
+                                onSelectActive = { botId ->
+                                    repository.setActiveBotId(botId)
+                                    activeBotId = botId
+                                },
                             )
 
                             else -> SettingsPanel(
@@ -163,6 +198,7 @@ fun AppRoot() {
                                     current = null
                                     saved = null
                                     bots = emptyList()
+                                    activeBotId = null
                                     paired = false
                                 },
                             )
@@ -234,3 +270,7 @@ private fun PairingRoute(
         }
     }
 }
+
+/** 1s → 2s → 4s … → 30s 退避（协议 §9）。 */
+private fun backoffMillis(attempt: Int): Long =
+    (1000L shl attempt.coerceAtMost(5)).coerceAtMost(30_000L)

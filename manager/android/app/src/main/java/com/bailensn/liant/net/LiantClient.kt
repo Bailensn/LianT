@@ -39,12 +39,16 @@ class LiantClient(
     private val pending = ConcurrentHashMap<String, CompletableDeferred<Reply>>()
     private val challenge = CompletableDeferred<Challenge>()
     private val events = MutableSharedFlow<JSONObject>(extraBufferCapacity = 128)
+    private val _closed = MutableSharedFlow<Throwable?>(replay = 1, extraBufferCapacity = 1)
 
     private var socket: WebSocket? = null
     private var authInfo: JSONObject? = null
 
     /** 服务端事件（msg.inbound / event.bot）。 */
     val eventFlow: SharedFlow<JSONObject> get() = events
+
+    /** 连接关闭/失败时发一次，供上层做退避重连。 */
+    val closed: SharedFlow<Throwable?> get() = _closed
 
     var managerId: String = ""
         private set
@@ -114,13 +118,19 @@ class LiantClient(
         botId: String,
         peerId: String,
         before: JSONObject? = null,
+        after: JSONObject? = null,
         limit: Int = 50,
     ): JSONObject {
         val payload = JSONObject()
             .put("bot_id", botId)
             .put("peer_id", peerId)
             .put("limit", limit)
-        if (before != null) payload.put("before", before)
+        // 服务端只接受 before/after 之一。
+        if (after != null) {
+            payload.put("after", after)
+        } else if (before != null) {
+            payload.put("before", before)
+        }
         return call("msg.list", payload).payload
     }
 
@@ -213,6 +223,7 @@ class LiantClient(
     }
 
     private fun failAll(cause: Throwable) {
+        _closed.tryEmit(cause)
         challenge.completeExceptionally(cause)
         val iterator = pending.values.iterator()
         while (iterator.hasNext()) {
