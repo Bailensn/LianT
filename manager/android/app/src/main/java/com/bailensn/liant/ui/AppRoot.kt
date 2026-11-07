@@ -3,11 +3,13 @@ package com.bailensn.liant.ui
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -40,6 +42,8 @@ import com.bailensn.liant.net.ProtocolException
 import com.bailensn.liant.notify.DeepLink
 import com.bailensn.liant.notify.MessageNotifier
 import com.bailensn.liant.service.ConnectionService
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -290,10 +294,28 @@ private fun PairingRoute(
         Text("在 Service 终端运行 LianT pair，粘贴打印出的二维码内容")
         var qr by remember { mutableStateOf("") }
         var name by remember { mutableStateOf("我的手机") }
+        val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
+            result.contents?.let { qr = it }
+        }
+        Button(
+            onClick = {
+                scanner.launch(
+                    ScanOptions().apply {
+                        setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                        setPrompt("把 Service 终端上的配对二维码放进框内")
+                        setBeepEnabled(false)
+                        setOrientationLocked(false)
+                    },
+                )
+            },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        ) {
+            Text("扫码")
+        }
         OutlinedTextField(
             value = qr,
             onValueChange = { qr = it },
-            label = { Text("二维码 JSON") },
+            label = { Text("二维码 JSON（也可以手动粘贴）") },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,
             maxLines = 8,

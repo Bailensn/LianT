@@ -81,6 +81,7 @@ dependencies {
     implementation(libs.miuix.blur)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
+    implementation(libs.zxing.embedded)
 
     testImplementation(libs.junit)
 }
