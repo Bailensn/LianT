@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '已存在的 tag（例如 manager-v1.0.0-Alpha-a1b2c3）'
+        description: '已存在的 tag（例如 manager-v1.0.0-Alpha-a1b2c3d）'
         required: true
 
 permissions:
@@ -40,7 +40,7 @@ jobs:
           TAG="${{ inputs.tag || github.ref_name }}"
           VERSION="${TAG#manager-}"
           if ! [[ "$VERSION" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)-(Alpha|Beta|RC([0-9]+))-([0-9a-f]{6,7})$ ]]; then
-            echo "版本格式应为 v<主>.<次>.<修>-<Alpha|Beta|RCn>-<6或7位哈希>，得到：$VERSION" >&2
+            echo "版本格式应为 v<主>.<次>.<修>-<Alpha|Beta|RCn>-<7位哈希>，得到：$VERSION" >&2
             exit 1
           fi
           # versionCode 由 Gradle 取构建时刻的 Unix 秒，这里不再传。

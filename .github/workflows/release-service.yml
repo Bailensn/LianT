@@ -1,6 +1,6 @@
 name: Release Service (pre-release)
 
-# tag 约定：service-v<版本>-<6位哈希>，例如 service-v1.0.0-a1b2c3
+# tag 约定：service-v<版本>-<7位哈希>（兼容早期的 6 位），例如 service-v1.0.0-a1b2c3
 on:
   push:
     tags:
@@ -37,7 +37,7 @@ jobs:
           TAG="${{ inputs.tag || github.ref_name }}"
           VERSION="${TAG#service-}"
           if ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-(Alpha|Beta|RC[0-9]+)-[0-9a-f]{6,7}$'; then
-            echo "版本格式应为 v<主>.<次>.<修>-<Alpha|Beta|RCn>-<6或7位哈希>，得到：$VERSION" >&2
+            echo "版本格式应为 v<主>.<次>.<修>-<Alpha|Beta|RCn>-<7位哈希>，得到：$VERSION" >&2
             exit 1
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
