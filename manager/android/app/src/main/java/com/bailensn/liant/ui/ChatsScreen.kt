@@ -16,10 +16,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -53,33 +53,35 @@ fun ChatsScreen(
         ) {
             Text(
                 "消息",
-                style = MaterialTheme.typography.headlineSmall,
+                style = MiuixTheme.textStyles.title1,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
             TextButton(
+                text = "刷新",
                 onClick = onRefresh,
                 modifier = Modifier.heightIn(min = 48.dp),
-            ) { Text("刷新") }
+            )
         }
         HorizontalDivider(thickness = 0.5.dp)
         if (!notificationsEnabled) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.secondaryContainer)
+                    .background(MiuixTheme.colorScheme.secondaryContainer)
                     .padding(horizontal = 16.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     "通知未开启，后台收不到新消息提醒",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MiuixTheme.textStyles.footnote1,
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(
+                    text = "去开启",
                     onClick = onOpenNotificationSettings,
                     modifier = Modifier.heightIn(min = 48.dp),
-                ) { Text("去开启") }
+                )
             }
         }
         if (conversations.isEmpty()) {
@@ -87,12 +89,12 @@ fun ChatsScreen(
                 Modifier.fillMaxWidth().padding(32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("还没有会话", style = MaterialTheme.typography.titleMedium)
+                Text("还没有会话", style = MiuixTheme.textStyles.title4)
                 Spacer(Modifier.size(8.dp))
                 Text(
                     "在 QQ 群里 @ 一下 Bot，或等它收到消息，这里就会出现会话。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
             }
         }
@@ -101,7 +103,7 @@ fun ChatsScreen(
                 ConversationRow(conversation, onOpen)
                 HorizontalDivider(
                     thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant,
+                    color = MiuixTheme.colorScheme.outline,
                     modifier = Modifier.padding(start = 72.dp),
                 )
             }
@@ -121,22 +123,22 @@ private fun ConversationRow(conversation: Conversation, onOpen: (Conversation) -
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     conversation.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MiuixTheme.textStyles.title4,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
                     formatChatTime(conversation.lastTs),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     conversation.lastPlain.ifBlank { "[消息]" },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
@@ -146,13 +148,13 @@ private fun ConversationRow(conversation: Conversation, onOpen: (Conversation) -
                         Modifier
                             .padding(start = 8.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.error)
+                            .background(MiuixTheme.colorScheme.error)
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             conversation.unread.coerceAtMost(99).toString(),
-                            color = MaterialTheme.colorScheme.onError,
+                            color = MiuixTheme.colorScheme.onError,
                             fontSize = 11.sp,
                         )
                     }

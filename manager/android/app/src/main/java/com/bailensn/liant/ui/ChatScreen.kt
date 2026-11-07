@@ -25,14 +25,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import top.yukonga.miuix.kmp.basic.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -71,26 +72,14 @@ fun ChatScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column(Modifier.clickable { showDetails = true }) {
-                        Text(
-                            conversation.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            if (conversation.peerKind == "group") "群聊" else "私聊",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
+            SmallTopAppBar(
+                title = conversation.title,
+                subtitle = if (conversation.peerKind == "group") "群聊" else "私聊",
                 navigationIcon = {
-                    TextButton(
-                        onClick = onBack,
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    ) { Text("‹ 返回") }
+                    TextButton(text = "返回", onClick = onBack)
+                },
+                actions = {
+                    TextButton(text = "详情", onClick = { showDetails = true })
                 },
             )
         },
@@ -102,7 +91,7 @@ fun ChatScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MaterialTheme.colorScheme.surfaceContainerLowest),
+                .background(MiuixTheme.colorScheme.surfaceVariantLowest),
         ) {
             LazyColumn(
                 state = listState,
@@ -148,16 +137,16 @@ private fun MessageBubble(
                     ),
                 )
                 .background(
-                    if (outgoing) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    if (outgoing) MiuixTheme.colorScheme.primary
+                    else MiuixTheme.colorScheme.surfaceVariant,
                 )
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             if (!outgoing && message.senderName.isNotBlank()) {
                 Text(
                     message.senderName,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = MiuixTheme.colorScheme.primary,
                 )
                 Spacer(Modifier.size(2.dp))
             }
@@ -189,25 +178,25 @@ private fun MessageBubble(
                     Spacer(Modifier.size(4.dp))
                     Text(
                         message.plain,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (outgoing) MaterialTheme.colorScheme.onPrimary
-                        else MaterialTheme.colorScheme.onSurface,
+                        style = MiuixTheme.textStyles.body2,
+                        color = if (outgoing) MiuixTheme.colorScheme.onPrimary
+                        else MiuixTheme.colorScheme.onSurface,
                     )
                 }
             } else {
                 Text(
                     message.plain,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (outgoing) MaterialTheme.colorScheme.onPrimary
-                    else MaterialTheme.colorScheme.onSurface,
+                    style = MiuixTheme.textStyles.body1,
+                    color = if (outgoing) MiuixTheme.colorScheme.onPrimary
+                    else MiuixTheme.colorScheme.onSurface,
                 )
             }
             Spacer(Modifier.size(2.dp))
             Text(
                 formatChatTime(message.ts),
-                style = MaterialTheme.typography.labelSmall,
-                color = if (outgoing) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-                else MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MiuixTheme.textStyles.footnote2,
+                color = if (outgoing) MiuixTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                else MiuixTheme.colorScheme.onSurfaceSecondary,
                 modifier = Modifier.align(Alignment.End),
             )
         }
@@ -225,12 +214,13 @@ private fun InputBar(sending: Boolean, onSend: (String) -> Unit) {
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
-        OutlinedTextField(
+        TextField(
             value = text,
             onValueChange = { text = it },
             modifier = Modifier.weight(1f),
-            placeholder = { Text("输入消息") },
-            maxLines = 4,
+            label = if (text.isEmpty()) "输入消息" else "",
+            useLabelAsPlaceholder = true,
+            lineLimits = TextFieldLineLimits.MultiLine(minHeightInLines = 1, maxHeightInLines = 4),
         )
         Spacer(Modifier.size(8.dp))
         Button(

@@ -11,11 +11,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.basic.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,7 +41,7 @@ fun BotListPanel(
         ) {
             Text(
                 "Bot",
-                style = MaterialTheme.typography.headlineSmall,
+                style = MiuixTheme.textStyles.title1,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
@@ -52,8 +52,8 @@ fun BotListPanel(
         HorizontalDivider(thickness = 0.5.dp)
         Text(
             "点一个 Bot 设为当前；只有当前 Bot 的新消息会发系统通知。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MiuixTheme.textStyles.footnote1,
+            color = MiuixTheme.colorScheme.onSurfaceSecondary,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
         if (bots.isEmpty()) {
@@ -62,11 +62,11 @@ fun BotListPanel(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("还没有 Bot", style = MaterialTheme.typography.titleMedium)
+                Text("还没有 Bot", style = MiuixTheme.textStyles.title4)
                 Text(
                     "在 Service 上运行：LianT bot add --platform qqbot --cred app_id=… --cred app_secret=…",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
                 Button(onClick = onRefresh, enabled = !busy, modifier = Modifier.heightIn(min = 48.dp)) {
                     Text("重新加载")
@@ -86,12 +86,12 @@ fun BotListPanel(
                         Column(Modifier.weight(1f)) {
                             Text(
                                 bot.displayName.ifEmpty { bot.botId },
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MiuixTheme.textStyles.title4,
                             )
                             Text(
                                 "${bot.platform} · ${bot.status}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MiuixTheme.textStyles.footnote1,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary,
                             )
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -115,8 +115,8 @@ fun BotListPanel(
                         if (current) {
                             Text(
                                 "当前",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
+                                style = MiuixTheme.textStyles.footnote2,
+                                color = MiuixTheme.colorScheme.primary,
                             )
                         }
                     }

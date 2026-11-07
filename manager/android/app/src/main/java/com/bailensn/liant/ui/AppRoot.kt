@@ -21,11 +21,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import top.yukonga.miuix.kmp.basic.Button
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -314,8 +315,8 @@ fun AppRoot() {
             if (message != null) {
                 Text(
                     "错误：$message",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
+                    color = MiuixTheme.colorScheme.error,
+                    style = MiuixTheme.textStyles.footnote1,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
@@ -341,7 +342,7 @@ private fun PairingRoute(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("LianT", style = MaterialTheme.typography.headlineMedium)
+        Text("LianT", style = MiuixTheme.textStyles.headlineMedium)
         Text("在 Service 终端运行 LianT pair，粘贴打印出的二维码内容")
         var qr by remember { mutableStateOf("") }
         var name by remember { mutableStateOf("我的手机") }
@@ -388,22 +389,23 @@ private fun PairingRoute(
             }
         }
         importError?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Text(it, color = MiuixTheme.colorScheme.error, style = MiuixTheme.textStyles.footnote1)
         }
-        OutlinedTextField(
+        TextField(
             value = qr,
             onValueChange = { qr = it },
-            label = { Text("二维码 JSON，也可以手动粘贴") },
+            label = "二维码 JSON，也可以手动粘贴",
+            useLabelAsPlaceholder = true,
             modifier = Modifier.fillMaxWidth(),
-            minLines = 3,
-            maxLines = 8,
+            lineLimits = TextFieldLineLimits.MultiLine(minHeightInLines = 3, maxHeightInLines = 8),
         )
-        OutlinedTextField(
+        TextField(
             value = name,
             onValueChange = { name = it },
-            label = { Text("设备名") },
+            label = "设备名",
+            useLabelAsPlaceholder = true,
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
+            lineLimits = TextFieldLineLimits.SingleLine,
         )
         Button(
             onClick = { onPair(qr.trim(), name.trim().ifEmpty { "未命名设备" }) },
