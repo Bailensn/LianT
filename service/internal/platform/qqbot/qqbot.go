@@ -188,14 +188,24 @@ func (a *Adapter) accessToken(ctx context.Context, c credentials) (string, error
 		return "", fmt.Errorf("qqbot: 申请 token 返回 %d: %s", resp.StatusCode, readSnippet(resp.Body))
 	}
 
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", fmt.Errorf("qqbot: 读取 token 响应失败: %w", err)
+	}
 	var out struct {
 		AccessToken string  `json:"access_token"`
 		ExpiresIn   flexInt `json:"expires_in"`
+		Code        int     `json:"code"`
+		Message     string  `json:"message"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.Unmarshal(raw, &out); err != nil {
 		return "", fmt.Errorf("qqbot: 解析 token 响应失败: %w", err)
 	}
 	if out.AccessToken == "" {
+		// QQ 对错误的 app_id/secret 也可能回 200 + 错误码。
+		if out.Code != 0 || out.Message != "" {
+			return "", fmt.Errorf("%w: %d %s", platform.ErrInvalidCredentials, out.Code, out.Message)
+		}
 		return "", errEmptyToken
 	}
 
