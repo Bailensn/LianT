@@ -29,8 +29,13 @@ ghcr.io/bailensn/liant:latest
 
 ## 触发方式
 
-**每次 push 到 `main` 都会自动构建并推送镜像**，标签是 `v1.0.0-Alpha-<7 位哈希>`，
-同时把 `latest` 指过去。也可以在 Actions 里手动跑 `Publish image`。
+只有一条流水线 `.github/workflows/ci.yml`：
+
+1. `verify`：装依赖、构建网页、`go vet`、`go test -race`、无推送构建镜像并起容器冒烟；
+2. `image`：`verify` 通过后，构建 `linux/amd64` 与 `linux/arm64` 并推送到 GHCR。
+
+**每次 push 到 `main` 都会自动发版**，标签是 `v1.0.0-Alpha-<7 位哈希>`，同时把 `latest` 指过去。
+PR 只跑到 `verify`，不会推送镜像。
 
 ## 本地构建
 
