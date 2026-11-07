@@ -206,7 +206,7 @@ func loadCredFile(path string) (map[string]string, error) {
 }
 
 func promptSecret(label string) (string, error) {
-	fmt.Fprintf(os.Stderr, "%s（输入不回显）：", label)
+	fmt.Fprintf(os.Stderr, "%s: ", label)
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return "", errors.New("当前不是终端")
 	}
