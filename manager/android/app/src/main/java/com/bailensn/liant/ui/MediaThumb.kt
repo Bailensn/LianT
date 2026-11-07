@@ -35,7 +35,7 @@ fun MediaThumb(
         modifier
             .aspectRatio(ratio.value)
             .clip(RoundedCornerShape(8.dp))
-            .background(MiuixTheme.colorScheme.surfaceVariantest),
+            .background(MiuixTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
         Text(

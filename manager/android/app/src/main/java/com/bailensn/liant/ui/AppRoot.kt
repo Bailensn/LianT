@@ -342,7 +342,7 @@ private fun PairingRoute(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("LianT", style = MiuixTheme.textStyles.headlineMedium)
+        Text("LianT", style = MiuixTheme.textStyles.title2)
         Text("在 Service 终端运行 LianT pair，粘贴打印出的二维码内容")
         var qr by remember { mutableStateOf("") }
         var name by remember { mutableStateOf("我的手机") }
@@ -393,7 +393,7 @@ private fun PairingRoute(
         }
         TextField(
             value = qr,
-            onValueChange = { qr = it },
+            onValueChange = { value -> qr = value },
             label = "二维码 JSON，也可以手动粘贴",
             useLabelAsPlaceholder = true,
             modifier = Modifier.fillMaxWidth(),
@@ -401,7 +401,7 @@ private fun PairingRoute(
         )
         TextField(
             value = name,
-            onValueChange = { name = it },
+            onValueChange = { value -> name = value },
             label = "设备名",
             useLabelAsPlaceholder = true,
             modifier = Modifier.fillMaxWidth(),

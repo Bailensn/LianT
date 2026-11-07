@@ -91,7 +91,7 @@ fun ChatScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MiuixTheme.colorScheme.surfaceVariantLowest),
+                .background(MiuixTheme.colorScheme.surfaceVariant),
         ) {
             LazyColumn(
                 state = listState,
@@ -216,7 +216,7 @@ private fun InputBar(sending: Boolean, onSend: (String) -> Unit) {
     ) {
         TextField(
             value = text,
-            onValueChange = { text = it },
+            onValueChange = { value -> text = value },
             modifier = Modifier.weight(1f),
             label = if (text.isEmpty()) "输入消息" else "",
             useLabelAsPlaceholder = true,

@@ -51,11 +51,11 @@ fun HomeScreen() {
             )
             Text(
                 text = stringResource(R.string.home_empty_title),
-                color = MiuixTheme.colorScheme.onSurfaceSecondarySummary,
+                color = MiuixTheme.colorScheme.onSurfaceSecondary,
             )
             Text(
                 text = stringResource(R.string.home_empty_hint),
-                color = MiuixTheme.colorScheme.onSurfaceSecondarySummary,
+                color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 style = MiuixTheme.textStyles.footnote1,
             )
         }
