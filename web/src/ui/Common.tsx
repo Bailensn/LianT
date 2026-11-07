@@ -4,11 +4,13 @@ import { Link } from 'react-router-dom'
 export function Page({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-end justify-between px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-2">
+      <header className="mx-auto flex w-full max-w-[780px] items-end justify-between px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-2 md:pt-8">
         <h1 className="text-[34px] leading-[1.1] font-bold tracking-tight">{title}</h1>
         {action}
       </header>
-      <div className="flex-1 overflow-y-auto overscroll-contain px-4 pb-40 no-scrollbar">{children}</div>
+      <div className="mx-auto w-full max-w-[780px] flex-1 overflow-y-auto overscroll-contain px-4 pb-40 no-scrollbar md:pb-10">
+        {children}
+      </div>
     </div>
   )
 }
@@ -41,7 +43,7 @@ export function Row({
   danger?: boolean
 }) {
   const body = (
-    <div className="flex min-h-[56px] items-center gap-3 px-4 py-2.5 active:bg-[var(--bg-sunken)]">
+    <div className="flex min-h-[56px] items-center gap-3 px-4 py-2.5 transition active:bg-[var(--bg-sunken)] md:hover:bg-[var(--bg-sunken)]">
       {leading}
       <div className="min-w-0 flex-1">
         <div className={`truncate text-[16px] ${danger ? 'text-[var(--danger)]' : ''}`}>{title}</div>

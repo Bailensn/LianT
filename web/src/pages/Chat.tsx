@@ -64,7 +64,7 @@ export default function Chat() {
       <header className="glass sticky top-0 z-10 flex items-center gap-2 border-b border-[var(--sep)] px-2 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2">
         <button
           onClick={() => nav(-1)}
-          className="flex h-10 items-center gap-0.5 rounded-xl px-2 text-[var(--accent)] active:opacity-60"
+          className="flex h-10 items-center gap-0.5 rounded-xl px-2 text-[var(--accent)] active:opacity-60 md:hidden"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M15 5l-7 7 7 7" />
@@ -82,7 +82,7 @@ export default function Chat() {
             }` : ''}
           </p>
         </div>
-        <div className="w-[68px]" />
+        <div className="hidden w-[68px] md:block" />
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 no-scrollbar">

@@ -40,7 +40,7 @@ export function BottomNav() {
   const { pathname } = useLocation()
   if (pathname.startsWith('/chat/') || pathname === '/pair') return null
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden">
       <nav className="glass pointer-events-auto flex items-center gap-1 rounded-[26px] border border-[var(--sep)] p-1.5 shadow-[0_12px_40px_-12px_rgb(0_0_0/0.28)]">
         {items.map((it) => (
           <NavLink
