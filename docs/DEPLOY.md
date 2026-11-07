@@ -30,6 +30,9 @@
 
 凭据由适配器校验后加密入库，接口不回显。QQ 的 `app_id/app_secret` 来自 QQ 开放平台机器人后台。
 
+登记后 Bot 状态是 `starting`：`serve` 启动时会自动认领。如果 `serve` 已经在跑，
+在 App 的 Bot 页点「启动」即可（走 `bot.start`，不用重启服务）。
+
 ## 4. 配对手机
 
 ```bash

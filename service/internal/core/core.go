@@ -393,6 +393,11 @@ func (c *Core) AddBot(ctx context.Context, _ server.Session, raw json.RawMessage
 	if err != nil {
 		return nil, internal(err)
 	}
+	// 登记后置为 starting：下一次 serve 启动会认领它；如果 serve 已在跑，
+	// 客户端可以立刻调 bot.start。
+	if err := c.opt.Store.SetBotStatus(ctx, botID, platform.Status{State: platform.StateStarting}); err != nil {
+		return nil, internal(err)
+	}
 	return protocol.BotRef{BotID: botID}, nil
 }
 

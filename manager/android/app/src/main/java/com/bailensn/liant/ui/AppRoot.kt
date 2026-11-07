@@ -241,6 +241,26 @@ fun AppRoot() {
                                 busy = botsBusy,
                                 activeBotId = activeBotId,
                                 onRefresh = { scope.launch { loadBots() } },
+                                onStart = { botId ->
+                                    scope.launch {
+                                        try {
+                                            repository.startBot(botId)
+                                            loadBots()
+                                        } catch (e: Exception) {
+                                            error = e.message ?: e::class.java.simpleName
+                                        }
+                                    }
+                                },
+                                onStop = { botId ->
+                                    scope.launch {
+                                        try {
+                                            repository.stopBot(botId)
+                                            loadBots()
+                                        } catch (e: Exception) {
+                                            error = e.message ?: e::class.java.simpleName
+                                        }
+                                    }
+                                },
                                 onSelectActive = { botId ->
                                     repository.setActiveBotId(botId)
                                     activeBotId = botId

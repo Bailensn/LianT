@@ -117,6 +117,16 @@ class LiantRepository(context: Context) {
         return connection.fetchMedia(botId, msgId)
     }
 
+    suspend fun startBot(botId: String) {
+        val connection = client ?: error("连接尚未建立")
+        connection.startBot(botId)
+    }
+
+    suspend fun stopBot(botId: String) {
+        val connection = client ?: error("连接尚未建立")
+        connection.stopBot(botId)
+    }
+
     suspend fun sendText(botId: String, peerId: String, text: String, inReplyTo: String?): JSONObject {
         val connection = client ?: error("连接尚未建立")
         return connection.sendMessage(botId, peerId, text, inReplyTo)

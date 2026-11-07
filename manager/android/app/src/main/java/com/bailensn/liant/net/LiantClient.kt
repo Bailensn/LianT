@@ -103,6 +103,14 @@ class LiantClient(
 
     suspend fun botList(): JSONObject = call("bot.list", JSONObject()).payload
 
+    suspend fun startBot(botId: String) {
+        call("bot.start", JSONObject().put("bot_id", botId))
+    }
+
+    suspend fun stopBot(botId: String) {
+        call("bot.stop", JSONObject().put("bot_id", botId))
+    }
+
     suspend fun sendMessage(
         botId: String,
         peerId: String,

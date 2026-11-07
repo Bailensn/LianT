@@ -31,6 +31,8 @@ fun BotListPanel(
     activeBotId: String?,
     onRefresh: () -> Unit,
     onSelectActive: (String) -> Unit,
+    onStart: (String) -> Unit,
+    onStop: (String) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -91,6 +93,24 @@ fun BotListPanel(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(top = 8.dp),
+                            ) {
+                                if (bot.status == "running" || bot.status == "starting") {
+                                    Button(
+                                        onClick = { onStop(bot.botId) },
+                                        enabled = !busy,
+                                        modifier = Modifier.heightIn(min = 48.dp),
+                                    ) { Text("停止") }
+                                } else {
+                                    Button(
+                                        onClick = { onStart(bot.botId) },
+                                        enabled = !busy,
+                                        modifier = Modifier.heightIn(min = 48.dp),
+                                    ) { Text("启动") }
+                                }
+                            }
                         }
                         if (current) {
                             Text(
