@@ -50,9 +50,12 @@ jobs:
       - name: Compute version code
         id: code
         run: |
-          CODE=$(curl -fsS -H "Authorization: Bearer $GITHUB_TOKEN" \
+          BASE=$(cat version-code-base.txt)
+          COUNT=$(curl -fsS -H "Authorization: Bearer $GITHUB_TOKEN" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=1" | jq -r '.total_count')
-          if [ -z "$CODE" ] || [ "$CODE" = "null" ]; then CODE=1; fi
+          CODE=$((COUNT - BASE - 1))
+          if [ "$CODE" -lt 0 ]; then CODE=0; fi
+          echo "versionCode=${CODE}"
           echo "code=${CODE}" >> "$GITHUB_OUTPUT"
 
       - name: Configure Android SDK

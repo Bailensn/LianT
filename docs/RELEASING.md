@@ -19,17 +19,16 @@ v1.0.0-RC1-eeeeeee
 
 ## versionCode
 
-不跟版本号做固定映射：**每构建一次 +1**，取仓库 Actions 的总运行序号。
+**从 0 开始**，每构建一次 +1：取仓库 Actions 总运行数，减去基线文件里的值。
 
 ```
-versionCode = /repos/<owner>/<repo>/actions/runs 的 total_count
+versionCode = total_runs - version-code-base.txt 里的基线 - 1
 ```
 
-- 任何工作流的一次运行都会让它 +1，release / 调试构建都算；
-- 数值小（几百量级），不需要本地计数器；
-- 本地 `assembleDebug` 不联网查询，退回 `1`，只用于开发；
-- 之前用「构建时刻 Unix 秒」生成的包（`1794054171` 那种）如果装过，
-  需要卸载重装才能回到新序号，否则系统会当降级拒绝安装。
+- 基线在 `manager/android/version-code-base.txt`，当前是启用该方案时的运行数；
+- 之后任何工作流跑一次，`total_runs` +1，`versionCode` 就 +1；
+- 首次构建为 `0`，本地 `assembleDebug` 不查询接口，退回 `1`（仅开发用）；
+- 之前用「Unix 秒」生成的包（`1794054171` 那种）如果装过，需要卸载重装。
 
 `versionName` 仍然保留完整的 `v1.0.0-Alpha-<hash>`。
 
