@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.bailensn.liant.ui.design.formatChatTime
 import com.bailensn.liant.data.ChatMessage
 import com.bailensn.liant.data.Conversation
 
