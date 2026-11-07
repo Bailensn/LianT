@@ -34,8 +34,10 @@ elif command -v docker-compose >/dev/null 2>&1 && docker-compose version 2>/dev/
 fi
 [ -n "$COMPOSE" ] || die "需要 Docker Compose v2。Debian/Ubuntu：apt install docker-compose-v2；其它见 https://docs.docker.com/compose/install/"
 
-[ -n "$BASIC_PASS" ] || BASIC_PASS=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16)
+# 生成密码时 head 会让 tr 收到 SIGPIPE，pipefail 下会直接杀掉脚本，所以临时关掉。
+[ -n "$BASIC_PASS" ] || BASIC_PASS=$(set +o pipefail; LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16)
 
+say "LianT 一键部署"
 say "安装目录：$DIR"
 mkdir -p "$DIR"
 cd "$DIR"
