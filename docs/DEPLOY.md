@@ -5,6 +5,7 @@
 ## 1. 前置
 
 - Go 1.27+（或用 CI 产物 `LianT-Service-<os>-<arch>`）；
+- 想直接在手机/Termux 上跑，用 `LianT-Service-android-arm64`（`GOOS=android GOARCH=arm64`，纯静态）；
 - 固定端口 **8443/tcp**：`/v1/ws`（客户端 WSS）与 `/v1/media/...`（媒体下载）共用；
 - 磁盘：消息库很小，媒体按 **单 Bot 3 GB** 规划（3 个 Bot 约 9 GB 上限）；
 - 时间同步：认证要求客户端与服务端时差 ≤ 60 秒。

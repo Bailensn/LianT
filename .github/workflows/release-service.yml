@@ -44,6 +44,7 @@ jobs:
           build linux arm64 ""
           build windows amd64 ".exe"
           build darwin arm64 ""
+          build android arm64 ""
           cd ../dist && sha256sum * > SHA256SUMS.txt && ls -l
 
       - uses: softprops/action-gh-release@v2
