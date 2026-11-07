@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 export function Page({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
@@ -43,7 +43,7 @@ export function Row({
   danger?: boolean
 }) {
   const body = (
-    <div className="flex min-h-[56px] items-center gap-3 px-4 py-2.5 transition active:bg-[var(--bg-sunken)] md:hover:bg-[var(--bg-sunken)]">
+    <div className="flex min-h-[48px] items-center gap-3 px-4 py-3 transition active:bg-[var(--bg-sunken)] md:hover:bg-[var(--bg-sunken)]">
       {leading}
       <div className="min-w-0 flex-1">
         <div className={`truncate text-[16px] ${danger ? 'text-[var(--danger)]' : ''}`}>{title}</div>
@@ -75,7 +75,7 @@ export function Button({
   full?: boolean
 }) {
   const base =
-    'inline-flex h-11 items-center justify-center rounded-2xl px-5 text-[16px] font-medium transition active:scale-[0.97] disabled:opacity-40'
+    'inline-flex h-12 min-h-[48px] items-center justify-center rounded-2xl px-5 text-[17px] font-medium transition active:scale-[0.97] disabled:opacity-40'
   const look =
     variant === 'primary'
       ? 'bg-[var(--accent)] text-white'
@@ -96,6 +96,7 @@ export function Field({
   placeholder,
   type = 'text',
   mono,
+  inputMode,
 }: {
   label: string
   value: string
@@ -103,6 +104,7 @@ export function Field({
   placeholder?: string
   type?: string
   mono?: boolean
+  inputMode?: 'text' | 'numeric' | 'tel' | 'email'
 }) {
   return (
     <label className="block px-4 py-3">
@@ -111,11 +113,65 @@ export function Field({
         className={`mt-1 w-full bg-transparent text-[16px] outline-none placeholder:text-[var(--text-3)] ${mono ? 'font-mono text-[14px]' : ''}`}
         value={value}
         type={type}
-        inputMode={type === 'number' ? 'numeric' : undefined}
+        inputMode={type === 'number' ? 'numeric' : inputMode}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
       />
     </label>
+  )
+}
+
+// 底部抽屉：拖拽条 + 60% 高度 + 锁死底层滚动；表单类不允许点遮罩静默关闭。
+export function Sheet({
+  open,
+  title,
+  onClose,
+  children,
+  footer,
+  dismissable = false,
+}: {
+  open: boolean
+  title: string
+  onClose: () => void
+  children: ReactNode
+  footer?: ReactNode
+  dismissable?: boolean
+}) {
+  useEffect(() => {
+    if (!open) return
+    document.body.classList.add('sheet-open')
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && dismissable) onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.classList.remove('sheet-open')
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open, dismissable, onClose])
+
+  if (!open) return null
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-end bg-black/40"
+      onClick={() => dismissable && onClose()}
+    >
+      <div
+        className="flex max-h-[85vh] w-full flex-col rounded-t-[28px] bg-[var(--bg)] pb-[max(16px,env(safe-area-inset-bottom))]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-[var(--text-3)]/40" />
+        <div className="flex shrink-0 items-center justify-between px-5 py-3">
+          <button onClick={onClose} className="min-h-[44px] text-[17px] text-[var(--text-2)]">
+            取消
+          </button>
+          <p className="text-[17px] font-semibold">{title}</p>
+          <div className="w-[44px]" />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+        {footer && <div className="shrink-0 px-5 pt-2">{footer}</div>}
+      </div>
+    </div>
   )
 }
 

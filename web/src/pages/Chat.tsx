@@ -120,6 +120,7 @@ export default function Chat() {
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'center', behavior: 'smooth' })}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault()

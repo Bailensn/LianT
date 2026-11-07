@@ -1,5 +1,9 @@
 # UI 设计规范（网页管理端）
 
+依据 [Ludi-Herry/mobile-design-system-skill](https://github.com/Ludi-Herry/mobile-design-system-skill)
+的六步工作流与三大红线落地：视口 `viewport-fit=cover`、安全区物理避让、44/48dp 触控热区、
+软键盘防遮挡、底部抽屉三分屏与滚动穿透阻断。下面记录本项目的具体实现。
+
 从 Android/Compose 迁到网页后，界面规范按 iOS HIG 的移动端惯例落地：
 **留白优先、层级靠背景而不是描边、动效克制**。本文只记录本项目的执行口径。
 
@@ -8,9 +12,9 @@
 | 规范条款 | Web 落地 |
 | --- | --- |
 | 顶部避让状态栏/灵动岛 | 页面容器 `pt-[max(1rem,env(safe-area-inset-top))]` |
-| 底部避让 Home Bar / 手势条 | 悬浮底栏与输入条 `pb-[max(…,env(safe-area-inset-bottom))]` |
+| 底部避让 Home Bar / 手势条 | 悬浮底栏 `pb-[max(16px,env(safe-area-inset-bottom))]`；输入条 `.safe-bottom` 同样取下限 16px |
 | 软键盘不遮挡输入 | 视口 `viewport-fit=cover`；聊天输入条贴底，键盘弹起时由浏览器自动上推 |
-| 最小触控热区 44×44 | 按钮 `h-11`，行内小按钮 `h-10` 加内边距，列表行 `min-h-[56px]` |
+| 最小触控热区 44×44 | 主按钮 `h-12`、行内按钮 `min-h-[44px]`、列表行 `min-h-[48px]`，图标按钮补 `aria-label` |
 | 相邻可点项留白 ≥8dp | 列表行内部 `gap-3`；底栏项之间 `gap-1` 加内边距 |
 | 细分隔线 | `--sep` 变量，浅色 `rgb(0 0 0 / .07)`，深色 `rgb(255 255 255 / .1)`；网页按 1px 渲染 |
 | 3–5 槽位底栏 | 会话 / 机器人 / 设置，悬浮玻璃胶囊，选中态用品牌色底 |
@@ -27,6 +31,14 @@
 - 机器人与设置走单栏，内容居中限宽 780px，不跟着窗口无限铺开；
 - 列表行补 `hover` 态，触控与鼠标两套反馈都在；
 - 聊天页隐藏「返回」按钮，改用列表点击切换。
+
+## 抽屉与输入
+
+- 抽屉用 `Sheet`：顶部拖拽条、最高 85vh、内容区独立滚动；
+- 打开时给 `body` 加 `sheet-open` 锁死底层滚动与手势，关闭时移除；
+- 表单类抽屉不响应遮罩点击，只能用「取消」或 Esc 关闭；
+- 输入框聚焦时 `scrollIntoView({block:'center'})`，键盘弹起不会盖住输入位置；
+- 数字类输入统一 `inputMode="numeric"`，手机号类用 `tel`。
 
 ## 视觉语言
 

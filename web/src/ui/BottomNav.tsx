@@ -40,14 +40,14 @@ export function BottomNav() {
   const { pathname } = useLocation()
   if (pathname.startsWith('/chat/') || pathname === '/pair') return null
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center pb-[max(16px,env(safe-area-inset-bottom))] md:hidden">
       <nav className="glass pointer-events-auto flex items-center gap-1 rounded-[26px] border border-[var(--sep)] p-1.5 shadow-[0_12px_40px_-12px_rgb(0_0_0/0.28)]">
         {items.map((it) => (
           <NavLink
             key={it.to}
             to={it.to}
             className={({ isActive }) =>
-              `flex w-[92px] flex-col items-center gap-0.5 rounded-[20px] py-1.5 transition ${
+              `flex min-h-[48px] w-[92px] flex-col items-center justify-center gap-0.5 rounded-[20px] py-1.5 transition ${
                 isActive ? 'bg-[color-mix(in_oklab,var(--accent)_14%,transparent)] text-[var(--accent)]' : 'text-[var(--text-2)]'
               }`
             }

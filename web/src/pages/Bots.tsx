@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore, type Bot } from '../store'
-import { Page, Group, Divider, Field, Badge, Empty, Spinner } from '../ui/Common'
+import { Page, Group, Divider, Field, Badge, Empty, Spinner, Sheet, Button } from '../ui/Common'
 
 export default function Bots() {
   const bots = useStore((s) => s.bots)
@@ -93,53 +93,41 @@ export default function Bots() {
         </Group>
       )}
 
-      {adding && (
-        <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setAdding(false)}>
-          <div
-            className="w-full rounded-t-[28px] bg-[var(--bg)] pb-[max(1rem,env(safe-area-inset-bottom))]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-[var(--text-3)]/40" />
-            <div className="flex items-center justify-between px-5 py-3">
-              <button onClick={() => setAdding(false)} className="text-[16px] text-[var(--text-2)]">
-                取消
-              </button>
-              <p className="text-[16px] font-semibold">添加 QQ 机器人</p>
-              <button
-                onClick={submit}
-                disabled={busy || !appId.trim() || !secret.trim()}
-                className="text-[16px] font-semibold text-[var(--accent)] disabled:opacity-40"
-              >
-                {busy ? '验证中' : '保存'}
-              </button>
-            </div>
-            <div className="mx-4 mb-3 flex gap-2">
-              <span className="rounded-full bg-[var(--accent)]/12 px-3 py-1.5 text-[13px] font-medium text-[var(--accent)]">
-                QQ 机器人
-              </span>
-              <span className="rounded-full bg-[var(--bg-sunken)] px-3 py-1.5 text-[13px] text-[var(--text-3)]">
-                Telegram · 即将支持
-              </span>
-            </div>
-            <div className="card mx-4 mb-4 overflow-hidden">
-              <Field label="AppID" value={appId} onChange={setAppId} placeholder="1020xxxxx" mono />
-              <Divider />
-              <Field label="AppSecret" value={secret} onChange={setSecret} placeholder="平台密钥" type="password" mono />
-              <Divider />
-              <Field label="备注名 · 可留空" value={label} onChange={setLabel} placeholder="例如 客服号" />
-            </div>
-            {error && (
-              <p className="mx-4 mb-3 rounded-2xl bg-[color-mix(in_oklab,var(--danger)_12%,transparent)] p-3 text-[13px] leading-relaxed text-[var(--danger)]">
-                {error}
-              </p>
-            )}
-            <p className="px-5 pb-2 text-[12px] leading-relaxed text-[var(--text-3)]">
-              凭据在 QQ 开放平台「机器人 → 开发设置」里；保存时会实时校验并读取机器人昵称。
-              AppSecret 只存在服务端，加密入库，网页端不会再读出来。保存成功后会自动启动。
-            </p>
-          </div>
+      <Sheet
+        open={adding}
+        title="添加 QQ 机器人"
+        onClose={() => setAdding(false)}
+        footer={
+          <Button full onClick={submit} disabled={busy || !appId.trim() || !secret.trim()}>
+            {busy ? '验证中…' : '保存并启动'}
+          </Button>
+        }
+      >
+        <div className="mx-4 mb-3 flex gap-2 pt-1">
+          <span className="rounded-full bg-[var(--accent)]/12 px-3 py-1.5 text-[13px] font-medium text-[var(--accent)]">
+            QQ 机器人
+          </span>
+          <span className="rounded-full bg-[var(--bg-sunken)] px-3 py-1.5 text-[13px] text-[var(--text-3)]">
+            Telegram · 即将支持
+          </span>
         </div>
-      )}
+        <div className="card mx-4 mb-4 overflow-hidden">
+          <Field label="AppID" value={appId} onChange={setAppId} placeholder="1020xxxxx" mono inputMode="numeric" />
+          <Divider />
+          <Field label="AppSecret" value={secret} onChange={setSecret} placeholder="平台密钥" type="password" mono />
+          <Divider />
+          <Field label="备注名 · 可留空" value={label} onChange={setLabel} placeholder="例如 客服号" />
+        </div>
+        {error && (
+          <p className="mx-4 mb-3 rounded-2xl bg-[color-mix(in_oklab,var(--danger)_12%,transparent)] p-3 text-[13px] leading-relaxed text-[var(--danger)]">
+            {error}
+          </p>
+        )}
+        <p className="px-5 pb-4 text-[13px] leading-relaxed text-[var(--text-3)]">
+          凭据在 QQ 开放平台「机器人 → 开发设置」里；保存时会实时校验并读取昵称。
+          AppSecret 只存在服务端，加密入库，网页端不会再读出来。
+        </p>
+      </Sheet>
     </Page>
   )
 }
