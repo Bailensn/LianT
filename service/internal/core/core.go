@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -368,7 +369,14 @@ func (c *Core) AddBot(ctx context.Context, _ server.Session, raw json.RawMessage
 	}
 	acc, err := adapter.Validate(ctx, platform.Credentials(req.Credentials))
 	if err != nil {
-		return nil, bad(protocol.CodeInvalidPayload, "凭据校验失败")
+		if errors.Is(err, platform.ErrInvalidCredentials) {
+			return nil, bad(protocol.CodeInvalidPayload, "凭据被平台拒绝："+briefError(err))
+		}
+		return nil, &protocol.Error{
+			Code:      protocol.CodeUpstreamError,
+			Message:   "无法完成凭据校验：" + briefError(err),
+			Retryable: true,
+		}
 	}
 	rawCreds, err := json.Marshal(req.Credentials)
 	if err != nil {
@@ -573,6 +581,15 @@ func bad(code, msg string) *protocol.Error {
 }
 
 // internal 只回通用文案：协议 §10 要求错误里不出现内部路径与细节。
+// briefError 把平台错误压成一行，避免把整段响应塞给客户端。
+func briefError(err error) string {
+	text := strings.ReplaceAll(err.Error(), "\n", " ")
+	if len(text) > 200 {
+		text = text[:200] + "…"
+	}
+	return text
+}
+
 func internal(_ error) *protocol.Error {
 	return &protocol.Error{
 		Code:      protocol.CodeInternal,

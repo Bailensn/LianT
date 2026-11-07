@@ -45,6 +45,14 @@ func init() {
 
 func (a *Adapter) Name() string { return "qqbot" }
 
+// CredentialFields 声明 QQ 需要的两项凭据，CLI 会据此生成 --app-id/--app-secret。
+func (a *Adapter) CredentialFields() []platform.CredentialField {
+	return []platform.CredentialField{
+		{Key: "app_id", Label: "AppID"},
+		{Key: "app_secret", Label: "AppSecret", Secret: true},
+	}
+}
+
 // Format 指向 format 注册表里的纯文本实现。
 func (a *Adapter) Format() string { return "qq-plain" }
 
@@ -167,6 +175,9 @@ func (a *Adapter) accessToken(ctx context.Context, c credentials) (string, error
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+		return "", fmt.Errorf("%w: HTTP %d %s", platform.ErrInvalidCredentials, resp.StatusCode, readSnippet(resp.Body))
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("qqbot: 申请 token 返回 %d: %s", resp.StatusCode, readSnippet(resp.Body))
 	}

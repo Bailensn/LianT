@@ -3,12 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
 
+	"golang.org/x/term"
+
 	"github.com/Bailensn/LianT/service/internal/core"
+	"github.com/Bailensn/LianT/service/internal/platform"
 	"github.com/Bailensn/LianT/service/internal/protocol"
 	"github.com/Bailensn/LianT/service/internal/server"
 )
@@ -34,12 +38,15 @@ func botCommand(args []string) {
 
 func botUsage() {
 	fmt.Println(`用法:
-  LianT bot add --platform qqbot --cred app_id=... --cred app_secret=... [--label 名字]
+  LianT bot add --platform qqbot --app-id 123456 [--label 名字]
+      密钥（如 AppSecret）会提示隐藏输入；脚本可用 --cred-file creds.json
   LianT bot list
-  LianT bot remove <bot_id>`)
+  LianT bot remove <bot_id>
+
+凭据里密钥不要写在命令行上：会进 shell history，也会出现在 ps 里。`)
 }
 
-// credFlags 收集可重复的 --cred key=value。
+// credFlags 收集可重复的 --cred key=value（只允许非密钥字段）。
 type credFlags []string
 
 func (c *credFlags) String() string { return strings.Join(*c, ",") }
@@ -49,35 +56,106 @@ func (c *credFlags) Set(v string) error {
 	return nil
 }
 
+// prescanPlatform 先扫出 --platform，才能在注册表里查适配器的凭据字段。
+func prescanPlatform(args []string) string {
+	name := "qqbot"
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "--platform" && i+1 < len(args):
+			name = args[i+1]
+		case strings.HasPrefix(args[i], "--platform="):
+			name = strings.TrimPrefix(args[i], "--platform=")
+		}
+	}
+	return name
+}
+
 func botAdd(args []string) {
+	platformName := prescanPlatform(args)
+	adapter, ok := platform.Get(platformName)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "没有注册的平台 %q（已注册：%s）\n", platformName, strings.Join(platform.Names(), ", "))
+		os.Exit(1)
+	}
+
 	fs := flag.NewFlagSet("bot add", flag.ExitOnError)
-	platformName := fs.String("platform", "qqbot", "平台名，例如 qqbot")
+	fs.String("platform", platformName, "平台名")
 	label := fs.String("label", "", "显示名，可选")
-	var creds credFlags
-	fs.Var(&creds, "cred", "凭据键值对 key=value，可重复")
+	credFile := fs.String("cred-file", "", "凭据 JSON 文件（建议 chmod 600）；脚本里用它，别把密钥放命令行")
+	var extra credFlags
+	fs.Var(&extra, "cred", "非密钥字段 key=value；密钥请交互输入或用 --cred-file")
+
+	var fields []platform.CredentialField
+	fieldValues := map[string]*string{}
+	if spec, ok := adapter.(platform.CredentialSpec); ok {
+		fields = spec.CredentialFields()
+		for _, f := range fields {
+			flagName := strings.ReplaceAll(f.Key, "_", "-")
+			hint := f.Label
+			if !f.Secret {
+				hint += "（不要放密钥）"
+			}
+			fieldValues[f.Key] = fs.String(flagName, "", hint)
+		}
+	}
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
 	}
-	if *platformName == "" {
-		fmt.Fprintln(os.Stderr, "缺少 --platform")
-		os.Exit(1)
+
+	values := map[string]string{}
+	if *credFile != "" {
+		loaded, err := loadCredFile(*credFile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "读取凭据文件失败：", err)
+			os.Exit(1)
+		}
+		for k, v := range loaded {
+			values[k] = v
+		}
 	}
-	if len(creds) == 0 {
-		fmt.Fprintln(os.Stderr, "缺少 --cred")
-		os.Exit(1)
-	}
-	m := map[string]string{}
-	for _, kv := range creds {
+	for _, kv := range extra {
 		key, value, ok := strings.Cut(kv, "=")
 		if !ok || key == "" {
 			fmt.Fprintf(os.Stderr, "凭据格式应为 key=value：%q\n", kv)
 			os.Exit(1)
 		}
-		m[key] = value
+		if isSecretField(fields, key) {
+			fmt.Fprintln(os.Stderr, "密钥不要写在命令行上（会进 shell history / ps），请去掉这一项：")
+			fmt.Fprintln(os.Stderr, "  交互输入：直接回车让它提示；或 --cred-file 指定 0600 的 JSON 文件")
+			os.Exit(1)
+		}
+		values[key] = value
 	}
+	for key, ptr := range fieldValues {
+		if *ptr != "" {
+			values[key] = *ptr
+		}
+	}
+
+	// 缺的字段：密钥交互输入，非密钥报错。
+	for _, f := range fields {
+		if values[f.Key] != "" {
+			continue
+		}
+		if !f.Secret {
+			fmt.Fprintf(os.Stderr, "缺少 --%s\n", strings.ReplaceAll(f.Key, "_", "-"))
+			os.Exit(1)
+		}
+		secret, err := promptSecret(f.Label)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "读取 %s 失败：%v（脚本请用 --cred-file）\n", f.Label, err)
+			os.Exit(1)
+		}
+		values[f.Key] = secret
+	}
+	if len(values) == 0 {
+		fmt.Fprintln(os.Stderr, "没有提供任何凭据")
+		os.Exit(1)
+	}
+
 	raw, err := json.Marshal(protocol.BotAdd{
-		Platform:    *platformName,
-		Credentials: m,
+		Platform:    platformName,
+		Credentials: values,
 		Label:       *label,
 	})
 	if err != nil {
@@ -98,6 +176,47 @@ func botAdd(args []string) {
 		os.Exit(1)
 	}
 	fmt.Println("已登记", got.(protocol.BotRef).BotID)
+}
+
+func isSecretField(fields []platform.CredentialField, key string) bool {
+	for _, f := range fields {
+		if f.Key == key {
+			return f.Secret
+		}
+	}
+	return false
+}
+
+func loadCredFile(path string) (map[string]string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		fmt.Fprintf(os.Stderr, "警告：%s 权限是 %o，建议 chmod 600\n", path, info.Mode().Perm())
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]string
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func promptSecret(label string) (string, error) {
+	fmt.Fprintf(os.Stderr, "%s（输入不回显）：", label)
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return "", errors.New("当前不是终端")
+	}
+	raw, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Fprintln(os.Stderr)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(raw)), nil
 }
 
 func botList() {

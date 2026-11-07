@@ -15,6 +15,23 @@ import (
 // ErrUnsupported 表示当前适配器或账号不具备该能力。
 var ErrUnsupported = errors.New("platform: 不支持的能力")
 
+// ErrInvalidCredentials 表示平台明确拒绝了凭据，
+// 与「网络不通 / 上游 5xx」区分开，便于 CLI 给出不同提示。
+var ErrInvalidCredentials = errors.New("platform: 凭据无效")
+
+// CredentialField 描述一个平台凭据字段，供 CLI 生成参数与提示。
+type CredentialField struct {
+	Key    string
+	Label  string
+	Secret bool
+}
+
+// CredentialSpec 是可选能力：适配器声明自己需要哪些凭据字段。
+// CLI 据此生成 --app-id / --token 之类的参数，核心仍然只认 Credentials map。
+type CredentialSpec interface {
+	CredentialFields() []CredentialField
+}
+
 // Credentials 是平台自定义的凭据集合。
 //
 // 不同平台的字段完全不同：QQ 是 app_id/app_secret，Telegram 只有 token。

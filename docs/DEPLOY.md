@@ -24,10 +24,20 @@
 ## 3. 登记 Bot
 
 ```bash
-./LianT bot add --platform qqbot \
-  --cred app_id=123456789 --cred app_secret=xxxx \
-  --label "主号"
+# AppSecret 会提示隐藏输入，不进 shell history
+./LianT bot add --platform qqbot --app-id 123456789 --label "主号"
+
+# 脚本/非交互环境：用 0600 的 JSON 文件
+./LianT bot add --platform qqbot --cred-file /etc/liant/qqbot.json
+
 ./LianT bot list
+```
+
+**密钥不要写在命令行上**：`--cred app_secret=…` 会进 shell history，也会出现在 `ps` 里，
+CLI 会直接拒绝密钥字段的 `--cred`。`--cred-file` 的内容形如：
+
+```json
+{"app_id": "123456789", "app_secret": "..."}
 ```
 
 凭据由适配器校验后加密入库，接口不回显。QQ 的 `app_id/app_secret` 来自 QQ 开放平台机器人后台。

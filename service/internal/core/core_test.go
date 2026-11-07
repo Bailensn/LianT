@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -27,15 +28,19 @@ const (
 )
 
 type fakeAdapter struct {
-	name string
-	acc  platform.Account
-	sent []platform.SendRequest
-	err  error
+	name        string
+	acc         platform.Account
+	sent        []platform.SendRequest
+	err         error
+	validateErr error
 }
 
 func (f *fakeAdapter) Name() string { return f.name }
 
 func (f *fakeAdapter) Validate(context.Context, platform.Credentials) (platform.Account, error) {
+	if f.validateErr != nil {
+		return platform.Account{}, f.validateErr
+	}
 	acc := f.acc
 	if acc.ID == "" {
 		acc.ID = "1234567890"
@@ -525,4 +530,32 @@ func TestMediaDownloadAndFetch(t *testing.T) {
 	if recBad.Code != http.StatusNotFound {
 		t.Fatalf("篡改签名应 404，得到 %d", recBad.Code)
 	}
+}
+
+func TestAddBotMapsCredentialErrors(t *testing.T) {
+	payload, _ := json.Marshal(protocol.BotAdd{
+		Platform:    "qqbot",
+		Credentials: map[string]string{"app_id": "1", "app_secret": "s"},
+	})
+
+	t.Run("凭据被拒", func(t *testing.T) {
+		e := newEnv(t)
+		e.ad.validateErr = fmt.Errorf("%w: HTTP 401 invalid appid", platform.ErrInvalidCredentials)
+		_, perr := e.core.AddBot(context.Background(), server.Session{}, payload)
+		if perr == nil || perr.Code != protocol.CodeInvalidPayload {
+			t.Fatalf("期望 invalid_payload，得到 %+v", perr)
+		}
+		if !strings.Contains(perr.Message, "HTTP 401") {
+			t.Fatalf("应带上平台原因: %q", perr.Message)
+		}
+	})
+
+	t.Run("上游不可达", func(t *testing.T) {
+		e := newEnv(t)
+		e.ad.validateErr = errors.New("dial tcp 10.0.0.1:443: i/o timeout")
+		_, perr := e.core.AddBot(context.Background(), server.Session{}, payload)
+		if perr == nil || perr.Code != protocol.CodeUpstreamError || !perr.Retryable {
+			t.Fatalf("期望可重试的 upstream_error，得到 %+v", perr)
+		}
+	})
 }
