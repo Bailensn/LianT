@@ -20,6 +20,7 @@ import com.bailensn.liant.data.SavedPairing
 @Composable
 fun SettingsPanel(
     saved: SavedPairing?,
+    appVersion: String,
     notificationsEnabled: Boolean,
     onOpenNotificationSettings: () -> Unit,
     onForget: () -> Unit,
@@ -59,6 +60,8 @@ fun SettingsPanel(
                     Text("去系统设置开启")
                 }
             }
+            Text("关于", style = MaterialTheme.typography.labelMedium)
+            Text("LianT Manager $appVersion", style = MaterialTheme.typography.bodySmall)
             Button(
                 onClick = onForget,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),

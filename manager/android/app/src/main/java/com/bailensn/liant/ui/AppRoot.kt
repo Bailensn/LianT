@@ -69,6 +69,11 @@ fun AppRoot() {
     val messages by controller.messages.collectAsState()
     val media by controller.media.collectAsState()
     val mediaErrors by controller.mediaErrors.collectAsState()
+    val appVersion = remember {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull() ?: ""
+    }
     val controllerError by controller.error.collectAsState()
 
     var paired by remember { mutableStateOf(repository.savedPairing() != null) }
@@ -269,6 +274,7 @@ fun AppRoot() {
 
                             else -> SettingsPanel(
                                 saved = saved,
+                                appVersion = appVersion,
                                 notificationsEnabled = notificationsEnabled,
                                 onOpenNotificationSettings = ::openNotificationSettings,
                                 onForget = {
