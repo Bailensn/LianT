@@ -4,10 +4,9 @@ plugins {
 }
 
 // versionName 由发布流水线注入，本地默认 v1.0.0-Alpha。
-// versionCode 不跟版本号挂钩：任何模式的构建都用「当前 Unix 秒」，天然单调递增。
+// versionCode 由流水线传入（Actions 运行序号，每构建 +1）；本地构建退回 1。
 val appVersionName = providers.gradleProperty("versionName").getOrElse("v1.0.0-Alpha")
-val appVersionCode = providers.gradleProperty("versionCode").map { it.toInt() }
-    .getOrElse((System.currentTimeMillis() / 1000).toInt())
+val appVersionCode = providers.gradleProperty("versionCode").map { it.toInt() }.getOrElse(1)
 
 android {
     namespace = "com.bailensn.liant"

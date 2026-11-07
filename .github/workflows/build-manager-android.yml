@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build:
@@ -33,6 +34,14 @@ jobs:
             manager/android/**/*.gradle.kts
             manager/android/gradle/libs.versions.toml
 
+      - name: Compute version code
+        id: code
+        run: |
+          CODE=$(curl -fsS -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=1" | jq -r '.total_count')
+          if [ -z "$CODE" ] || [ "$CODE" = "null" ]; then CODE=1; fi
+          echo "code=${CODE}" >> "$GITHUB_OUTPUT"
+
       - name: Configure Android SDK
         run: |
           # 运行器自带 SDK；不用 setup-android，它会去装已下架的 'tools' 包。
@@ -45,7 +54,10 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build debug APK
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            -PversionCode="${{ steps.code.outputs.code }}" \
+            assembleDebug
 
       - uses: actions/upload-artifact@v7
         with:

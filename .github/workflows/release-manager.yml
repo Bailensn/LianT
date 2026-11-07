@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   build:
@@ -46,6 +47,14 @@ jobs:
           # versionCode 由 Gradle 取构建时刻的 Unix 秒，这里不再传。
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Compute version code
+        id: code
+        run: |
+          CODE=$(curl -fsS -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=1" | jq -r '.total_count')
+          if [ -z "$CODE" ] || [ "$CODE" = "null" ]; then CODE=1; fi
+          echo "code=${CODE}" >> "$GITHUB_OUTPUT"
+
       - name: Configure Android SDK
         run: |
           SDKMGR=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
@@ -57,6 +66,7 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace \
             -PversionName="${{ steps.meta.outputs.version }}" \
+            -PversionCode="${{ steps.code.outputs.code }}" \
             assembleDebug
 
       - name: Collect APK

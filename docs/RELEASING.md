@@ -19,15 +19,17 @@ v1.0.0-RC1-eeeeeee
 
 ## versionCode
 
-不跟版本号做固定映射，也**不分构建模式**：取构建时刻的 Unix 秒。
+不跟版本号做固定映射：**每构建一次 +1**，取仓库 Actions 的总运行序号。
 
 ```
-versionCode = floor(build_time / 1000)
+versionCode = /repos/<owner>/<repo>/actions/runs 的 total_count
 ```
 
-- 每次构建（release / 手动构建 / 本地 assemble）都会得到更大的值；
-- 无需维护计数器、不需要 workflow 传参；
-- 上限是 32 位有符号 int，按秒计到 2038 年（`2,147,483,647`）仍然安全。
+- 任何工作流的一次运行都会让它 +1，release / 调试构建都算；
+- 数值小（几百量级），不需要本地计数器；
+- 本地 `assembleDebug` 不联网查询，退回 `1`，只用于开发；
+- 之前用「构建时刻 Unix 秒」生成的包（`1794054171` 那种）如果装过，
+  需要卸载重装才能回到新序号，否则系统会当降级拒绝安装。
 
 `versionName` 仍然保留完整的 `v1.0.0-Alpha-<hash>`。
 
