@@ -128,7 +128,7 @@ fun ChatsScreen(
                     Column(Modifier.weight(1f).padding(start = 12.dp)) {
                         Text(conversation.title, style = MiuixTheme.textStyles.body1)
                         Text(
-                            conversation.preview.ifEmpty { "暂无消息" },
+                            conversation.lastPlain.ifEmpty { "暂无消息" },
                             style = MiuixTheme.textStyles.footnote2,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
