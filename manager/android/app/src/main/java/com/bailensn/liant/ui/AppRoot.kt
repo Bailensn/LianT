@@ -101,6 +101,7 @@ fun AppRoot() {
     var busy by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var connected by remember { mutableStateOf(false) }
     var activeBotId by remember { mutableStateOf(repository.activeBotId()) }
     var notificationsEnabled by remember { mutableStateOf(MessageNotifier.isEnabled(context)) }
 
@@ -124,6 +125,7 @@ fun AppRoot() {
         while (true) {
             try {
                 repository.connect()
+                connected = true
                 controller.refresh()
                 controller.backfill()
                 busy = false
@@ -137,11 +139,13 @@ fun AppRoot() {
                     }
                     repository.closed()?.first()
                     collector.cancel()
+                    connected = false
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 busy = false
+                connected = false
                 error = e.message ?: e::class.java.simpleName
                 // 协议 §9：认证失败（4001）不重连，重试只会一直撞墙。
                 if (e is ProtocolException && (e.code == "unauthorized" || e.code == "forbidden")) {
@@ -243,6 +247,17 @@ fun AppRoot() {
                     Box(Modifier.weight(1f)) {
                         when (tab) {
                             0 -> ChatsScreen(
+                                connected = connected,
+                                onReconnect = {
+                                    scope.launch {
+                                        runCatching {
+                                            repository.connect()
+                                            controller.refresh()
+                                            controller.backfill()
+                                            connected = true
+                                        }.onFailure { connected = false }
+                                    }
+                                },
                                 conversations = conversations,
                                 notificationsEnabled = notificationsEnabled,
                                 onOpenNotificationSettings = ::openNotificationSettings,

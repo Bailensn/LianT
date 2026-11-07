@@ -40,6 +40,8 @@ import kotlin.math.absoluteValue
 /** 会话列表：头像 + 标题 + 最近一条 + 时间 + 未读。 */
 @Composable
 fun ChatsScreen(
+    connected: Boolean,
+    onReconnect: () -> Unit,
     conversations: List<Conversation>,
     notificationsEnabled: Boolean,
     onOpenNotificationSettings: () -> Unit,
@@ -64,6 +66,23 @@ fun ChatsScreen(
             )
         }
         HorizontalDivider(thickness = 0.5.dp)
+        if (!connected) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(MiuixTheme.colorScheme.secondaryContainer)
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "未连接，正在重试",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(text = "立即重连", onClick = onReconnect)
+            }
+        }
         if (!notificationsEnabled) {
             Row(
                 Modifier
