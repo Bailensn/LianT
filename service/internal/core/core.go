@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -46,13 +47,26 @@ type Options struct {
 	// Controller 负责启停 Bot 进程/适配器；为空时 bot.start/stop 返回 internal。
 	Controller BotController
 
+	// MediaDir 是媒体落盘根目录，默认 data/media。
+	MediaDir string
+	// MediaURLBase 是 media.fetch 返回地址的前缀（例如 https://host:8443）；
+	// 留空则返回相对路径，由客户端按当前连接解析。
+	MediaURLBase string
+	// MediaSecret 用于给下载地址签名；留空则进程启动时随机生成。
+	MediaSecret []byte
+	// HTTPClient 用于下载平台媒体；留空用默认 30s 超时客户端。
+	HTTPClient *http.Client
+	// MaxMediaBytes 是单个媒体文件上限，默认 100 MiB。
+	MaxMediaBytes int64
+
 	Now func() time.Time
 }
 
 // Core 是协议方法的实现。
 type Core struct {
-	opt Options
-	now func() time.Time
+	opt   Options
+	now   func() time.Time
+	media mediaConfig
 
 	mu     sync.RWMutex
 	botCtl BotController
@@ -76,6 +90,9 @@ func New(opt Options) (*Core, error) {
 		opt.Now = time.Now
 	}
 	c := &Core{opt: opt, now: opt.Now, botCtl: opt.Controller}
+	if err := c.initMedia(); err != nil {
+		return nil, err
+	}
 	return c, nil
 }
 
@@ -90,6 +107,7 @@ func (c *Core) Register(s *server.Server) {
 	s.Register(protocol.TypeBotStart, c.StartBot)
 	s.Register(protocol.TypeBotStop, c.StopBot)
 	s.Register(protocol.TypeBotStatus, c.BotStatus)
+	s.Register(protocol.TypeMediaFetch, c.FetchMedia)
 }
 
 // DecodeCredentials 用主密钥解密 Bot 凭据 JSON，供 supervisor 启动适配器时使用。
@@ -309,6 +327,9 @@ func (c *Core) Ingest(ctx context.Context, botID string, in platform.Inbound) (b
 	}
 	if inserted && c.opt.Broadcaster != nil {
 		c.opt.Broadcaster.Broadcast(protocol.TypeMsgInbound, toProtocolMessage(msg))
+	}
+	if inserted && len(in.Media) > 0 {
+		go c.downloadMedia(botID, in.MessageID, in.Media)
 	}
 	return inserted, nil
 }

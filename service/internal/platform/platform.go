@@ -52,6 +52,16 @@ const (
 	PeerChannel = "channel"
 )
 
+// Attachment 是入站消息携带的媒体。
+//
+// URL 是平台侧地址，只在下载时使用；核心会把它落到本地并换成自己的下载地址，
+// 客户端永远看不到平台链接。
+type Attachment struct {
+	URL  string
+	MIME string
+	Size int64
+}
+
 // Inbound 是适配器归一化后交给核心的一条入站消息。
 //
 // Text 是纯文本降级；Doc 非空时表示平台能给出行内结构，
@@ -64,6 +74,7 @@ type Inbound struct {
 	Kind       string
 	Text       string
 	Doc        *format.Doc
+	Media      []Attachment
 	At         time.Time
 }
 

@@ -102,7 +102,7 @@ Manager                          Service
 | `msg.send` | M→S | **是** | `{bot_id, peer_id, body, in_reply_to?, operator_id?}` | `in_reply_to` 为触发本次回复的入站 `msg_id`（QQ 被动回复需要），缺席时按主动消息处理；`operator_id` 仅用于审计（哪台设备/哪个人回的），**永不下发平台** |
 | `msg.inbound` | S→M | — | `{bot_id, peer_id, peer_kind, sender_id?, msg_type, body, msg_id}` | `peer_kind` ∈ `private/group/channel`；媒体消息的 `body.plain` 是说明文字 |
 | `msg.ack` | M→S | 是 | `{msg_id}` | 客户端已落库；用于多端未读与缓存清理 |
-| `media.fetch` | M→S | 是 | `{msg_id}` | 返回 `{url, exp, size, mime}`；从本地缓存返回，不再访问平台。调用方据 `size`/`mime` 决定是否下载（D10） |
+| `media.fetch` | M→S | 是 | `{bot_id, msg_id}` | 返回 `{url, exp, size, mime}`；从本地缓存返回，不再访问平台。调用方据 `size`/`mime` 决定是否下载（D10） |
 | `event.bot` | S→M | — | `{bot_id, status, reason?}` | 单 bot 粒度状态变化 |
 | `event.msg` | S→M | — | 同 `msg.inbound` | 在线推送；**所有 Bot 都推**，通知由客户端按 D9 过滤 |
 | `error` | 双向 | — | `{code, message, retryable}` | 见 §7 |

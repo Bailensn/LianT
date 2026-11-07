@@ -263,6 +263,7 @@ type MsgAck struct {
 
 // MediaFetch 请求一条消息的媒体下载地址。
 type MediaFetch struct {
+	BotID string `json:"bot_id"`
 	MsgID string `json:"msg_id"`
 }
 

@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -121,6 +125,8 @@ func newEnv(t *testing.T) *testEnv {
 		},
 		Broadcaster: bc,
 		Controller:  ctl,
+		MediaDir:    t.TempDir(),
+		MediaURLBase: "https://svc.test",
 		Encrypt: func(raw []byte) (string, error) {
 			return "enc:" + string(raw), nil
 		},
@@ -453,5 +459,70 @@ func TestBotStartStop(t *testing.T) {
 	}
 	if status.(protocol.BotStatusOK).Status != platform.StateRunning {
 		t.Fatalf("状态不符: %+v", status)
+	}
+}
+
+func TestMediaDownloadAndFetch(t *testing.T) {
+	e := newEnv(t)
+	e.seedBot(t, nil)
+
+	fileSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("PNGDATA"))
+	}))
+	defer fileSrv.Close()
+
+	if _, err := e.core.Ingest(context.Background(), testBotID, platform.Inbound{
+		MessageID: "m-img",
+		Peer:      platform.Peer{ID: testPeerID, Kind: platform.PeerGroup},
+		Kind:      "image",
+		Text:      "[图片]",
+		At:        time.UnixMilli(e.now.UnixMilli()),
+		Media:     []platform.Attachment{{URL: fileSrv.URL, MIME: "image/png"}},
+	}); err != nil {
+		t.Fatalf("入站落库: %v", err)
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	var items []store.Media
+	for time.Now().Before(deadline) {
+		items, _ = e.store.MediaOf(context.Background(), testBotID, "m-img")
+		if len(items) == 1 && items[0].State == store.MediaReady {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(items) != 1 || items[0].State != store.MediaReady {
+		t.Fatalf("媒体未下载: %+v", items)
+	}
+	if items[0].Size != int64(len("PNGDATA")) {
+		t.Fatalf("媒体大小不符: %d", items[0].Size)
+	}
+
+	raw, _ := json.Marshal(protocol.MediaFetch{BotID: testBotID, MsgID: "m-img"})
+	got, perr := e.core.FetchMedia(context.Background(), server.Session{}, raw)
+	if perr != nil {
+		t.Fatalf("media.fetch 失败: %+v", perr)
+	}
+	ok := got.(protocol.MediaFetchOK)
+	if !strings.HasPrefix(ok.URL, "https://svc.test/v1/media/") || ok.MIME != "image/png" {
+		t.Fatalf("返回地址不符: %+v", ok)
+	}
+
+	parsed, err := url.Parse(ok.URL)
+	if err != nil {
+		t.Fatalf("解析地址: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	e.core.MediaHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, parsed.Path+"?"+parsed.RawQuery, nil))
+	if rec.Code != http.StatusOK || rec.Body.String() != "PNGDATA" {
+		t.Fatalf("下载失败: code=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	bad := httptest.NewRequest(http.MethodGet, parsed.Path+"?exp="+parsed.Query().Get("exp")+"&sig=deadbeef", nil)
+	recBad := httptest.NewRecorder()
+	e.core.MediaHandler().ServeHTTP(recBad, bad)
+	if recBad.Code != http.StatusNotFound {
+		t.Fatalf("篡改签名应 404，得到 %d", recBad.Code)
 	}
 }

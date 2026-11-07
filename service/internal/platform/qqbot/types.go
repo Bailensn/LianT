@@ -86,6 +86,12 @@ type messageEvent struct {
 	ChannelID   string `json:"channel_id"`
 	GuildID     string `json:"guild_id"`
 	Timestamp   string `json:"timestamp"`
+	Attachments []struct {
+		URL         string `json:"url"`
+		ContentType string `json:"content_type"`
+		Size        int64  `json:"size"`
+		Filename    string `json:"filename"`
+	} `json:"attachments"`
 	Author      struct {
 		ID           string `json:"id"`
 		MemberOpenID string `json:"member_openid"`

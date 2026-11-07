@@ -254,6 +254,7 @@ func toInbound(event string, ev messageEvent) (platform.Inbound, bool) {
 			SenderID: peerID(sender),
 			Kind:     platform.CapText,
 			Text:     strings.TrimSpace(ev.Content),
+			Media:    attachments(ev.Attachments),
 			At:       parseTime(ev.Timestamp),
 		}, true
 
@@ -274,6 +275,7 @@ func toInbound(event string, ev messageEvent) (platform.Inbound, bool) {
 			SenderID: peerID(user),
 			Kind:     platform.CapText,
 			Text:     strings.TrimSpace(ev.Content),
+			Media:    attachments(ev.Attachments),
 			At:       parseTime(ev.Timestamp),
 		}, true
 
@@ -290,12 +292,30 @@ func toInbound(event string, ev messageEvent) (platform.Inbound, bool) {
 			SenderID: peerID(ev.Author.ID),
 			Kind:     platform.CapText,
 			Text:     strings.TrimSpace(ev.Content),
+			Media:    attachments(ev.Attachments),
 			At:       parseTime(ev.Timestamp),
 		}, true
 
 	default:
 		return platform.Inbound{}, false
 	}
+}
+
+// attachments 把平台附件换成核心的媒体描述；没有 url 的忽略。
+func attachments(in []struct {
+	URL         string `json:"url"`
+	ContentType string `json:"content_type"`
+	Size        int64  `json:"size"`
+	Filename    string `json:"filename"`
+}) []platform.Attachment {
+	out := make([]platform.Attachment, 0, len(in))
+	for _, a := range in {
+		if a.URL == "" {
+			continue
+		}
+		out = append(out, platform.Attachment{URL: a.URL, MIME: a.ContentType, Size: a.Size})
+	}
+	return out
 }
 
 func peerID(external string) string {

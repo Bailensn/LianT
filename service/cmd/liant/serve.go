@@ -158,7 +158,9 @@ func serveCommand(_ []string) {
 	}
 	defer manager.Shutdown()
 
-	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	go purgeLoop(db)
+
+	httpSrv := &http.Server{Handler: appHandler(srv, coreSvc), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := serveTLS(httpSrv, id, listenAddr(cfg)); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fmt.Fprintln(os.Stderr, "服务退出：", err)
@@ -237,6 +239,39 @@ func pairCommand(_ []string) {
 }
 
 // mustOpenStore 打开配置里的数据库；CLI 命令共用。
+// appHandler 同时挂 WSS 与媒体下载；两者共用同一个 TLS 端口。
+func appHandler(srv *server.Server, svc *core.Core) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/v1/ws", srv.Handler())
+	mux.Handle("/v1/media/", svc.MediaHandler())
+	return mux
+}
+
+// purgeLoop 每小时清一次过期消息与媒体，并把文件真正删掉。
+func purgeLoop(db *store.Store) {
+	purge := func() {
+		res, err := db.Purge(context.Background(), store.DefaultRetention(), time.Now())
+		if err != nil {
+			log.Printf("清理失败: %v", err)
+			return
+		}
+		for _, path := range res.Files {
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				log.Printf("删除媒体文件失败 %s: %v", path, err)
+			}
+		}
+		if res.Messages > 0 || res.MediaExpired > 0 || res.MediaEvicted > 0 {
+			log.Printf("清理完成：消息 %d，过期媒体 %d，淘汰媒体 %d", res.Messages, res.MediaExpired, res.MediaEvicted)
+		}
+	}
+	purge()
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		purge()
+	}
+}
+
 func mustOpenStore() *store.Store {
 	cfg := loadConfigOrDie()
 	db, err := store.Open(cfg.Storage.Database)
