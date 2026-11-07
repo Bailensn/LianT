@@ -31,7 +31,8 @@ const (
 	handshakeTimeout = 15 * time.Second
 	writeTimeout     = 10 * time.Second
 	// 认证后没有收到任何帧（含 ping）超过该时长就断开。
-	idleTimeout = 90 * time.Second
+	// 连接空闲上限：心跳会持续刷新，这里只是兜底回收死连接。
+	idleTimeout = 5 * time.Minute
 	// 请求幂等缓存窗口（协议 §9）。
 	dedupeTTL = 5 * time.Minute
 
@@ -165,6 +166,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.Close()
 	ws.SetReadLimit(protocol.MaxFrame + 4096)
+	// 24h 挂机场景：让内核也帮忙探活，别只靠应用层心跳。
+	if tcp, ok := ws.UnderlyingConn().(*net.TCPConn); ok {
+		_ = tcp.SetKeepAlive(true)
+		_ = tcp.SetKeepAlivePeriod(30 * time.Second)
+	}
 	// 客户端空闲时不发数据，靠 ping/pong 续命，避免 90s 空闲超时误杀。
 	ws.SetPongHandler(func(string) error {
 		ws.SetReadDeadline(s.now().Add(idleTimeout))
