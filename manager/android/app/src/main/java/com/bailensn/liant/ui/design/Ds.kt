@@ -69,3 +69,9 @@ fun RowContainer(content: @Composable RowScope.() -> Unit) {
         content = content,
     )
 }
+
+/** 聊天时间戳 → HH:mm。 */
+internal fun formatChatTime(ts: Long): String {
+    val cal = java.util.Calendar.getInstance().apply { timeInMillis = ts }
+    return String.format("%02d:%02d", cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE))
+}
