@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore, deriveConversations, type Conversation } from '../store'
 import { Page, Empty, formatTime, Badge } from '../ui/Common'
@@ -34,7 +35,14 @@ export default function Chats() {
   const bots = useStore((s) => s.bots)
   const reconnect = useStore((s) => s.reconnect)
 
-  const convs = deriveConversations(msgs, read)
+  const [query, setQuery] = useState('')
+  const allConvs = deriveConversations(msgs, read)
+  const q = query.trim().toLowerCase()
+  const convs = q
+    ? allConvs.filter(
+        (c) => c.title.toLowerCase().includes(q) || (c.last?.body?.plain ?? '').toLowerCase().includes(q),
+      )
+    : allConvs
   const st = stateText(state)
   const running = bots.filter((b) => b.status === 'running').length
 
@@ -48,6 +56,19 @@ export default function Chats() {
 
   return (
     <Page title="会话" action={<div className="pb-1"><Badge tone={st.tone}>{st.label}</Badge></div>}>
+      <div className="mb-4 flex items-center gap-2 rounded-2xl bg-[var(--bg-elevated)] px-3">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2" strokeLinecap="round">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m16.5 16.5 4 4" />
+        </svg>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="搜索会话"
+          className="h-11 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-[var(--text-3)]"
+        />
+      </div>
+
       {state !== 'online' && (
         <div className="mb-6 rounded-2xl bg-[var(--bg-elevated)] p-4">
           <p className="text-[15px] font-medium">与服务的连接中断</p>

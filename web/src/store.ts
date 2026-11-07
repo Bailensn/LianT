@@ -31,7 +31,8 @@ export type Msg = {
   peer_id: string
   peer_kind: string
   sender_name?: string
-  body: { plain: string; doc?: unknown }
+  body: { plain: string; doc?: { blocks?: unknown[] } | null }
+  msg_type?: string
   ts: number
   direction: 'in' | 'out'
   in_reply_to?: string
@@ -92,6 +93,8 @@ type Actions = {
   removeBot: (id: string) => Promise<void>
   send: (bot: Bot, peerId: string, peerKind: string, text: string, inReplyTo?: string) => Promise<void>
   history: (botId: string, peerId: string) => Promise<void>
+  media: Record<string, string>
+  fetchMedia: (botId: string, msgId: string) => Promise<void>
   loadDevices: () => Promise<void>
   revokeDevice: (id: string) => Promise<void>
   loadAudit: () => Promise<void>
@@ -113,6 +116,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   devices: [],
   audit: [],
   msgs: [],
+  media: {},
   read: {},
   caps: [],
   booted: false,
@@ -227,6 +231,19 @@ export const useStore = create<State & Actions>((set, get) => ({
       in_reply_to: inReplyTo,
     }
     append(set, get, msg)
+  },
+
+  async fetchMedia(botId, msgId) {
+    const key = `${botId}/${msgId}`
+    if (get().media[key] || !client) return
+    try {
+      const res = await client.request<{ url: string }>('media.fetch', { bot_id: botId, msg_id: msgId })
+      if (!res?.url) return
+      const url = res.url.startsWith('http') ? res.url : `${location.origin}${res.url}`
+      set({ media: { ...get().media, [key]: url } })
+    } catch {
+      set({ media: { ...get().media, [key]: '' } })
+    }
   },
 
   async loadDevices() {

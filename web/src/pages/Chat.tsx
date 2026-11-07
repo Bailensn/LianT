@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { convKey, useStore } from '../store'
 import { formatTime } from '../ui/Common'
+import { RichBody } from '../ui/Body'
 
 export default function Chat() {
   const { botId = '', peerId = '' } = useParams()
@@ -10,6 +11,8 @@ export default function Chat() {
   const bots = useStore((s) => s.bots)
   const send = useStore((s) => s.send)
   const history = useStore((s) => s.history)
+  const media = useStore((s) => s.media)
+  const fetchMedia = useStore((s) => s.fetchMedia)
   const markRead = useStore((s) => s.markRead)
   const state = useStore((s) => s.state)
 
@@ -53,6 +56,13 @@ export default function Chat() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' })
   }, [list.length])
+
+  // 非文本消息按需拉取签名地址，失败就留占位，不打断阅读。
+  useEffect(() => {
+    for (const m of list) {
+      if (m.msg_type && m.msg_type !== 'text') void fetchMedia(m.bot_id, m.msg_id)
+    }
+  }, [list, fetchMedia])
 
   async function submit() {
     const value = text.trim()
@@ -137,7 +147,11 @@ export default function Chat() {
                     out ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-elevated)]'
                   }`}
                 >
-                  {m.body?.plain || '空消息'}
+                  {m.msg_type && m.msg_type !== 'text' ? (
+                    <MediaBody url={media[`${m.bot_id}/${m.msg_id}`]} fallback={m.body?.plain || '媒体消息'} />
+                  ) : (
+                    <RichBody doc={m.body?.doc as never} plain={m.body?.plain || '空消息'} />
+                  )}
                 </div>
               </div>
             </div>
@@ -177,5 +191,25 @@ export default function Chat() {
         </div>
       </div>
     </div>
+  )
+}
+
+function MediaBody({ url, fallback }: { url?: string; fallback: string }) {
+  if (url === undefined) {
+    return <span className="opacity-70">正在加载媒体…</span>
+  }
+  if (!url) {
+    return <span className="opacity-70">{fallback}</span>
+  }
+  return (
+    <img
+      src={url}
+      alt={fallback}
+      loading="lazy"
+      className="max-h-64 w-auto max-w-full rounded-xl object-cover"
+      onError={(e) => {
+        e.currentTarget.replaceWith(Object.assign(document.createElement('span'), { textContent: '媒体已过期' }))
+      }}
+    />
   )
 }
