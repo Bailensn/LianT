@@ -11,6 +11,8 @@ services:
     environment:
       LIANT_NO_TLS: "1"
       LIANT_CONFIRM: auto
+      # 容器里 pair 只生成配对码，由正在运行的服务兑付
+      LIANT_PAIR_DELEGATE: "1"
     expose:
       - "8443"
 

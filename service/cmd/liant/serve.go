@@ -280,16 +280,18 @@ func pairCommand(args []string) {
 	defer db.Close()
 
 	// 已经有服务在跑时，配对码交给它兑付，本进程只负责生成和等待。
-	delegated := false
-	if ln, err := net.Listen("tcp", listenAddr(cfg)); err != nil {
-		if errors.Is(err, syscall.EADDRINUSE) {
-			delegated = true
+	delegated := os.Getenv("LIANT_PAIR_DELEGATE") == "1"
+	if !delegated {
+		if ln, err := net.Listen("tcp", listenAddr(cfg)); err != nil {
+			if errors.Is(err, syscall.EADDRINUSE) {
+				delegated = true
+			} else {
+				fmt.Fprintln(os.Stderr, "检测端口失败：", err)
+				os.Exit(1)
+			}
 		} else {
-			fmt.Fprintln(os.Stderr, "检测端口失败：", err)
-			os.Exit(1)
+			_ = ln.Close()
 		}
-	} else {
-		_ = ln.Close()
 	}
 
 	code, err := pairer.Issue()
