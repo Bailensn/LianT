@@ -65,8 +65,8 @@ jobs:
       - name: Smoke test image
         run: |
           set -euo pipefail
-          mkdir -p /tmp/liant-data
-          id=$(docker run -d --name liant-ci -v /tmp/liant-data:/app liant:ci serve)
+          docker volume create liant-ci-data >/dev/null
+          docker run -d --name liant-ci -v liant-ci-data:/app liant:ci serve >/dev/null
           trap 'docker rm -f liant-ci >/dev/null 2>&1 || true' EXIT
           for i in $(seq 1 20); do
             if docker logs liant-ci 2>&1 | grep -q "监听"; then
@@ -77,6 +77,7 @@ jobs:
             sleep 1
           done
           docker logs liant-ci 2>&1 | tail -30
+          docker inspect -f 'exit={{.State.ExitCode}} status={{.State.Status}}' liant-ci || true
           echo "容器没有进入监听状态" >&2
           exit 1
 
