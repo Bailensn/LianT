@@ -73,6 +73,7 @@ type State = {
   audit: AuditEntry[]
   msgs: Msg[]
   read: Record<string, number>
+  caps: string[]
   booted: boolean
 }
 
@@ -113,6 +114,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   audit: [],
   msgs: [],
   read: {},
+  caps: [],
   booted: false,
 
   async boot() {
@@ -292,7 +294,9 @@ async function connect(
       onEvent: (env) => {
         if (env.type === 'auth.ok') {
           // 服务端换版本了说明刚重新部署，直接刷新一次拿到新前端。
-          const v = (env.payload as { version?: string }).version
+          const payload = env.payload as { version?: string; caps?: string[] }
+          if (payload.caps) set({ caps: payload.caps })
+          const v = payload.version
           if (v) {
             const prev = localStorage.getItem('liant.server.version')
             localStorage.setItem('liant.server.version', v)

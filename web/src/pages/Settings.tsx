@@ -21,6 +21,7 @@ export default function Settings() {
   const state = useStore((s) => s.state)
   const detail = useStore((s) => s.detail)
   const bots = useStore((s) => s.bots)
+  const caps = useStore((s) => s.caps)
   const devices = useStore((s) => s.devices)
   const audit = useStore((s) => s.audit)
   const loadDevices = useStore((s) => s.loadDevices)
@@ -124,6 +125,13 @@ export default function Settings() {
           onClick={() => {
             if (confirm('解除后需要重新配对才能连接，确定继续？')) void unpair()
           }}
+        />
+      </Group>
+
+      <Group title="服务端能力" footer="客户端按这里下发的能力渲染界面，没有的能力不会显示入口。">
+        <Row
+          title={caps.length ? caps.join(' · ') : '未握手'}
+          subtitle={caps.includes('rich_text') ? '支持富文本与媒体' : '仅纯文本'}
         />
       </Group>
 
