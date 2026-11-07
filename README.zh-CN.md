@@ -9,6 +9,7 @@
 - 界面规范（网页端）：[UI-DESIGN.md](docs/UI-DESIGN.md)
 - 部署说明：[DEPLOY.md](docs/DEPLOY.md)
 - Docker 部署：[DOCKER.md](docs/DOCKER.md)
+- 安全模型：[SECURITY.md](docs/SECURITY.md)
 - 发布规则：[RELEASING.md](docs/RELEASING.md)
 
 ## 许可证

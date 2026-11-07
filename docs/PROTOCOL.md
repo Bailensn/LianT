@@ -41,13 +41,18 @@
 
 ```text
 Manager                          Service
-   |── WS Upgrade ────────────────▶|   TLS 证书指纹必须匹配
-   |◀─ auth.challenge {nonce, ts} ─|
+   |── WS Upgrade ────────────────▶|   TLS 证书校验（浏览器只能靠 CA / 首次信任）
+   |◀─ auth.challenge ─────────────|   {nonce, ts, service_pub, service_sig}
    |── auth.response ─────────────▶|   {manager_id, sig(nonce||fp||ts)}
    |◀─ auth.ok ────────────────────|   {service_time, caps, retention}
 ```
 
 - 签名覆盖 `nonce || 服务端指纹 || ts`；`nonce` 一次性，重放必败。
+- **服务端自证**：`auth.challenge` 里带 `service_pub`（base64 PKIX DER）与
+  `service_sig = ECDSA-SHA256(AuthMessage(nonce, fp, ts))`。客户端先算
+  `base32(SHA-256(公钥 DER))`，与配对时钉住的 `fp` 比对，再用该公钥验签；不一致直接断开。
+  浏览器拿不到 TLS 证书，这一步把证书钉扎在应用层补回来，
+  反代、企业根证书、被攻陷的 CA 都无法冒充服务端。老客户端忽略这两个字段。
 - **编码固定**（v1 冻结）：待签字节为 `nonce + "\n" + fp + "\n" + 十进制 ts`（UTF-8），
   算法 ECDSA P-256 + SHA-256，签名输出 ASN.1 DER 后 base64；`fp` 与二维码里的一致。
 - `ts` 偏差超过 60s 拒绝（`clock_skew`）。

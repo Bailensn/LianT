@@ -24,6 +24,9 @@ services:
       - "443:443"
     environment:
       LIANT_DOMAIN: ${LIANT_DOMAIN:?请设置 LIANT_DOMAIN}
+    # Caddy 需要绑 80/443 并写 /data，所以只收紧提权
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

@@ -20,11 +20,12 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=docker" -o 
 
 # 3) 运行镜像
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata && adduser -D -u 10001 liant
 WORKDIR /app
 COPY --from=build /out/LianT /usr/local/bin/LianT
 COPY scripts/docker-entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh && mkdir -p /app/data
+RUN chmod +x /usr/local/bin/entrypoint.sh && mkdir -p /app/data && chown -R liant:liant /app
+USER liant
 ENV LIANT_HOME=/app
 VOLUME ["/app"]
 EXPOSE 8443

@@ -85,6 +85,15 @@ func (i *Identity) Certificate() tls.Certificate { return i.cert }
 // PublicKey 返回公钥，供测试与诊断使用。
 func (i *Identity) PublicKey() *ecdsa.PublicKey { return &i.key.PublicKey }
 
+// PublicKeyB64 返回 base64 的 PKIX DER 公钥，与配对时 manager_pub 的格式一致。
+func (i *Identity) PublicKeyB64() (string, error) {
+	der, err := x509.MarshalPKIXPublicKey(&i.key.PublicKey)
+	if err != nil {
+		return "", fmt.Errorf("node: 序列化公钥: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(der), nil
+}
+
 // Sign 用节点私钥对 msg 做 ECDSA-SHA256 签名（ASN.1 编码）。
 func (i *Identity) Sign(msg []byte) ([]byte, error) {
 	sum := sha256.Sum256(msg)

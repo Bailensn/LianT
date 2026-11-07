@@ -568,10 +568,19 @@ func (s *Server) newChallenge() (protocol.AuthChallenge, error) {
 	if _, err := rand.Read(buf); err != nil {
 		return protocol.AuthChallenge{}, fmt.Errorf("server: 生成 nonce: %w", err)
 	}
-	return protocol.AuthChallenge{
+	ch := protocol.AuthChallenge{
 		Nonce: base64.RawURLEncoding.EncodeToString(buf),
 		TS:    s.now().UnixMilli(),
-	}, nil
+	}
+	// 服务端身份自证：客户端钉的是指纹，用它校验公钥比 TLS 更可靠。
+	if pub, err := s.opt.Identity.PublicKeyB64(); err == nil {
+		ch.ServicePub = pub
+		msg := node.AuthMessage(ch.Nonce, s.opt.Identity.Fingerprint(), ch.TS)
+		if sig, err := s.opt.Identity.Sign(msg); err == nil {
+			ch.ServiceSig = base64.StdEncoding.EncodeToString(sig)
+		}
+	}
+	return ch, nil
 }
 
 func remoteIP(r *http.Request) string {

@@ -97,6 +97,13 @@ type PairDenied struct {
 type AuthChallenge struct {
 	Nonce string `json:"nonce"`
 	TS    int64  `json:"ts"`
+	// ServicePub / ServiceSig 是服务端身份自证：公钥（base64 PKIX DER）
+	// 以及对 AuthMessage(nonce, fp, ts) 的签名。
+	//
+	// 浏览器拿不到 TLS 证书，做不了证书钉扎；客户端据此在应用层校验
+	// 服务端身份，等价于钉住指纹。老客户端忽略这两个字段。
+	ServicePub string `json:"service_pub,omitempty"`
+	ServiceSig string `json:"service_sig,omitempty"`
 }
 
 // AuthResponse 是 Manager 对挑战的应答。

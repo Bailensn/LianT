@@ -455,7 +455,29 @@ func appHandler(srv *server.Server, svc *core.Core) http.Handler {
 	mux.Handle("/v1/media/", svc.MediaHandler())
 	// 其余路径交给内嵌的网页管理端；单页应用自己处理路由。
 	mux.Handle("/", webui.Handler())
-	return mux
+	return securityHeaders(mux)
+}
+
+// securityHeaders 给所有响应加一层浏览器侧防护。
+//
+// 页面与 WSS 同源，所以 CSP 里的 connect-src 只需要 'self'；
+// 不接受内联脚本，样式允许内联属性（组件里用 style 传动态色值）。
+func securityHeaders(next http.Handler) http.Handler {
+	const csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+		"img-src 'self' data: blob:; media-src 'self'; connect-src 'self'; " +
+		"object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", csp)
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Cross-Origin-Opener-Policy", "same-origin")
+		h.Set("Permissions-Policy", "camera=(self), microphone=(), geolocation=()")
+		if r.TLS != nil {
+			h.Set("Strict-Transport-Security", "max-age=31536000")
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // purgeLoop 每小时清一次过期消息与媒体，并把文件真正删掉。

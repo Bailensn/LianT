@@ -1,5 +1,5 @@
 // WSS 客户端：信封 JSON、签名握手、请求-响应关联、心跳与自动重连。
-import { sign, type Identity, type PairPayload } from './identity'
+import { sign, verifyServiceProof, type Identity, type PairPayload } from './identity'
 
 export type Envelope = {
   v: number
@@ -123,9 +123,20 @@ export class LiantClient {
   }
 
   private async answerChallenge(env: Envelope, ws: WebSocket) {
-    const ch = env.payload as { nonce: string; ts: number }
+    const ch = env.payload as {
+      nonce: string
+      ts: number
+      service_pub?: string
+      service_sig?: string
+    }
     // 待签字节固定为 nonce \n 指纹 \n 十进制 ts。
     const msg = new TextEncoder().encode(`${ch.nonce}\n${this.identity.serviceId}\n${ch.ts}`)
+    // 浏览器做不了证书钉扎，这里用服务端签名补回来：公钥指纹必须等于配对时钉住的值。
+    if (ch.service_pub && ch.service_sig) {
+      await verifyServiceProof(ch.service_pub, this.identity.serviceId, msg, ch.service_sig)
+    } else if (this.identity.serviceId) {
+      throw new Error('服务端没有提供身份证明，拒绝连接')
+    }
     const sig = await sign(this.identity.key, msg)
     this.sendOn(ws, 'auth.response', { manager_id: this.identity.deviceId, sig })
   }
