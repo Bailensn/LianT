@@ -245,6 +245,15 @@ export async function selfRegister(
       } catch {
         return
       }
+      if (env.type === 'auth.challenge') {
+        const ch = env.payload as { auto_pair?: boolean }
+        if (!ch.auto_pair) {
+          window.clearTimeout(timer)
+          ws.close()
+          reject(new Error('服务端没有开启免配对码接入，请设置 LIANT_BASIC_AUTH 后重启容器'))
+        }
+        return
+      }
       if (env.type === 'pair.ok') {
         const ok = env.payload as { device_id: string; service_id: string; service_name: string }
         window.clearTimeout(timer)
@@ -296,6 +305,15 @@ export async function pairDevice(
       try {
         env = JSON.parse(String(ev.data))
       } catch {
+        return
+      }
+      if (env.type === 'auth.challenge') {
+        const ch = env.payload as { auto_pair?: boolean }
+        if (!ch.auto_pair) {
+          window.clearTimeout(timer)
+          ws.close()
+          reject(new Error('服务端没有开启免配对码接入，请设置 LIANT_BASIC_AUTH 后重启容器'))
+        }
         return
       }
       if (env.type === 'pair.ok') {

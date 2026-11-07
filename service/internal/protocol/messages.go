@@ -109,6 +109,7 @@ type AuthChallenge struct {
 	//
 	// 浏览器拿不到 TLS 证书，做不了证书钉扎；客户端据此在应用层校验
 	// 服务端身份，等价于钉住指纹。老客户端忽略这两个字段。
+	AutoPair bool `json:"auto_pair,omitempty"`
 	ServicePub string `json:"service_pub,omitempty"`
 	ServiceSig string `json:"service_sig,omitempty"`
 }

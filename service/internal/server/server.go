@@ -657,8 +657,9 @@ func (s *Server) newChallenge() (protocol.AuthChallenge, error) {
 		return protocol.AuthChallenge{}, fmt.Errorf("server: 生成 nonce: %w", err)
 	}
 	ch := protocol.AuthChallenge{
-		Nonce: base64.RawURLEncoding.EncodeToString(buf),
-		TS:    s.now().UnixMilli(),
+		Nonce:    base64.RawURLEncoding.EncodeToString(buf),
+		TS:       s.now().UnixMilli(),
+		AutoPair: s.opt.AutoPair,
 	}
 	// 服务端身份自证：客户端钉的是指纹，用它校验公钥比 TLS 更可靠。
 	if pub, err := s.opt.Identity.PublicKeyB64(); err == nil {
