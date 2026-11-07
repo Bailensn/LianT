@@ -215,6 +215,9 @@ func pairCommand(args []string) {
 	if cfg.Connect.Address == "" && *hostFlag == "" {
 		fmt.Printf("自动检测到本机地址：%s（手机需能访问它；跨网请用 --host）\n", host)
 	}
+	if isLoopbackHost(host) {
+		fmt.Fprintf(os.Stderr, "警告：%s 是回环地址，只有 Service 本机能访问；手机请改用 --host <局域网或公网地址>\n", host)
+	}
 
 	payload, _ := json.Marshal(map[string]any{
 		"v":     protocol.Version,
@@ -275,10 +278,21 @@ func pairHost(flagHost string, cfg config.Config) string {
 	if ip := localIPv4(); ip != "" {
 		return ip
 	}
-	if name, err := os.Hostname(); err == nil {
+	// 主机名可能是 localhost，解析出来就是回环，宁可报错让用户显式给 --host。
+	if name, err := os.Hostname(); err == nil && !isLoopbackHost(name) {
 		return name
 	}
 	return ""
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 // addressHost 兼容 https://host:port、host:port 与裸 host 三种写法。
@@ -299,7 +313,27 @@ func addressHost(addr string) string {
 }
 
 // localIPv4 返回第一个私有网段的非回环 IPv4，供同一局域网内扫码使用。
+//
+// 先枚举网卡；Android/Termux 上枚举经常只剩 lo，再用 UDP Dial 探出口地址
+// （Dial 只做路由查询，不会真的发包）。
 func localIPv4() string {
+	if ip := interfaceIPv4(); ip != "" {
+		return ip
+	}
+	conn, err := net.Dial("udp4", "8.8.8.8:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	if addr, ok := conn.LocalAddr().(*net.UDPAddr); ok && addr.IP != nil {
+		if ip := addr.IP.To4(); ip != nil && !ip.IsLoopback() && !ip.IsUnspecified() {
+			return ip.String()
+		}
+	}
+	return ""
+}
+
+func interfaceIPv4() string {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return ""
