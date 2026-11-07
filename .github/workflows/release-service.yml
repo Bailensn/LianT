@@ -38,7 +38,7 @@ jobs:
             GOOS=$1 GOARCH=$2 SUFFIX=$3
             CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
               go build -trimpath -ldflags="-s -w" \
-              -o "../dist/LianT-Service-${GOOS}-${GOARCH}${SUFFIX}" ./cmd/LianT
+              -o "../dist/LianT-Service-${GOOS}-${GOARCH}${SUFFIX}" ./cmd/liant
           }
           build linux amd64 ""
           build linux arm64 ""
