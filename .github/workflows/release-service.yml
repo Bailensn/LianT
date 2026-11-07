@@ -1,0 +1,54 @@
+name: Release Service
+
+on:
+  push:
+    tags:
+      - 'service-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '已存在的 tag（例如 service-v0.1.0）'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: service
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: service/go.mod
+          cache: true
+          cache-dependency-path: service/go.sum
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          mkdir -p ../dist
+          build() {
+            GOOS=$1 GOARCH=$2 SUFFIX=$3
+            CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
+              go build -trimpath -ldflags="-s -w" \
+              -o "../dist/LianT-Service-${GOOS}-${GOARCH}${SUFFIX}" ./cmd/LianT
+          }
+          build linux amd64 ""
+          build linux arm64 ""
+          build windows amd64 ".exe"
+          build darwin arm64 ""
+          cd ../dist && sha256sum * > SHA256SUMS.txt && ls -l
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          files: |
+            dist/*
+          fail_on_unmatched_files: true

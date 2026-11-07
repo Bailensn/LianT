@@ -1,0 +1,57 @@
+name: Release Manager (Android)
+
+on:
+  push:
+    tags:
+      - 'manager-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '已存在的 tag（例如 manager-v0.1.0）'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: manager/android
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            manager/android/**/*.gradle.kts
+            manager/android/gradle/libs.versions.toml
+
+      - name: Configure Android SDK
+        run: |
+          SDKMGR=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
+          yes | "$SDKMGR" --licenses > /dev/null || true
+          "$SDKMGR" --install "platforms;android-37.1" "build-tools;37.0.0" "ndk;30.0.16248370" "cmake;3.22.1"
+
+      - name: Build debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Collect APK
+        run: |
+          mkdir -p ../../dist
+          TAG="${{ inputs.tag || github.ref_name }}"
+          cp app/build/outputs/apk/debug/app-debug.apk "../../dist/LianT-${TAG}.apk"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          files: dist/*
+          fail_on_unmatched_files: true
