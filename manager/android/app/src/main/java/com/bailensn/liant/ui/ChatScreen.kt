@@ -113,7 +113,7 @@ fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 items(messages, key = { it.msgId }) { message ->
-                    MessageBubble(message)
+                    MessageBubble(message, media)
                 }
             }
         }
@@ -125,7 +125,7 @@ fun ChatScreen(
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(message: ChatMessage, media: Map<String, Bitmap>) {
     val outgoing = message.outgoing
     Row(
         Modifier.fillMaxWidth().padding(vertical = 2.dp),
