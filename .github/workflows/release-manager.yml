@@ -1,5 +1,6 @@
-name: Release Manager (Android)
+name: Release Manager (pre-release)
 
+# tag 约定：manager-v<版本>-<6位哈希>，例如 manager-v1.0.0-a1b2c3
 on:
   push:
     tags:
@@ -7,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '已存在的 tag（例如 manager-v0.1.0）'
+        description: '已存在的 tag（例如 manager-v1.0.0-a1b2c3）'
         required: true
 
 permissions:
@@ -33,6 +34,18 @@ jobs:
             manager/android/**/*.gradle.kts
             manager/android/gradle/libs.versions.toml
 
+      - name: Compute version
+        id: meta
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#manager-}"
+          BASE="${VERSION%%-*}"
+          BASE="${BASE#v}"
+          IFS=. read -r MAJOR MINOR PATCH <<< "$BASE"
+          CODE=$((10#$MAJOR * 10000 + 10#$MINOR * 100 + 10#$PATCH))
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "code=${CODE}" >> "$GITHUB_OUTPUT"
+
       - name: Configure Android SDK
         run: |
           SDKMGR=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
@@ -42,16 +55,21 @@ jobs:
       - name: Build debug APK
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace assembleDebug
+          ./gradlew --no-daemon --stacktrace \
+            -PversionName="${{ steps.meta.outputs.version }}" \
+            -PversionCode="${{ steps.meta.outputs.code }}" \
+            assembleDebug
 
       - name: Collect APK
         run: |
           mkdir -p ../../dist
-          TAG="${{ inputs.tag || github.ref_name }}"
-          cp app/build/outputs/apk/debug/app-debug.apk "../../dist/LianT-${TAG}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             "../../dist/LianT-manager-${{ steps.meta.outputs.version }}.apk"
 
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
+          name: LianT Manager ${{ steps.meta.outputs.version }}
+          prerelease: true
           files: dist/*
           fail_on_unmatched_files: true

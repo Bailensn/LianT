@@ -8,6 +8,7 @@
 - 通信协议（草案）：[PROTOCOL.md](docs/PROTOCOL.md)
 - 界面规范（Android）：[UI-DESIGN.md](docs/UI-DESIGN.md)
 - 部署说明：[DEPLOY.md](docs/DEPLOY.md)
+- 发布规则：[RELEASING.md](docs/RELEASING.md)
 
 ## 许可证
 

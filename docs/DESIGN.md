@@ -250,6 +250,7 @@ QQ 的“不能主动发起、只能窗口内回复”不能变成核心里的 `
 - `docs/DESIGN.md`（本文）：决策、现状、原则、适配器边界、切片
 - `docs/PROTOCOL.md`：v1 协议草案
 - `docs/DEPLOY.md`：部署、备份与保留策略
+- `docs/RELEASING.md`：版本号、tag 与 pre-release 规则
 - `README.md`：对外介绍 + 许可证
 
 ## 10. 仓库结构

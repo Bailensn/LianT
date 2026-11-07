@@ -3,6 +3,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// 版本由发布流水线用 -PversionName/-PversionCode 注入；本地默认 v1.0.0。
+val appVersionName = providers.gradleProperty("versionName").getOrElse("v1.0.0")
+val appVersionCode = providers.gradleProperty("versionCode").getOrElse("10000").toInt()
+
 android {
     namespace = "com.bailensn.liant"
     // API 37.1：Android 17 的稳定 minor 平台（37.2 还是 beta）。
@@ -18,8 +22,8 @@ android {
         // miuix-blur 依赖 RuntimeShader（API 33），这是本项目的硬下限。
         minSdk = 33
         targetSdk = 37
-        versionCode = 4
-        versionName = "0.1.4"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
     }
 

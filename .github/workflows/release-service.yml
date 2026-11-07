@@ -1,5 +1,6 @@
-name: Release Service
+name: Release Service (pre-release)
 
+# tag 约定：service-v<版本>-<6位哈希>，例如 service-v1.0.0-a1b2c3
 on:
   push:
     tags:
@@ -7,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '已存在的 tag（例如 service-v0.1.0）'
+        description: '已存在的 tag（例如 service-v1.0.0-a1b2c3）'
         required: true
 
 permissions:
@@ -30,6 +31,12 @@ jobs:
           cache: true
           cache-dependency-path: service/go.sum
 
+      - name: Compute version
+        id: meta
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "version=${TAG#service-}" >> "$GITHUB_OUTPUT"
+
       - name: Install NDK (android 目标需要 cgo)
         run: |
           SDKMGR=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
@@ -40,11 +47,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ../dist
+          VERSION="${{ steps.meta.outputs.version }}"
+          LDFLAGS="-s -w -X main.version=${VERSION}"
           NDK="$ANDROID_HOME/ndk/30.0.16248370"
           CC_ANDROID="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
-          TAG="${{ inputs.tag || github.ref_name }}"
-          VERSION="${TAG#service-v}"
-          LDFLAGS="-s -w -X main.version=${VERSION}"
           build() {
             GOOS=$1 GOARCH=$2 SUFFIX=$3
             if [ "$GOOS" = "android" ]; then
@@ -68,6 +74,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
-          files: |
-            dist/*
+          name: LianT Service ${{ steps.meta.outputs.version }}
+          prerelease: true
+          files: dist/*
           fail_on_unmatched_files: true
