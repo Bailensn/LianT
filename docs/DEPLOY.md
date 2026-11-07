@@ -1,11 +1,12 @@
 # 部署 Service
 
-面向自托管：一台能出公网（或至少有公网入口）的 Linux 机器，跑一个 `LianT` 进程。
+面向自托管：一台能出公网（或至少有公网入口）的 Linux 机器，跑一个 `LianT` 容器。
+
+最快的方式是 [DOCKER.md](DOCKER.md) 里的一键脚本；这篇讲不用 Docker 的手动部署。
 
 ## 1. 前置
 
-- Go 1.27+（或用 CI 产物 `LianT-Service-<os>-<arch>`）；
-- 想直接在手机/Termux 上跑，用 `LianT-Service-android-arm64`（`GOOS=android GOARCH=arm64`，纯静态）；
+- Docker（推荐），或本机装 Go 1.27+ 自己 `go build ./cmd/liant`；
 - 固定端口 **8443/tcp**：`/v1/ws`（客户端 WSS）与 `/v1/media/...`（媒体下载）共用；
 - 磁盘：消息库很小，媒体按 **单 Bot 3 GB** 规划（3 个 Bot 约 9 GB 上限）；
 - 时间同步：认证要求客户端与服务端时差 ≤ 60 秒；
@@ -23,27 +24,17 @@
 
 ## 3. 登记 Bot
 
-```bash
-# AppSecret 会提示隐藏输入，不进 shell history
-./LianT bot add --platform qqbot --app-id 123456789 --label "主号"
+机器人管理全部在网页端完成，命令行不再提供 `bot` 子命令：
 
-# 脚本/非交互环境：用 0600 的 JSON 文件
-./LianT bot add --platform qqbot --cred-file /etc/liant/qqbot.json
+1. 打开管理页，进「机器人」；
+2. 点右上角「添加」，填 AppID 与 AppSecret，可选一个备注名；
+3. 保存时会向 QQ 开放平台校验凭据并读取机器人昵称，失败会直接提示原因；
+4. 回到列表点「启动」，状态变成「运行中」即可收消息。
 
-./LianT bot list
-```
+凭据由适配器校验后加密入库，接口不回显，网页端也不会再把它读出来。
+QQ 的 `app_id/app_secret` 来自 QQ 开放平台机器人后台。
 
-**密钥不要写在命令行上**：`--cred app_secret=…` 会进 shell history，也会出现在 `ps` 里，
-CLI 会直接拒绝密钥字段的 `--cred`。`--cred-file` 的内容形如：
-
-```json
-{"app_id": "123456789", "app_secret": "..."}
-```
-
-凭据由适配器校验后加密入库，接口不回显。QQ 的 `app_id/app_secret` 来自 QQ 开放平台机器人后台。
-
-登记后 Bot 状态是 `starting`：`serve` 启动时会自动认领。如果 `serve` 已经在跑，
-在 App 的 Bot 页点「启动」即可（走 `bot.start`，不用重启服务）。
+服务重启后会自动认领已登记的 Bot，不需要人工启动。
 
 ## 4. 配对手机
 

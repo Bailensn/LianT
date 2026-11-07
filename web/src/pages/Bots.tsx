@@ -35,7 +35,9 @@ export default function Bots() {
     setBusy(true)
     setError('')
     try {
-      await addBot('qqbot', { app_id: appId.trim(), app_secret: secret.trim() }, label.trim())
+      const id = await addBot('qqbot', { app_id: appId.trim(), app_secret: secret.trim() }, label.trim())
+      // 添加成功就直接拉起来，省一步点击；失败不影响已保存的配置。
+      await startBot(id).catch(() => {})
       setAdding(false)
       setAppId('')
       setSecret('')
@@ -111,6 +113,14 @@ export default function Bots() {
                 {busy ? '验证中' : '保存'}
               </button>
             </div>
+            <div className="mx-4 mb-3 flex gap-2">
+              <span className="rounded-full bg-[var(--accent)]/12 px-3 py-1.5 text-[13px] font-medium text-[var(--accent)]">
+                QQ 机器人
+              </span>
+              <span className="rounded-full bg-[var(--bg-sunken)] px-3 py-1.5 text-[13px] text-[var(--text-3)]">
+                Telegram · 即将支持
+              </span>
+            </div>
             <div className="card mx-4 mb-4 overflow-hidden">
               <Field label="AppID" value={appId} onChange={setAppId} placeholder="1020xxxxx" mono />
               <Divider />
@@ -118,8 +128,14 @@ export default function Bots() {
               <Divider />
               <Field label="备注名 · 可留空" value={label} onChange={setLabel} placeholder="例如 客服号" />
             </div>
+            {error && (
+              <p className="mx-4 mb-3 rounded-2xl bg-[color-mix(in_oklab,var(--danger)_12%,transparent)] p-3 text-[13px] leading-relaxed text-[var(--danger)]">
+                {error}
+              </p>
+            )}
             <p className="px-5 pb-2 text-[12px] leading-relaxed text-[var(--text-3)]">
-              保存时会向 QQ 开放平台校验凭据并读取机器人昵称；密钥只存在服务端。
+              凭据在 QQ 开放平台「机器人 → 开发设置」里；保存时会实时校验并读取机器人昵称。
+              AppSecret 只存在服务端，加密入库，网页端不会再读出来。保存成功后会自动启动。
             </p>
           </div>
         </div>

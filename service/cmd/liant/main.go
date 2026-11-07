@@ -12,7 +12,8 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	args := os.Args
 	if len(args) < 2 {
-		fmt.Println("请输入命令")
+		fmt.Println("用法：LianT <init|config|serve|pair|stop|version>")
+		fmt.Println("机器人管理在网页端：打开服务地址 → 机器人 → 添加")
 		return
 	}
 	switch args[1] {
@@ -28,8 +29,6 @@ func main() {
 		pairCommand(args[2:])
 	case "stop":
 		stopCommand()
-	case "bot":
-		botCommand(args[2:])
 	default:
 		fmt.Println("未知命令")
 	}

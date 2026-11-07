@@ -10,13 +10,14 @@ RUN npm run build
 
 # 2) 构建 Service，把网页产物内嵌进二进制
 FROM golang:1.27-alpine AS build
+ARG VERSION=docker
 WORKDIR /src/service
 COPY service/go.mod service/go.sum ./
 RUN go mod download
 COPY service/ ./
 RUN rm -rf internal/webui/dist && mkdir -p internal/webui/dist
 COPY --from=web /src/web/dist/ internal/webui/dist/
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=docker" -o /out/LianT ./cmd/liant
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/LianT ./cmd/liant
 
 # 3) 运行镜像
 FROM alpine:3.22

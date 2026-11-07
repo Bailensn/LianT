@@ -84,7 +84,7 @@ type Actions = {
   pair: (input: string, deviceName: string) => Promise<void>
   unpair: () => Promise<void>
   refreshBots: () => Promise<void>
-  addBot: (platform: string, credentials: Record<string, string>, label?: string) => Promise<void>
+  addBot: (platform: string, credentials: Record<string, string>, label?: string) => Promise<string>
   startBot: (id: string) => Promise<void>
   stopBot: (id: string) => Promise<void>
   removeBot: (id: string) => Promise<void>
@@ -166,8 +166,9 @@ export const useStore = create<State & Actions>((set, get) => ({
 
   async addBot(platform, credentials, label) {
     if (!client) throw new Error('尚未连接')
-    await client.request('bot.add', { platform, credentials, label })
+    const res = await client.request<{ bot_id: string }>('bot.add', { platform, credentials, label })
     await get().refreshBots()
+    return res.bot_id
   },
 
   async startBot(id) {
