@@ -1,6 +1,7 @@
 package com.bailensn.liant.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +54,7 @@ fun ChatScreen(
     onBack: () -> Unit,
     onSend: (String) -> Unit,
 ) {
+    var showDetails by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -64,7 +66,7 @@ fun ChatScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
+                    Column(Modifier.clickable { showDetails = true }) {
                         Text(
                             conversation.title,
                             style = MaterialTheme.typography.titleMedium,
@@ -110,6 +112,10 @@ fun ChatScreen(
             }
         }
     }
+
+    if (showDetails) {
+        ChatDetailSheet(conversation = conversation, onDismiss = { showDetails = false })
+    }
 }
 
 @Composable
@@ -144,12 +150,29 @@ private fun MessageBubble(message: ChatMessage) {
                 )
                 Spacer(Modifier.size(2.dp))
             }
-            Text(
-                message.plain,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (outgoing) MaterialTheme.colorScheme.onPrimary
-                else MaterialTheme.colorScheme.onSurface,
-            )
+            if (message.kind == "image") {
+                MediaThumb(
+                    ratio = MediaRatio.FourThree,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = "图片·待下载",
+                )
+                if (message.plain.isNotBlank()) {
+                    Spacer(Modifier.size(4.dp))
+                    Text(
+                        message.plain,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (outgoing) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            } else {
+                Text(
+                    message.plain,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (outgoing) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurface,
+                )
+            }
             Spacer(Modifier.size(2.dp))
             Text(
                 formatChatTime(message.ts),

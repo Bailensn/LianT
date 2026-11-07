@@ -23,6 +23,7 @@ data class ChatMessage(
     val senderName: String,
     val plain: String,
     val ts: Long,
+    val kind: String = "text",
 ) {
     val outgoing: Boolean get() = direction == "out"
 }
@@ -60,6 +61,7 @@ class LocalStore(context: Context) :
                 direction TEXT NOT NULL,
                 sender_name TEXT NOT NULL,
                 plain TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'text',
                 ts INTEGER NOT NULL,
                 in_reply_to TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (bot_id, peer_id, msg_id)
@@ -72,7 +74,10 @@ class LocalStore(context: Context) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // v1 只有一张初始 schema；后续版本在这里迁移。
+        if (oldVersion < 2) {
+            // v2 增加消息类型，用于图片/表情等按比例渲染。
+            db.execSQL("ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'")
+        }
     }
 
     /** 入站消息落库；返回是否为新消息，并更新会话摘要。 */
@@ -83,6 +88,7 @@ class LocalStore(context: Context) :
         msgId: String,
         senderName: String,
         plain: String,
+        kind: String,
         ts: Long,
         active: Boolean,
     ): Boolean {
@@ -99,6 +105,7 @@ class LocalStore(context: Context) :
                     put("direction", "in")
                     put("sender_name", senderName)
                     put("plain", plain)
+                    put("kind", kind)
                     put("ts", ts)
                 },
                 SQLiteDatabase.CONFLICT_IGNORE,
@@ -144,6 +151,7 @@ class LocalStore(context: Context) :
                     put("direction", "out")
                     put("sender_name", "")
                     put("plain", plain)
+                    put("kind", "text")
                     put("ts", ts)
                 },
                 SQLiteDatabase.CONFLICT_IGNORE,
@@ -184,7 +192,7 @@ class LocalStore(context: Context) :
         val out = mutableListOf<ChatMessage>()
         readableDatabase.query(
             "messages",
-            arrayOf("msg_id", "direction", "sender_name", "plain", "ts"),
+            arrayOf("msg_id", "direction", "sender_name", "plain", "ts", "kind"),
             "bot_id = ? AND peer_id = ?",
             arrayOf(botId, peerId),
             null, null, "ts ASC", limit.toString(),
@@ -196,6 +204,7 @@ class LocalStore(context: Context) :
                     senderName = cursor.getString(2),
                     plain = cursor.getString(3),
                     ts = cursor.getLong(4),
+                    kind = cursor.getString(5),
                 )
             }
         }
@@ -224,6 +233,6 @@ class LocalStore(context: Context) :
 
     private companion object {
         const val DB_NAME = "liant.db"
-        const val DB_VERSION = 1
+        const val DB_VERSION = 2
     }
 }

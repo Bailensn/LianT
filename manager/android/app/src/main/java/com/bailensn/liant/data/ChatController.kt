@@ -61,6 +61,7 @@ class ChatController(context: Context, private val repository: LiantRepository) 
                 msgId = payload.optString("msg_id"),
                 senderName = payload.optString("sender_name"),
                 plain = plain,
+                kind = payload.optString("msg_type", "text"),
                 ts = payload.optLong("ts", System.currentTimeMillis()),
                 active = activeNow,
             )
