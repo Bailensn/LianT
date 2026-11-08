@@ -25,7 +25,7 @@ def _render(size, *, background, with_l):
     pixels = bytearray(s * s * 4)
 
     if background is not None:
-        radius = 0.22 * s
+        radius = 112 / 512 * s
         for y in range(s):
             for x in range(s):
                 if _inside_round_rect(x + 0.5, y + 0.5, 0, 0, s, s, radius):
@@ -33,16 +33,17 @@ def _render(size, *, background, with_l):
                     pixels[i:i + 4] = bytes((background[0], background[1], background[2], 255))
 
     if with_l:
-        r = 0.02 * s
-        stem = (0.34 * s, 0.26 * s, 0.455 * s, 0.74 * s)
-        foot = (0.34 * s, 0.64 * s, 0.665 * s, 0.74 * s)
+        # 与旧版 web/public/icon.svg 完全一致的 L：
+        # M170 132h44v206h128v42H170z
+        stem = (170 / 512 * s, 132 / 512 * s, 214 / 512 * s, 338 / 512 * s)
+        foot = (170 / 512 * s, 338 / 512 * s, 342 / 512 * s, 380 / 512 * s)
         for y in range(s):
             py = y + 0.5
-            if py < stem[1] or py > stem[3]:
+            if py < stem[1] or py > foot[3]:
                 continue
             for x in range(s):
                 px = x + 0.5
-                if _inside_round_rect(px, py, *stem, r) or _inside_round_rect(px, py, *foot, r):
+                if _inside_round_rect(px, py, *stem, 0) or _inside_round_rect(px, py, *foot, 0):
                     i = (y * s + x) * 4
                     pixels[i:i + 4] = bytes((WHITE[0], WHITE[1], WHITE[2], 255))
     return pixels
@@ -139,6 +140,10 @@ def main():
     <color name="ic_launcher_background">#2F6BFF</color>
 </resources>
 ''')
+
+    master = os.path.join(root, 'assets', 'icon.png')
+    _write_png(master, 512, _icon(512, background=BLUE, with_l=True))
+    print('wrote', master)
 
     favicon = os.path.join(root, 'web', 'favicon.png')
     _write_png(favicon, 64, _icon(64, background=BLUE, with_l=True))

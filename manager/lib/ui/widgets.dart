@@ -347,8 +347,13 @@ class SearchField extends StatelessWidget {
               controller: controller,
               onChanged: onChanged,
               textInputAction: TextInputAction.search,
+              textAlignVertical: TextAlignVertical.center,
+              cursorColor: colors.accent,
               style: TextStyle(fontSize: 15, color: colors.text),
-              decoration: InputDecoration(hintText: hint),
+              decoration: InputDecoration(
+                hintText: hint,
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
           ),
           if (controller.text.isNotEmpty)
@@ -721,12 +726,17 @@ class FieldRow extends StatelessWidget {
                 keyboardType: keyboardType,
                 onChanged: onChanged,
                 textAlign: TextAlign.right,
+                textAlignVertical: TextAlignVertical.center,
+                cursorColor: colors.accent,
                 style: TextStyle(
                   fontSize: 16,
                   color: colors.text,
                   fontFamily: monospace ? 'monospace' : null,
                 ),
-                decoration: InputDecoration(hintText: hint),
+                decoration: InputDecoration(
+                  hintText: hint,
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
             ),
           ],

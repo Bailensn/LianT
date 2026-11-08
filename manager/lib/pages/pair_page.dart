@@ -18,9 +18,7 @@ class PairPage extends StatefulWidget {
 }
 
 class _PairPageState extends State<PairPage> {
-  static const String _defaultAddress = 'lt.lensn.xyz:8443';
-
-  final TextEditingController _address = TextEditingController(text: _defaultAddress);
+  final TextEditingController _address = TextEditingController();
   final TextEditingController _pairText = TextEditingController();
   final TextEditingController _name = TextEditingController(text: '手机端');
 
@@ -77,7 +75,7 @@ class _PairPageState extends State<PairPage> {
     final state = AppScope.of(context);
     final address = ServerAddress.parse(_address.text);
     if (address == null) {
-      setState(() => _error = '服务地址要写成 主机:端口，例如 lt.lensn.xyz:8443');
+      setState(() => _error = '服务地址格式不对，请填 主机:端口');
       return;
     }
     setState(() {
@@ -129,22 +127,11 @@ class _PairPageState extends State<PairPage> {
               children: <Widget>[
                 Row(
                   children: <Widget>[
-                    Container(
+                    Image.asset(
+                      'assets/icon.png',
                       width: 56,
                       height: 56,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: colors.accent,
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: const Text(
-                        'L',
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
+                      filterQuality: FilterQuality.high,
                     ),
                   ],
                 ),
@@ -211,13 +198,15 @@ class _PairPageState extends State<PairPage> {
                           controller: _pairText,
                           maxLines: 5,
                           minLines: 4,
-                          style: const TextStyle(
+                          cursorColor: colors.accent,
+                          style: TextStyle(
                             fontSize: 13,
                             height: 1.5,
                             fontFamily: 'monospace',
+                            color: colors.text,
                           ),
                           decoration: const InputDecoration(
-                            hintText: '{"v":1,"host":"192.168.1.10","port":8443,...}',
+                            hintText: '粘贴 LianT pair 打印的配对信息',
                           ),
                         ),
                       ),
@@ -303,9 +292,12 @@ class _AddressField extends StatelessWidget {
               controller: controller,
               keyboardType: TextInputType.url,
               autocorrect: false,
-              style: const TextStyle(fontSize: 16),
+              textAlignVertical: TextAlignVertical.center,
+              cursorColor: colors.accent,
+              style: TextStyle(fontSize: 16, color: colors.text),
               decoration: const InputDecoration(
                 hintText: '主机:端口',
+                contentPadding: EdgeInsets.zero,
               ),
             ),
           ),
@@ -341,8 +333,13 @@ class _DeviceNameField extends StatelessWidget {
             child: TextField(
               controller: controller,
               textAlign: TextAlign.right,
+              textAlignVertical: TextAlignVertical.center,
+              cursorColor: colors.accent,
               style: TextStyle(fontSize: 16, color: colors.text),
-              decoration: const InputDecoration(hintText: '手机端'),
+              decoration: const InputDecoration(
+                hintText: '手机端',
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
           ),
         ],

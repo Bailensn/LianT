@@ -147,32 +147,37 @@ class LiantTheme {
       scaffoldBackgroundColor: colors.bg,
     );
 
+    // 显式给每个文字样式上色：自定义 TextTheme 不带 color 时，
+    // Android 上部分控件（尤其 TextField）会落到默认白色，白底上直接看不见。
+    final textTheme = const TextTheme(
+      displaySmall: TextStyle(
+        fontSize: LTokens.largeTitle,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.8,
+        height: 1.12,
+      ),
+      headlineSmall: TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.3,
+        height: 1.2,
+      ),
+      titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, height: 1.25),
+      titleMedium: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, height: 1.3),
+      titleSmall: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, height: 1.3),
+      bodyLarge: TextStyle(fontSize: 16, height: 1.4),
+      bodyMedium: TextStyle(fontSize: 15, height: 1.4),
+      bodySmall: TextStyle(fontSize: 13, height: 1.45),
+      labelLarge: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      labelMedium: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+      labelSmall: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.2),
+    ).apply(bodyColor: colors.text, displayColor: colors.text);
+
     return base.copyWith(
       splashFactory: InkRipple.splashFactory,
       extensions: <ThemeExtension<dynamic>>[colors],
-      textTheme: const TextTheme(
-        displaySmall: TextStyle(
-          fontSize: LTokens.largeTitle,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.8,
-          height: 1.12,
-        ),
-        headlineSmall: TextStyle(
-          fontSize: 22,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.3,
-          height: 1.2,
-        ),
-        titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, height: 1.25),
-        titleMedium: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, height: 1.3),
-        titleSmall: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, height: 1.3),
-        bodyLarge: TextStyle(fontSize: 16, height: 1.4),
-        bodyMedium: TextStyle(fontSize: 15, height: 1.4),
-        bodySmall: TextStyle(fontSize: 13, height: 1.45),
-        labelLarge: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        labelMedium: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-        labelSmall: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.2),
-      ),
+      textTheme: textTheme,
+      primaryTextTheme: textTheme,
       inputDecorationTheme: InputDecorationTheme(
         border: InputBorder.none,
         isDense: true,

@@ -2,9 +2,10 @@
 
 简体中文 | [English](README.md)
 
-一款自托管的 Bot 运营客户端与服务端（首发 QQ，Telegram 随后）。
+LianT 是一个自托管的 **Bot Engine**（Bot 引擎），首发 QQ、Telegram 随后，
+并带一个 Flutter 客户端用来运营这些 Bot。
 
-- **服务端**（`service/`）：Go，WSS 协议 v1，SQLite，消息保留 7 天。
+- **引擎**（`service/`）：Go，WSS 协议 v1，SQLite，消息保留 7 天。
   只提供 `/v1/ws` 与签名媒体链接，不再内嵌网页管理端。
 - **客户端**（`manager/`）：Flutter。**Android 是唯一交付目标**；Web 只在本地用于预览，
   不对外发布；不做桌面端。会话、机器人、设备与安全日志都走同一份协议。

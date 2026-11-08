@@ -1,6 +1,6 @@
 # 部署 Service
 
-面向自托管：一台能出公网（或至少有公网入口）的 Linux 机器，跑一个 `LianT` 进程。
+面向自托管：一台能出公网（或至少有公网入口）的 Linux 机器，跑一个 LianT Bot Engine 进程。
 
 不用 Docker：二进制放进 `/opt/liant`，用 systemd 常驻。服务端只提供 API，
 客户端是 `manager/` 里的 Flutter 应用。

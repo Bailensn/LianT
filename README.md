@@ -2,9 +2,10 @@
 
 [简体中文](README.zh-CN.md) | English
 
-A self-hosted service and client for operating chat-platform bots (QQ first; Telegram next).
+LianT is a self-hosted **Bot Engine** for chat-platform bots (QQ first; Telegram next),
+with a Flutter client for operating it.
 
-- **Service** (`service/`): Go, WSS protocol v1, SQLite, 7-day message buffer. It serves
+- **Engine** (`service/`): Go, WSS protocol v1, SQLite, 7-day message buffer. It serves
   `/v1/ws` and signed media links only — no embedded web console.
 - **Client** (`manager/`): Flutter. **Android is the only shipped target**; the web build is
   a local preview surface only and is not published. No desktop builds.

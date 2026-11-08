@@ -1,5 +1,5 @@
 name: liant
-description: LianT 自托管 Bot 运营客户端
+description: LianT Bot Engine 客户端
 publish_to: none
 version: 0.1.0+1
 
@@ -26,6 +26,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icon.png
 
 # shared_preferences_foundation 2.6 起依赖 objective_c（带原生 build hook），
 # Termux 上 hook 进程会被系统拒绝；2.5.4 两边 SDK 都能用，也不会拉进 hook。
