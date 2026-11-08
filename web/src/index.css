@@ -57,6 +57,13 @@ body {
   outline-offset: 2px;
 }
 
+/* 输入类控件自己有边框/光标表达焦点，再套一圈蓝框很难看 */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
 @utility card {
   background: var(--bg-elevated);
   border-radius: var(--radius-card);

@@ -43,7 +43,7 @@ jobs:
           cp -r dist ../service/internal/webui/dist
 
       - name: Protocol drift check
-        run: ./scripts/check-protocol.sh
+        run: bash scripts/check-protocol.sh
 
       - name: Vet
         working-directory: service
