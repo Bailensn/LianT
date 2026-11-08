@@ -19,6 +19,7 @@ dependencies:
   # 只在 Web 上用来读地址栏参数（预览用），其它平台走条件导入的空实现。
   web: ^1.0.0
   file_picker: ^8.3.7
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:

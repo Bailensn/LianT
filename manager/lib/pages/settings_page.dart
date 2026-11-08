@@ -6,6 +6,7 @@ import '../core/protocol.dart';
 import '../ui/format.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
+import 'update_page.dart';
 
 const Map<String, String> _auditKindText = <String, String>{
   'auth.ok': '登录成功',
@@ -175,6 +176,18 @@ class SettingsPage extends StatelessWidget {
               );
               if (ok) await state.unpair();
             },
+          ),
+        ],
+      ),
+      GroupCard(
+        title: '更新',
+        children: <Widget>[
+          _SettingsRow(
+            title: '检查更新',
+            subtitle: 'Manager 与 Service',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const UpdatePage()),
+            ),
           ),
         ],
       ),

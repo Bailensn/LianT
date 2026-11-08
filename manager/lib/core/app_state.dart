@@ -64,6 +64,7 @@ class AppState extends ChangeNotifier {
   static const String _kPeerHints = 'liant.peerHints';
   static const String _kRead = 'liant.read';
   static const String _kMuted = 'liant.muted';
+  static const String _kAcceptBeta = 'liant.acceptBeta';
   static const String _kMessages = 'liant.messages';
 
   LiantClient? _client;
@@ -90,7 +91,9 @@ class AppState extends ChangeNotifier {
   Set<String> caps = <String>{};
   Retention retention = const Retention();
   String? openConversation;
+  String serviceVersion = '';
   bool appInForeground = true;
+  bool acceptBeta = false;
 
   bool get booted => _booted;
   bool get online => conn == ConnState.online;
@@ -436,6 +439,8 @@ class AppState extends ChangeNotifier {
   void _onEvent(Envelope env) {
     switch (env.type) {
       case 'auth.ok':
+        final version = env.payload['version'];
+        if (version is String) serviceVersion = version;
         final rawCaps = env.payload['caps'];
         if (rawCaps is List) caps = rawCaps.whereType<String>().toSet();
         retention =
@@ -890,6 +895,12 @@ class AppState extends ChangeNotifier {
   }
 
   bool mutedFor(String key) => muted[key] ?? false;
+
+  void setAcceptBeta(bool value) {
+    acceptBeta = value;
+    unawaited(_prefs.setBool(_kAcceptBeta, value));
+    notifyListeners();
+  }
 
   void setMuted(String key, bool on) {
     if (on) {

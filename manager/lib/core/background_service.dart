@@ -41,3 +41,12 @@ Future<void> showMessageNotification({
     // 非 Android 没有这个通道。
   } catch (_) {}
 }
+
+Future<void> openExternalUrl(String url) async {
+  if (url.isEmpty) return;
+  try {
+    await _channel.invokeMethod<void>('openUrl', <String, dynamic>{'url': url});
+  } on MissingPluginException {
+    // Web/桌面没有原生通道；预览环境就留在这里。
+  } catch (_) {}
+}

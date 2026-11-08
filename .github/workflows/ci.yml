@@ -171,6 +171,8 @@ jobs:
     needs: [changes, client-check]
     if: github.event_name != 'pull_request' && (needs.changes.outputs.manager == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
       - name: Cache Flutter SDK
@@ -235,3 +237,20 @@ jobs:
           path: /tmp/LianT-universal.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Publish Manager release
+        working-directory: manager
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(awk '/^version:/{print $2; exit}' pubspec.yaml | cut -d+ -f1)"
+          tag="manager-v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "release $tag already exists"
+            exit 0
+          fi
+          args=(release create "$tag" --title "LianT Manager $version" --notes "Manager $version")
+          case "$version" in
+            *-*) args+=(--prerelease) ;;
+          esac
+          gh "${args[@]}" /tmp/LianT-universal.apk /tmp/LianT-arm64.apk /tmp/LianT-x86_64.apk
