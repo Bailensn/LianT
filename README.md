@@ -20,11 +20,22 @@ The script asks for install directory, port and run user (Enter keeps the defaul
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash
 ```
 
-Non-interactive with defaults `/opt/liant`, `8443`, user `liant`:
+Non-interactive with defaults `/opt/liant`, `8443`, user `liant` and SQLite:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash -s -- -y
+curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash -s -- -y --db sqlite
 ```
+
+PostgreSQL is the default in interactive mode. Create the role and database first; the installer
+does not create them and does not need superuser credentials:
+
+```sql
+CREATE ROLE liant LOGIN PASSWORD 'your-password';
+CREATE DATABASE liant OWNER liant;
+```
+
+Then either answer the DB prompts, or pass `--db postgres --db-host 127.0.0.1 --db-port 5432 \
+--db-name liant --db-user liant --db-pass 'your-password'`.
 
 Only stable releases are used by default. Service currently publishes pre-release (Alpha) builds only,
 so testing builds must be requested explicitly with `--beta` (or `LIANT_BETA=1`):
@@ -33,7 +44,8 @@ so testing builds must be requested explicitly with `--beta` (or `LIANT_BETA=1`)
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash -s -- --beta
 ```
 
-Flags: `--dir PATH`, `--port PORT`, `--user USER`, `--url URL`, `--beta`, `-y`.
+Flags: `--dir PATH`, `--port PORT`, `--user USER`, `--url URL`, `--beta`, `--db postgres|sqlite`,
+`--db-host`, `--db-port`, `--db-name`, `--db-user`, `--db-pass`, `-y`.
 
 Then open the Android Manager, paste the pairing info printed by `LianT pair`, and confirm
 on the server terminal. The Service serves `/v1/ws` and `/v1/media/` only; there is no web console.
