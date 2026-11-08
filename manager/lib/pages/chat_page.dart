@@ -251,6 +251,20 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
           Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: topInset,
+            child: IgnorePointer(
+              child: ColoredBox(
+                color: Color.alphaBlend(
+                  colors.elevated.withOpacity(0.72),
+                  colors.bg,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
             left: 0,
             right: 0,
             bottom: 0,

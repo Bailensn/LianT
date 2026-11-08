@@ -1056,7 +1056,9 @@ class DetailScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Scaffold(
+    return StatusBarTint(
+      color: Color.alphaBlend(colors.elevated.withOpacity(0.92), colors.bg),
+      child: Scaffold(
       backgroundColor: colors.bg,
       body: Column(
         children: <Widget>[
@@ -1121,6 +1123,36 @@ class DetailScaffold extends StatelessWidget {
           ),
         ],
       ),
+    ),
+    );
+  }
+}
+
+/// 把状态栏区域涂成标题栏同色；系统图标仍由全局 SystemUiOverlayStyle 控制。
+class StatusBarTint extends StatelessWidget {
+  const StatusBarTint({super.key, required this.color, required this.child});
+
+  final Color color;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final top = MediaQuery.paddingOf(context).top;
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        child,
+        if (top > 0)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: top,
+            child: IgnorePointer(
+              child: ColoredBox(color: color),
+            ),
+          ),
+      ],
     );
   }
 }

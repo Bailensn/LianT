@@ -116,9 +116,11 @@ class _ShellState extends State<Shell> {
       const SettingsPage(),
     ];
 
-    return Scaffold(
-      backgroundColor: colors.bg,
-      body: LayoutBuilder(
+    return StatusBarTint(
+      color: colors.bg,
+      child: Scaffold(
+        backgroundColor: colors.bg,
+        body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth >= 768) {
             return SafeArea(
@@ -161,7 +163,8 @@ class _ShellState extends State<Shell> {
               ),
             ],
           );
-        },
+          },
+        ),
       ),
     );
   }
