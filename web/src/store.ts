@@ -99,7 +99,7 @@ type Actions = {
   botStatus: (id: string) => Promise<void>
   stopBot: (id: string) => Promise<void>
   removeBot: (id: string) => Promise<void>
-  send: (bot: Bot, peerId: string, peerKind: string, text: string, inReplyTo?: string) => Promise<void>
+  send: (bot: Bot, peerId: string, peerKind: string, text: string, inReplyTo?: string, forcePassive?: boolean) => Promise<void>
   retrySend: (msgId: string) => Promise<void>
   history: (botId: string, peerId: string) => Promise<void>
   media: Record<string, string>
@@ -239,11 +239,12 @@ export const useStore = create<State & Actions>((set, get) => ({
     await get().refreshBots()
   },
 
-  async send(bot, peerId, peerKind, text, inReplyTo) {
+  async send(bot, peerId, peerKind, text, inReplyTo, forcePassive = false) {
     if (!client) throw new Error('尚未连接')
     // 先乐观上屏，服务端确认后再换成真实 msg_id。
     // 默认走主动消息：不受 5 分钟窗口限制，也不会带 @ 和引用。
-    const active = get().activeMode[convKey(bot.bot_id, peerId)] !== false
+    // 明确回复某条消息时走被动回复，平台会带上引用。
+    const active = !forcePassive && get().activeMode[convKey(bot.bot_id, peerId)] !== false
     const localId = `local-${uuid()}`
     const optimistic: Msg = {
       msg_id: localId,

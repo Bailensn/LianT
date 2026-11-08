@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { convKey, useStore } from '../store'
 import { formatTime, Sheet, Button } from '../ui/Common'
+import type { Msg } from '../store'
 import { RichBody } from '../ui/Body'
 
 export default function Chat() {
@@ -28,6 +29,7 @@ export default function Chat() {
   const [historyError, setHistoryError] = useState('')
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [replyTo, setReplyTo] = useState<Msg | null>(null)
   const [remarkDraft, setRemarkDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
@@ -83,10 +85,12 @@ export default function Chat() {
     if (!value || !bot || sending) return
     // 输入框立刻清空，消息以「发送中」状态先上屏。
     setText('')
+    const target = replyTo
+    setReplyTo(null)
     setSending(true)
     setError('')
     try {
-      await send(bot, peerId, lastIn?.peer_kind || 'private', value, lastIn?.msg_id)
+      await send(bot, peerId, lastIn?.peer_kind || 'private', value, target?.msg_id ?? lastIn?.msg_id, target !== null)
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -204,6 +208,10 @@ export default function Chat() {
               )}
               <div className={`flex ${out ? 'justify-end' : 'justify-start'} mb-1.5`}>
                 <div
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    setReplyTo(m)
+                  }}
                   className={`flex max-w-[78%] items-center gap-2 rounded-[18px] px-3.5 py-2 text-[15px] leading-relaxed whitespace-pre-wrap break-words ${
                     out ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-elevated)]'
                   } ${m.failed ? 'opacity-60 ring-1 ring-[var(--danger)]' : ''}`}
@@ -229,6 +237,19 @@ export default function Chat() {
       {error && <p className="px-4 pb-1 text-[12px] text-[var(--danger)]">{error}</p>}
 
       <div className="safe-bottom px-3 pb-3">
+        {replyTo && (
+          <div className="mb-2 flex items-center gap-2 rounded-2xl bg-[var(--bg-elevated)] px-3 py-2">
+            <div className="min-w-0 flex-1 border-l-2 border-[var(--accent)] pl-2">
+              <p className="truncate text-[12px] text-[var(--text-2)]">
+                回复 {replyTo.direction === 'out' ? '我' : replyTo.sender_name || shortPeer(replyTo.sender_id || '')}
+              </p>
+              <p className="truncate text-[13px] text-[var(--text-3)]">{replyTo.body?.plain || '媒体消息'}</p>
+            </div>
+            <button onClick={() => setReplyTo(null)} className="h-8 w-8 shrink-0 text-[var(--text-3)]">
+              ✕
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-2 rounded-[22px] border border-[var(--sep)] bg-[var(--bg-elevated)] p-1.5">
           <textarea
             value={text}
