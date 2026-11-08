@@ -18,6 +18,42 @@ SRC=""
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m错误:\033[0m %s\n' "$*" >&2; exit 1; }
 
+latest_release_asset() {
+  local mode="$1" asset="$2" json="$3"
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s' "$json" | python3 -c '
+import json, sys
+mode, asset = sys.argv[1], sys.argv[2]
+data = json.load(sys.stdin)
+best = None
+for r in data:
+    if mode == "stable" and r.get("prerelease"):
+        continue
+    assets = {a.get("name"): a.get("browser_download_url") for a in r.get("assets", [])}
+    if asset not in assets:
+        continue
+    stamp = r.get("published_at") or r.get("created_at") or ""
+    if best is None or stamp > best[0]:
+        best = (stamp, r.get("tag_name", ""), assets[asset], assets.get("SHA256SUMS.txt", ""))
+if best:
+    print("\t".join(best[1:]))
+' "$mode" "$asset"
+  elif command -v jq >/dev/null 2>&1; then
+    printf '%s' "$json" | jq -r --arg mode "$mode" --arg asset "$asset" '
+      [ .[] | select(($mode == "beta") or (.prerelease | not))
+        | . as $r
+        | ($r.assets | map({(.name): .browser_download_url}) | add) as $a
+        | select($a[$asset] != null)
+        | {stamp: ($r.published_at // $r.created_at // ""), tag: $r.tag_name,
+           bin: $a[$asset], sum: ($a["SHA256SUMS.txt"] // "")} ]
+      | sort_by(.stamp)
+      | if length == 0 then empty else .[-1] | [.tag, .bin, .sum] | @tsv end
+    '
+  else
+    die "需要 python3 或 jq 来选择最新 release"
+  fi
+}
+
 usage() {
   cat <<'USAGE'
 用法：install.sh [选项] [二进制路径]
@@ -36,7 +72,7 @@ usage() {
   -y, --yes      全部使用默认值，不询问
   -h, --help     显示帮助
 
-不传二进制路径时，自动从最新 pre-release 下载对应架构的二进制。
+不传二进制路径时，按发布时间取最新 release；默认稳定版，加 --beta 才接收 pre-release。
 USAGE
 }
 
@@ -128,15 +164,14 @@ if [ -z "$SRC" ] && [ -z "${LIANT_URL:-}" ]; then
   esac
   say "从 GitHub 取最新构建：$asset"
   SRC="$(mktemp)"
-  if [ "$BETA" = "1" ]; then
-    releases=$(curl -fsSL --retry 3 "https://api.github.com/repos/${REPO}/releases?per_page=5") \
-      || die "无法读取 release 列表"
-  else
-    releases=$(curl -fsSL --retry 3 "https://api.github.com/repos/${REPO}/releases/latest") \
-      || die "没有可用的稳定版；如需测试版请加 --beta"
-  fi
-  url=$(printf '%s' "$releases" | grep -o "https://[^\"]*/${asset}" | head -1) || true
-  [ -n "$url" ] || die "没有可用的 release；如需测试版请加 --beta，或手动指定 LIANT_URL"
+  releases=$(curl -fsSL --retry 3 "https://api.github.com/repos/${REPO}/releases?per_page=30") \
+    || die "无法读取 release 列表"
+  mode="stable"
+  [ "$BETA" = "1" ] && mode="beta"
+  selected=$(latest_release_asset "$mode" "$asset" "$releases") || true
+  [ -n "$selected" ] || die "没有可用的 release；如需测试版请加 --beta，或手动指定 LIANT_URL"
+  IFS=$'\t' read -r tag url _sum <<< "$selected"
+  say "选中 release：$tag"
   curl -fSL --retry 3 -o "$SRC" "$url" || die "下载失败"
 elif [ -n "${LIANT_URL:-}" ] && [ -z "$SRC" ]; then
   say "下载二进制：$LIANT_URL"
