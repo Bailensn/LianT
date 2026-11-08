@@ -30,6 +30,7 @@ export default function Chat() {
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [editing, setEditing] = useState(false)
   const [replyTo, setReplyTo] = useState<Msg | null>(null)
+  const [actionMsg, setActionMsg] = useState<Msg | null>(null)
   const [remarkDraft, setRemarkDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
@@ -210,12 +211,15 @@ export default function Chat() {
                 <div
                   onContextMenu={(e) => {
                     e.preventDefault()
-                    setReplyTo(m)
+                    setActionMsg(m)
+                  }}
+                  onClick={() => {
+                    if (m.failed) void retrySend(m.msg_id)
+                    else setActionMsg(m)
                   }}
                   className={`flex max-w-[78%] items-center gap-2 rounded-[18px] px-3.5 py-2 text-[15px] leading-relaxed whitespace-pre-wrap break-words ${
                     out ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-elevated)]'
                   } ${m.failed ? 'opacity-60 ring-1 ring-[var(--danger)]' : ''}`}
-                  onClick={() => m.failed && void retrySend(m.msg_id)}
                 >
                   {m.failed && <span className="text-[12px]">发送失败 · 点击重试</span>}
                   {m.pending && (
@@ -235,6 +239,33 @@ export default function Chat() {
       </div>
 
       {error && <p className="px-4 pb-1 text-[12px] text-[var(--danger)]">{error}</p>}
+
+      <Sheet open={actionMsg !== null} title="消息操作" onClose={() => setActionMsg(null)} dismissable>
+        <div className="mx-4 mb-2 rounded-2xl bg-[var(--bg-elevated)] px-3 py-2">
+          <p className="line-clamp-2 text-[13px] text-[var(--text-2)]">{actionMsg?.body?.plain || '媒体消息'}</p>
+        </div>
+        <Button
+          full
+          onClick={() => {
+            if (actionMsg) setReplyTo(actionMsg)
+            setActionMsg(null)
+          }}
+        >
+          回复这条
+        </Button>
+        <div className="h-3" />
+        <Button
+          full
+          variant="ghost"
+          onClick={() => {
+            if (actionMsg) void navigator.clipboard?.writeText(actionMsg.body?.plain || '')
+            setActionMsg(null)
+          }}
+        >
+          复制文本
+        </Button>
+        <div className="h-3" />
+      </Sheet>
 
       <div className="safe-bottom px-3 pb-3">
         {replyTo && (
