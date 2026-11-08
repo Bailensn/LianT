@@ -941,7 +941,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _pickAttachment({required bool media}) async {
     try {
-      final result = await FilePicker.pickFiles(
+      final result = await FilePicker.platform.pickFiles(
         type: media ? FileType.media : FileType.any,
         withData: true,
         allowMultiple: false,
