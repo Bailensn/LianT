@@ -111,12 +111,50 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   int _index = 0;
+  late final PageController _pageController = PageController();
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _select(int index) {
+    if (index == _index) return;
+    setState(() => _index = index);
+    if (_pageController.hasClients) {
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      _pageController.jumpToPage(index);
+    }
+  }
+
+  Widget _pageView(List<Widget> pages) {
+    return PageView.builder(
+      controller: _pageController,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: pages.length,
+      onPageChanged: (index) {
+        if (index != _index) setState(() => _index = index);
+      },
+      itemBuilder: (context, index) {
+        return _KeepAlivePage(
+          key: ValueKey<int>(index),
+          child: pages[index],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final pages = <Widget>[
-      ChatsPage(onOpenBots: () => setState(() => _index = 1)),
+      ChatsPage(onOpenBots: () => _select(1)),
       const BotsPage(),
       const SettingsPage(),
     ];
@@ -133,7 +171,7 @@ class _ShellState extends State<Shell> {
                 children: <Widget>[
                   _DesktopSidebar(
                     index: _index,
-                    onTap: (value) => setState(() => _index = value),
+                    onTap: _select,
                   ),
                   Container(width: 0.5, color: colors.sep),
                   Expanded(
@@ -141,7 +179,7 @@ class _ShellState extends State<Shell> {
                       alignment: Alignment.topCenter,
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 780),
-                        child: IndexedStack(index: _index, children: pages),
+                        child: _pageView(pages),
                       ),
                     ),
                   ),
@@ -154,7 +192,7 @@ class _ShellState extends State<Shell> {
               Positioned.fill(
                 child: SafeArea(
                   bottom: false,
-                  child: IndexedStack(index: _index, children: pages),
+                  child: _pageView(pages),
                 ),
               ),
               Positioned(
@@ -163,7 +201,7 @@ class _ShellState extends State<Shell> {
                 bottom: 16 + MediaQuery.paddingOf(context).bottom,
                 child: GlassBottomNav(
                   index: _index,
-                  onTap: (value) => setState(() => _index = value),
+                  onTap: _select,
                 ),
               ),
             ],
@@ -172,6 +210,27 @@ class _ShellState extends State<Shell> {
         ),
       ),
     );
+  }
+}
+
+class _KeepAlivePage extends StatefulWidget {
+  const _KeepAlivePage({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<_KeepAlivePage> createState() => _KeepAlivePageState();
+}
+
+class _KeepAlivePageState extends State<_KeepAlivePage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
   }
 }
 
