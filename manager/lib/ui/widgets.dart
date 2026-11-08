@@ -646,6 +646,9 @@ class _GlassBottomNavState extends State<GlassBottomNav>
     with TickerProviderStateMixin {
   static final SpringDescription _followSpring =
       SpringDescription.withDampingRatio(mass: 1, stiffness: 1024, ratio: 0.9);
+  // 越界后改用高阻尼弹簧，快速甩到边缘也不会再来回撞墙。
+  static final SpringDescription _boundarySpring =
+      SpringDescription.withDampingRatio(mass: 1, stiffness: 420, ratio: 1.15);
   static final SpringDescription _pressSpring =
       SpringDescription.withDampingRatio(mass: 1, stiffness: 311, ratio: 0.593);
   // 松手回位只留很轻的余量；ratio 越低回弹越大，0.85 已接近临界阻尼。
@@ -676,8 +679,11 @@ class _GlassBottomNavState extends State<GlassBottomNav>
   double _positionAt(double dx) {
     if (_itemWidth <= 0) return widget.index.toDouble();
     final raw = dx / _itemWidth - 0.5;
-    if (raw < 0) return raw * 0.35;
-    if (raw > _lastIndex) return _lastIndex + (raw - _lastIndex) * 0.35;
+    const overshoot = 0.18;
+    if (raw < 0) return math.max(raw * 0.18, -overshoot);
+    if (raw > _lastIndex) {
+      return math.min(_lastIndex + (raw - _lastIndex) * 0.18, _lastIndex + overshoot);
+    }
     return raw;
   }
 
@@ -702,13 +708,15 @@ class _GlassBottomNavState extends State<GlassBottomNav>
       return;
     }
     _dragging = true;
+    final raw = event.localPosition.dx / _itemWidth - 0.5;
+    final outside = raw < 0 || raw > _lastIndex;
     final position = _positionAt(event.localPosition.dx);
     final index = position.round().clamp(0, _lastIndex);
     if (index != _previewIndex) {
       HapticFeedback.selectionClick();
       setState(() => _previewIndex = index);
     }
-    _lens.springTo(position, _followSpring);
+    _lens.springTo(position, outside ? _boundarySpring : _followSpring);
   }
 
   void _onUp(PointerUpEvent event) {
