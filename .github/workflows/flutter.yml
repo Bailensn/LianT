@@ -4,7 +4,7 @@ name: Flutter
 on:
   push:
     paths:
-      - 'manager/flutter/**'
+      - 'manager/**'
       - '.github/workflows/flutter.yml'
   workflow_dispatch:
 
@@ -29,40 +29,40 @@ jobs:
           sudo apt-get install -y -qq clang cmake ninja-build pkg-config libgtk-3-dev
 
       - name: Generate platform scaffolding
-        working-directory: manager/flutter
+        working-directory: manager
         run: |
           flutter create --platforms=android,web,linux --project-name liant .
-          git -C "$GITHUB_WORKSPACE" checkout -- manager/flutter/web/index.html
+          git -C "$GITHUB_WORKSPACE" checkout -- manager/web/index.html
 
-      - working-directory: manager/flutter
+      - working-directory: manager
         run: flutter pub get
 
       - name: Build web preview
-        working-directory: manager/flutter
+        working-directory: manager
         run: flutter build web --release --base-href /LianT/
 
       - name: Build APK
-        working-directory: manager/flutter
+        working-directory: manager
         run: flutter build apk --debug
 
       - name: Build Linux desktop
-        working-directory: manager/flutter
+        working-directory: manager
         run: flutter build linux --release
 
       - name: Deploy preview to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: manager/flutter/build/web
+          publish_dir: manager/build/web
           publish_branch: gh-pages
           force_orphan: true
 
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-flutter-android
-          path: manager/flutter/build/app/outputs/flutter-apk/*.apk
+          path: manager/build/app/outputs/flutter-apk/*.apk
 
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-flutter-linux
-          path: manager/flutter/build/linux/x64/release/bundle/**
+          path: manager/build/linux/x64/release/bundle/**
