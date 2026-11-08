@@ -152,11 +152,16 @@ class _ChatsPageState extends State<ChatsPage> {
   }
 
   void _openChat(Conversation conv) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ChatPage(botId: conv.botId, peerId: conv.peerId),
-      ),
-    );
+    FocusManager.instance.primaryFocus?.unfocus();
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => ChatPage(botId: conv.botId, peerId: conv.peerId),
+          ),
+        )
+        .then((_) {
+          FocusManager.instance.primaryFocus?.unfocus();
+        });
   }
 }
 

@@ -106,6 +106,8 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    _inputFocus.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
     _ticker?.cancel();
     _scroll.removeListener(_onScroll);
     _scroll.dispose();
@@ -612,6 +614,12 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  void _leaveChat() {
+    _inputFocus.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+    Navigator.of(context).maybePop();
+  }
+
   Widget _header(
     BuildContext context,
     AppState state,
@@ -656,7 +664,7 @@ class _ChatPageState extends State<ChatPage> {
                     width: 76,
                     height: 44,
                     child: InkWell(
-                      onTap: () => Navigator.of(context).maybePop(),
+                      onTap: _leaveChat,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
