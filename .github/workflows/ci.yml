@@ -1,7 +1,10 @@
 name: CI
 
-# 质量门禁：服务端 go vet / go test -race / 协议对照，客户端 analyze / test。
-# 产物只由 Service 与 Android 两个工作流负责。
+# 一个工作流，按变更路径决定跑什么：
+#   service/**  → Go 检查，push 时再构建并发布 pre-release
+#   manager/**  → Flutter 检查，push 时再出三个 APK
+#   scripts/**  → 只跑 Go 检查
+#   docs / *.md → 整个工作流跳过
 on:
   push:
     paths-ignore:
@@ -18,47 +21,151 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  service:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      service: ${{ steps.filter.outputs.service }}
+      manager: ${{ steps.filter.outputs.manager }}
+      scripts: ${{ steps.filter.outputs.scripts }}
+      workflow: ${{ steps.filter.outputs.workflow }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            service:
+              - 'service/**'
+            manager:
+              - 'manager/**'
+            scripts:
+              - 'scripts/**'
+            workflow:
+              - '.github/workflows/**'
+
+  service-check:
+    needs: changes
+    if: needs.changes.outputs.service == 'true' || needs.changes.outputs.scripts == 'true' || needs.changes.outputs.workflow == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-go@v7
         with:
           go-version-file: service/go.mod
           cache: true
           cache-dependency-path: service/go.sum
-
       - name: Protocol drift check
         run: bash scripts/check-protocol.sh
-
       - name: Vet
         working-directory: service
         run: go vet ./...
-
       - name: Test
         working-directory: service
         run: go test -race ./...
 
-  client:
+  client-check:
+    needs: changes
+    if: needs.changes.outputs.manager == 'true' || needs.changes.outputs.workflow == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.5'
           channel: stable
           cache: true
-
       - name: Pub get
         working-directory: manager
         run: flutter pub get
-
       - name: Analyze
         working-directory: manager
         run: flutter analyze
-
       - name: Test
         working-directory: manager
         run: flutter test
+
+  service-release:
+    needs: [changes, service-check]
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.service == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: service/go.mod
+          cache: true
+          cache-dependency-path: service/go.sum
+      - name: Build
+        id: build
+        working-directory: service
+        run: |
+          set -euo pipefail
+          short="$(git rev-parse --short=7 HEAD)"
+          version="v1.0.0-Alpha-$short"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          mkdir -p ../dist
+          ldflags="-s -w -X main.version=$version"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$ldflags" -o ../dist/LianT-linux-amd64 ./cmd/liant
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$ldflags" -o ../dist/LianT-linux-arm64 ./cmd/liant
+          cd ../dist
+          sha256sum * > SHA256SUMS.txt
+          ls -l
+      - uses: actions/upload-artifact@v7
+        with:
+          name: LianT-service
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.build.outputs.version }}
+          name: LianT ${{ steps.build.outputs.version }}
+          prerelease: true
+          files: dist/*
+          fail_on_unmatched_files: true
+
+  android:
+    needs: [changes, client-check]
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.manager == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
+      - name: Pub get
+        working-directory: manager
+        run: flutter pub get
+      - name: Build APKs
+        working-directory: manager
+        run: |
+          set -euo pipefail
+          flutter build apk --release
+          cp build/app/outputs/flutter-apk/app-release.apk /tmp/LianT-universal.apk
+          flutter build apk --release --split-per-abi
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk /tmp/LianT-arm64.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk /tmp/LianT-x86_64.apk
+          ls -lh /tmp/LianT-*.apk
+      - uses: actions/upload-artifact@v7
+        with:
+          name: LianT-android-arm64
+          path: /tmp/LianT-arm64.apk
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        with:
+          name: LianT-android-x86_64
+          path: /tmp/LianT-x86_64.apk
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        with:
+          name: LianT-android-universal
+          path: /tmp/LianT-universal.apk
+          if-no-files-found: error
+          retention-days: 14

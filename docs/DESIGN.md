@@ -299,7 +299,7 @@ LianT/
 │   └── web/              网页外壳（index.html）
 ├── deploy/liant.service  systemd 单元
 ├── scripts/              install.sh、check-protocol.sh
-└── .github/workflows/    CI / Service / Android
+└── .github/workflows/    CI（单一工作流，按变更路径分 job）
 ```
 
 **结构规则**

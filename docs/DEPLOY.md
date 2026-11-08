@@ -27,10 +27,23 @@ sha256sum -c SHA256SUMS.txt --ignore-missing
 ./LianT config set connect.listen :8443
 ```
 
-也可以直接跑仓库里的安装脚本：
+也可以直接跑仓库里的安装脚本。交互模式会询问安装目录、端口和运行用户（回车用默认值）：
+
+```bash
+sudo bash scripts/install.sh
+```
+
+一键用默认值（`/opt/liant`、`8443`、用户 `liant`）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash -s -- -y
+```
+
+也可以指定二进制或参数：
 
 ```bash
 sudo bash scripts/install.sh /path/to/LianT-linux-amd64
+sudo bash scripts/install.sh --dir /srv/liant --port 9443 --user liant --url https://example.com/LianT-linux-amd64
 ```
 
 开机自启用仓库里的 `deploy/liant.service`：
@@ -140,8 +153,14 @@ systemd 示例见 `deploy/liant.service`。
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/upgrade.sh | sudo bash
 ```
 
+升级默认从 systemd 的 `WorkingDirectory` 找安装目录，也可以用 `--dir` 指定：
+
+```bash
+sudo bash scripts/upgrade.sh --dir /srv/liant
+```
+
 也可以指定二进制：`sudo bash scripts/upgrade.sh ./LianT-linux-amd64`。
-旧版本会留在 `/opt/liant/LianT.bak`，启动失败时脚本会自动回滚。
+旧版本会留在 `<安装目录>/LianT.bak`，启动失败时脚本会自动回滚。
 
 - 数据库有 `PRAGMA user_version` 迁移，启动时自动升级；升级前先备份 `data/`；
 - 节点密钥与证书在 `data/node/`：证书剩余不足 30 天会自动用同一私钥重签，指纹不变；

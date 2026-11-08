@@ -18,15 +18,18 @@ v1.0.0-RC1-eeeeeee
 
 ## 产物
 
-不再打包 Docker，也不推镜像。发布由三个 workflow 负责：
+不再打包 Docker，也不推镜像。所有 CI 都在一个 `CI` 工作流里，按变更路径决定 job：
 
-| Workflow | 触发 | 产物 |
+| 变更 | 跑的 job | 产物 |
 | --- | --- | --- |
-| `Service` | `service/**` 变更或手动 | GitHub pre-release：`LianT-linux-amd64`、`LianT-linux-arm64`、`SHA256SUMS.txt` |
-| `Android` | `manager/**` 变更或手动 | Android release APK（arm64 / x86_64 / universal 三个） |
-| `CI` | 所有 push / PR | 协议漂移检查、`go vet`、`go test -race`、Flutter `analyze`/`test`（不产物） |
+| `service/**` | `service-check` → `service-release` | GitHub pre-release：`LianT-linux-amd64`、`LianT-linux-arm64`、`SHA256SUMS.txt` |
+| `manager/**` | `client-check` → `android` | Android release APK（arm64 / x86_64 / universal 三个） |
+| `scripts/`、workflow 本身 | 只跑对应的 check | 无 |
+| `docs/`、`*.md` | 整个工作流跳过 | 无 |
 
-- 服务端二进制用 `CGO_ENABLED=0` 构建，直接拷到 `/opt/liant` 就能跑；`install.sh`
+- PR 只跑 `service-check` / `client-check`，不会发版、不会出 APK。
+- 手动 `workflow_dispatch` 会跑全部 job，适合补发。
+- 服务端二进制用 `CGO_ENABLED=0` 构建，直接拷到安装目录就能跑；`install.sh`
   从最新的 pre-release 取资产（注意 GitHub 的 `/releases/latest` 会跳过 pre-release，
   脚本用的是 `/releases?per_page=5`）。
 - 服务端二进制不再内嵌网页管理端，只提供 `/v1/ws`、`/v1/media/` 与根路径说明。

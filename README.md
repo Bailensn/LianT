@@ -13,14 +13,20 @@ with a Flutter client for operating it.
 
 ## Quick start
 
-Install the Service on a Linux host (latest pre-release binary, systemd unit, config init):
+Install the Service on a Linux host (latest pre-release binary, systemd unit, config init).
+The script asks for install directory, port and run user (Enter keeps the defaults):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash
 ```
 
-Use `LIANT_DIR=/opt/liant LIANT_PORT=8443` to override the defaults, or pass a local binary:
-`sudo bash scripts/install.sh ./LianT-linux-amd64`.
+Non-interactive with defaults `/opt/liant`, `8443`, user `liant`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash -s -- -y
+```
+
+Flags: `--dir PATH`, `--port PORT`, `--user USER`, `--url URL`, `-y`.
 
 Then open the Android Manager, paste the pairing info printed by `LianT pair`, and confirm
 on the server terminal. The Service serves `/v1/ws` and `/v1/media/` only; there is no web console.

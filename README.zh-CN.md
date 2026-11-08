@@ -12,14 +12,20 @@ LianT 是一个自托管的 **Bot Engine**（Bot 引擎），首发 QQ、Telegra
 
 ## 一键安装
 
-在 Linux 服务器上执行（自动取最新 pre-release 二进制，装到 `/opt/liant`、初始化配置并注册 systemd）：
+在 Linux 服务器上执行（自动取最新 pre-release 二进制、初始化配置并注册 systemd）。
+脚本会依次询问安装目录、端口和运行用户，直接回车用默认值：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash
 ```
 
-默认目录 `/opt/liant`、端口 `8443`，可以用 `LIANT_DIR` / `LIANT_PORT` 覆盖；
-也可以直接装本地二进制：`sudo bash scripts/install.sh ./LianT-linux-amd64`。
+全部用默认值（`/opt/liant`、`8443`、用户 `liant`）不询问：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash -s -- -y
+```
+
+也支持 `--dir PATH`、`--port PORT`、`--user USER`、`--url URL`。
 
 装完后在这台机器执行 `cd /opt/liant && ./LianT pair --host <手机可达地址>`，
 把终端打印的配对信息粘到 Android 客户端的「连接 LianT」页，再在终端确认一次。

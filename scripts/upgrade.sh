@@ -9,14 +9,46 @@
 #   sudo LIANT_URL=https://example.com/LianT-linux-amd64 bash upgrade.sh
 set -euo pipefail
 
-DIR="${LIANT_DIR:-/opt/liant}"
+DIR="${LIANT_DIR:-}"
 REPO="${LIANT_REPO:-Bailensn/LianT}"
 SERVICE="liant"
+SRC=""
 
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m错误:\033[0m %s\n' "$*" >&2; exit 1; }
 
+usage() {
+  cat <<'USAGE'
+用法：upgrade.sh [选项] [二进制路径]
+
+  --dir PATH     安装目录；默认从 systemd 单元的 WorkingDirectory 读取
+  --url URL      从指定地址下载二进制
+  -y, --yes      不询问（当前无交互，保留给脚本调用）
+  -h, --help     显示帮助
+USAGE
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --dir) [ "$#" -ge 2 ] || die "--dir 缺少值"; DIR="$2"; shift 2 ;;
+    --url) [ "$#" -ge 2 ] || die "--url 缺少值"; LIANT_URL="$2"; shift 2 ;;
+    -y|--yes) shift ;;
+    -h|--help) usage; exit 0 ;;
+    -*) die "未知选项：$1（用 --help 查看用法）" ;;
+    *) [ -z "$SRC" ] || die "只能指定一个二进制路径"; SRC="$1"; shift ;;
+  esac
+done
+
 [ "$(id -u)" = "0" ] || die "需要 root 运行：sudo bash $0"
+
+if [ -z "$DIR" ] && systemctl list-unit-files "$SERVICE.service" 2>/dev/null | grep -q "^${SERVICE}\.service"; then
+  DIR="$(systemctl show -p WorkingDirectory --value "$SERVICE" 2>/dev/null || true)"
+  [ "$DIR" = "/" ] && DIR=""
+fi
+DIR="${DIR:-/opt/liant}"
+DIR="${DIR%/}"
+[ -n "$DIR" ] || die "安装目录不能为空"
+say "安装目录：$DIR"
 [ -x "$DIR/LianT" ] || die "$DIR/LianT 不存在，请先用 install.sh 安装"
 
 case "$(uname -m)" in
@@ -29,7 +61,6 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 has_checksum=0
-SRC="${1:-}"
 if [ -n "$SRC" ]; then
   say "使用本地二进制：$SRC"
   [ -f "$SRC" ] || die "找不到文件：$SRC"
