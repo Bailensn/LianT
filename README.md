@@ -5,9 +5,9 @@
 LianT is a self-hosted **Bot Engine** for chat-platform bots (QQ first; Telegram next),
 with a Flutter client for operating it.
 
-- **Engine** (`service/`): Go, WSS protocol v1, SQLite, 7-day message buffer. It serves
+- **Service** (the engine, `service/`): Go, WSS protocol v1, SQLite, 7-day message buffer. It serves
   `/v1/ws` and signed media links only — no embedded web console.
-- **Client** (`manager/`): Flutter. **Android is the only shipped target**; the web build is
+- **Manager** (the Flutter client, `manager/`): **Android is the only shipped target**; the web build is
   a local preview surface only and is not published. No desktop builds.
   Conversations, bots, devices and audit logs are part of the same protocol surface.
 
@@ -22,8 +22,14 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
 Use `LIANT_DIR=/opt/liant LIANT_PORT=8443` to override the defaults, or pass a local binary:
 `sudo bash scripts/install.sh ./LianT-linux-amd64`.
 
-Then open the Android client, paste the pairing info printed by `LianT pair`, and confirm
+Then open the Android Manager, paste the pairing info printed by `LianT pair`, and confirm
 on the server terminal. The Service serves `/v1/ws` and `/v1/media/` only; there is no web console.
+
+Upgrade in place (stops the service, verifies SHA256, backs up the old binary, restarts):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/upgrade.sh | sudo bash
+```
 
 ## Documents
 

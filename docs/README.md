@@ -1,5 +1,7 @@
 # 文档索引
 
+术语：**Service** = 服务端（Bot Engine，`service/`）；**Manager** = Flutter 客户端（`manager/`）。
+
 | 文件 | 记录什么 | 什么时候看 |
 | --- | --- | --- |
 | [DESIGN.md](DESIGN.md) | 产品决策（D1–D12）与边界，含历史现状审计 | 改产品方向、动核心模型之前 |

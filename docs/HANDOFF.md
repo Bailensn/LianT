@@ -24,8 +24,10 @@
   所以实际上仍以配对码为主（见 SECURITY.md）
 - **不再内嵌网页管理端**：`internal/webui` 与 `web/` 已删除。根路径只返回一行纯文本说明，
   作用一是健康检查，二是让浏览器在这一层信任自签证书；`/v1/ws` 与 `/v1/media/` 保持
-- `LianT pair` 现在打印**配对信息 JSON** 并把 JSON 本身渲染成二维码（`data/pair-qr.png`），
-  不再生成 `https://…/#pair=` 管理页链接
+- `LianT pair` 打印**配对信息 JSON** 并把 JSON 本身渲染成二维码（`data/pair-qr.png`），
+  不再生成 `https://…/#pair=` 管理页链接；`--host` / `--port` 可覆盖对外地址，
+  公网 IPv4 会依次问 ipify / icanhazip / ifconfig.me，拿不到才退回内网地址
+- 配对请求现在会在服务端日志里打出「收到 / 拒绝 / 成功」，用 `journalctl -u liant -f` 能看到
 - QQ 适配器同时接 `GROUP_AT_MESSAGE_CREATE` 与 `GROUP_MESSAGE_CREATE`；`can_initiate=true`；
   `msg.send.active=true` 表示主动消息（不带 `msg_id`，因此没有 @ 和引用）
 - 群资料 `GET /v2/groups/{openid}/info`，403/404 → `event.peer {hint:"whitelist"}`
@@ -49,6 +51,8 @@ Docker 已全部移除，不要加回来。
   失败重试、`msg.list` 历史、`media.fetch`、设备/审计、备注/已读/主动消息持久化；
   消息最多留 2000 条，备注与已读不设上限。
 - `lib/core/browser_env*.dart`：条件导入，Web 读地址栏参数，其它平台返回 null。
+- `lib/core/socket*.dart`：条件导入；Android/桌面端接受自签证书（身份仍由 auth.challenge
+  的节点指纹校验），Web 端交给浏览器。
 - `android/` 已入库：应用 ID `com.bailensn.liant`，主清单带 `INTERNET` 权限，
   Gradle 工具链按 CI 的 Flutter 3.24.5 对齐（Gradle 8.3 / AGP 8.1.0 / Kotlin 1.8.22）。
   图标源文件是 `assets/icon.svg`（iOS squircle 蓝底 + 圆头 L）与 `assets/icon_foreground.svg`，
@@ -145,6 +149,7 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 - Android 还没有正式签名配置（release 包临时用 debug key 签名），正式上架需要接 signingConfig
 - Android 真机还没跑过配对与收发（本机只有 Web 预览与 mock 服务）
 - Basic 认证启用后，Flutter 原生端无法在 WebSocket 握手提供凭据；用反代侧访问控制或暂不开启
+- Web 端连接自签证书仍会失败；需要先信任证书或反代换正式证书
 - 通知、真机截图仍是缺口
 - DSH 的 Linux 环境装不上（loader 资产校验写死在 APK 里），与项目无关，不要浪费时间
 

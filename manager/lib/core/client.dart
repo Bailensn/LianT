@@ -11,6 +11,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'identity.dart';
 import 'p256.dart';
 import 'protocol.dart';
+import 'socket.dart';
 
 /// 连接状态，界面按它渲染顶部说明条。
 enum ConnState { idle, connecting, online, reconnecting, error }
@@ -145,7 +146,7 @@ class LiantClient {
 
     final WebSocketChannel channel;
     try {
-      channel = WebSocketChannel.connect(Uri.parse(identity.address.wsUrl));
+      channel = openWebSocket(Uri.parse(identity.address.wsUrl));
     } catch (err) {
       _scheduleRetry('无法连接：$err');
       return;

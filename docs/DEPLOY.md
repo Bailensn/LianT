@@ -62,7 +62,11 @@ QQ 的 `app_id/app_secret` 来自 QQ 开放平台机器人后台。
 ./LianT pair                    # 自动探测本机 IPv4，适合手机和服务器同一网络
 ./LianT pair --host 1.2.3.4     # 指定手机可达的地址
 ./LianT pair --host liant.example.com   # 有域名/反代时
+./LianT pair --host liant.example.com --port 443   # 反代对外是 443 时
 ```
+
+`pair` 会按「`--host` > `config.connect.address` > 本机公网 IPv4 > 本机内网 IPv4 > 主机名」
+决定配对地址；公网 IP 通过多个公共回显服务探测，探测不到会打印提示，用 `--host` 覆盖即可。
 
 配对成功后 `pair` **不会退出**，会继续以服务模式运行（Bot 也会被认领），
 所以之后不需要再单独 `serve`；要停止按 Ctrl+C。
@@ -79,8 +83,8 @@ QQ 的 `app_id/app_secret` 来自 QQ 开放平台机器人后台。
 手机连上后服务端终端会要求输入 `y` 确认，成功即把设备公钥写入 `devices` 表。
 配对码 60 秒有效、一次性；默认最多 8 台设备。
 
-> 客户端第一次连接时要信任服务端证书。自签证书在 Android 端需要装进系统信任库，
-> 浏览器则要先用 https 访问一次并手动信任；生产环境建议用反代换成正式证书。
+> Android/桌面端的 Manager **允许自签证书**（TLS 只做传输，身份由 `auth.challenge`
+> 里的节点指纹与签名校验）；Web 端仍要系统信任证书，生产环境建议用反代换成正式证书。
 
 ## 5. 客户端
 
@@ -129,6 +133,15 @@ systemd 示例见 `deploy/liant.service`。
 - 客户端本地另有上限（消息 2000 条），是否清理由用户在客户端决定。
 
 ## 8. 升级与回滚
+
+一键升级（停服务、校验 SHA256、备份旧二进制、重启）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/upgrade.sh | sudo bash
+```
+
+也可以指定二进制：`sudo bash scripts/upgrade.sh ./LianT-linux-amd64`。
+旧版本会留在 `/opt/liant/LianT.bak`，启动失败时脚本会自动回滚。
 
 - 数据库有 `PRAGMA user_version` 迁移，启动时自动升级；升级前先备份 `data/`；
 - 节点密钥与证书在 `data/node/`：证书剩余不足 30 天会自动用同一私钥重签，指纹不变；

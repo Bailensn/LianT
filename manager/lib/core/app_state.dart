@@ -12,6 +12,7 @@ import 'client.dart';
 import 'identity.dart';
 import 'p256.dart';
 import 'protocol.dart';
+import 'socket.dart';
 
 /// 媒体加载状态。
 class MediaState {
@@ -183,7 +184,7 @@ class AppState extends ChangeNotifier {
     final keyPair = p256GenerateKey();
     final WebSocketChannel channel;
     try {
-      channel = WebSocketChannel.connect(Uri.parse(address.wsUrl));
+      channel = openWebSocket(Uri.parse(address.wsUrl));
     } catch (err) {
       throw ProtocolException('offline', '无法连接到服务：$err');
     }

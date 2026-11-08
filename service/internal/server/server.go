@@ -349,6 +349,7 @@ func (c *conn) handlePair(env protocol.Envelope) error {
 		c.writeErrorFor(env, protocol.CodeInvalidPayload, "pair.request 字段不合法", nil)
 		return nil
 	}
+	c.s.opt.Logf("收到配对请求: name=%q ip=%s", req.ManagerName, c.ip)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -421,6 +422,7 @@ func (c *conn) handlePair(env protocol.Envelope) error {
 		return c.denyPair(env, "internal")
 	}
 	c.audit("pair.ok", deviceID, name, "")
+	c.s.opt.Logf("配对成功: device=%s name=%q ip=%s", deviceID, name, c.ip)
 	return c.write(protocol.TypePairOK, env.ID, protocol.PairOK{
 		ServiceID:    c.s.opt.Identity.Fingerprint(),
 		ServiceName:  "LianT Service",
@@ -430,6 +432,7 @@ func (c *conn) handlePair(env protocol.Envelope) error {
 }
 
 func (c *conn) denyPair(env protocol.Envelope, reason string) error {
+	c.s.opt.Logf("拒绝配对: reason=%s ip=%s", reason, c.ip)
 	c.audit("pair.denied", "", "", reason)
 	return c.write(protocol.TypePairDenied, env.ID, protocol.PairDenied{Reason: reason})
 }

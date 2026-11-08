@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -261,7 +262,8 @@ func pairCommand(args []string) {
 	cfg := loadConfigOrDie()
 
 	fs := flag.NewFlagSet("pair", flag.ExitOnError)
-	hostFlag := fs.String("host", "", "二维码里通告的主机名或 IP；留空则用 connect.address 或自动探测")
+	hostFlag := fs.String("host", "", "配对信息里通告的主机名或 IP；留空则用 connect.address、公网 IP 或本机地址")
+	portFlag := fs.Int("port", 0, "配对信息里通告的端口；留空用 listen 端口（反代到 443 时填 443）")
 	_ = fs.Parse(args)
 
 	pairer := pairing.New()
@@ -303,16 +305,31 @@ func pairCommand(args []string) {
 		os.Exit(1)
 	}
 	if cfg.Connect.Address == "" && *hostFlag == "" {
-		fmt.Printf("自动检测到本机地址：%s，手机需能访问它；跨网请用 --host\n", host)
+		fmt.Printf("自动检测到对外地址：%s，手机需能访问它；不对请用 --host 覆盖\n", host)
 	}
 	if isLoopbackHost(host) {
 		fmt.Fprintf(os.Stderr, "警告：%s 是回环地址，只有 Service 本机能访问；手机请改用 --host <局域网或公网地址>\n", host)
+	} else if isPrivateHost(host) {
+		fmt.Fprintf(os.Stderr, "警告：%s 是内网地址，外网手机不可达；跨网请用 --host <公网 IP 或域名>\n", host)
+	}
+
+	port := portOf(listenAddr(cfg))
+	if *portFlag > 0 {
+		if *portFlag > 65535 {
+			fmt.Fprintln(os.Stderr, "端口超出范围")
+			os.Exit(1)
+		}
+		port = *portFlag
+	}
+	fmt.Printf("配对地址：%s:%d\n", host, port)
+	if port != portOf(listenAddr(cfg)) {
+		fmt.Printf("配对端口使用 %d（监听端口是 %d，确认反代已转发 /v1/ws）\n", port, portOf(listenAddr(cfg)))
 	}
 
 	payload, _ := json.Marshal(map[string]any{
 		"v":     protocol.Version,
 		"host":  host,
-		"port":  portOf(listenAddr(cfg)),
+		"port":  port,
 		"fp":    id.Fingerprint(),
 		"ticket": code.Value,
 		"nonce": code.Nonce,
@@ -331,9 +348,11 @@ func pairCommand(args []string) {
 		}
 	}
 	fmt.Println("手机打开 LianT 客户端「连接 LianT」页，粘贴上面的配对信息（或扫码）；本终端还会再确认一次。")
+	fmt.Println("等待 Manager 连接… 如果长时间没有提示，先确认手机能访问上面的配对地址。")
 
 	if delegated {
 		fmt.Println("检测到服务已在运行，这条配对码交给它处理。")
+		fmt.Println("配对确认会出现在 serve 的终端；systemd 下通常是自动批准，设备登记后这里会打印成功。")
 		before, _ := db.CountDevices(context.Background())
 		deadline := time.Now().Add(time.Until(code.Expires) + 2*time.Minute)
 		for time.Now().Before(deadline) {
@@ -397,14 +416,61 @@ func pairHost(flagHost string, cfg config.Config) string {
 	if h := addressHost(cfg.Connect.Address); h != "" {
 		return h
 	}
-	if ip := localIPv4(); ip != "" {
+	local := localIPv4()
+	// 本机直接有公网地址就不绕 HTTP 探测，避免没网时白等。
+	if local != "" && isPublicIP(local) {
+		return local
+	}
+	if ip := publicIPv4(); ip != "" {
 		return ip
+	}
+	if local != "" {
+		return local
 	}
 	// 主机名可能是 localhost，解析出来就是回环，宁可报错让用户显式给 --host。
 	if name, err := os.Hostname(); err == nil && !isLoopbackHost(name) {
 		return name
 	}
 	return ""
+}
+
+// publicIPv4 依次问几个公共回显服务，拿不到就返回空。
+// 只接受公网 IPv4：回环、私网、链路本地、IPv6 一律忽略。
+func publicIPv4() string {
+	client := &http.Client{Timeout: 4 * time.Second}
+	for _, endpoint := range []string{
+		"https://api.ipify.org",
+		"https://ipv4.icanhazip.com",
+		"https://ifconfig.me/ip",
+	} {
+		resp, err := client.Get(endpoint)
+		if err != nil {
+			continue
+		}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64))
+		resp.Body.Close()
+		ip := net.ParseIP(strings.TrimSpace(string(body)))
+		if ip == nil || ip.To4() == nil {
+			continue
+		}
+		if isPublicIP(ip.String()) {
+			return ip.String()
+		}
+	}
+	return ""
+}
+
+func isPublicIP(host string) bool {
+	ip := net.ParseIP(host)
+	if ip == nil || ip.To4() == nil {
+		return false
+	}
+	return ip.IsGlobalUnicast() && !ip.IsPrivate() && !ip.IsLoopback() && !ip.IsLinkLocalUnicast()
+}
+
+func isPrivateHost(host string) bool {
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsPrivate()
 }
 
 func isLoopbackHost(host string) bool {
