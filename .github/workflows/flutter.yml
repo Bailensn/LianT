@@ -1,0 +1,55 @@
+name: Flutter
+
+# 构建 Flutter 客户端：Web 版发到 GitHub Pages 供预览，Android 版出 APK。
+on:
+  push:
+    paths:
+      - 'apps/flutter/**'
+      - '.github/workflows/flutter.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
+
+      - name: Generate platform scaffolding
+        working-directory: apps/flutter
+        run: |
+          flutter create --platforms=android,web --project-name liant .
+          # 覆盖回仓库里的 web/index.html，避免被脚手架替换
+          git -C "$GITHUB_WORKSPACE" checkout -- apps/flutter/web/index.html
+
+      - working-directory: apps/flutter
+        run: flutter pub get
+
+      - name: Build web
+        working-directory: apps/flutter
+        run: flutter build web --release --base-href /LianT/
+
+      - name: Build APK
+        working-directory: apps/flutter
+        run: flutter build apk --debug
+
+      - name: Deploy preview to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: apps/flutter/build/web
+          publish_branch: gh-pages
+          force_orphan: true
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: LianT-flutter-apk
+          path: apps/flutter/build/app/outputs/flutter-apk/*.apk
