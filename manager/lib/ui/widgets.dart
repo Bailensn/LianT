@@ -1039,3 +1039,81 @@ class RichBody extends StatelessWidget {
     return out;
   }
 }
+
+/// 普通二级页：聊天页同款返回头 + 普通列表，不再用大标题。
+class DetailScaffold extends StatelessWidget {
+  const DetailScaffold({
+    super.key,
+    required this.title,
+    required this.children,
+  });
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Scaffold(
+      backgroundColor: colors.bg,
+      body: Column(
+        children: <Widget>[
+          SafeArea(
+            bottom: false,
+            child: Container(
+              height: 56,
+              decoration: BoxDecoration(
+                color: colors.elevated.withOpacity(0.92),
+                border: Border(
+                  bottom: BorderSide(color: colors.sep, width: 0.5),
+                ),
+              ),
+              child: Row(
+                children: <Widget>[
+                  SizedBox(
+                    width: 76,
+                    height: 44,
+                    child: InkWell(
+                      onTap: () => Navigator.of(context).maybePop(),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          Icon(Icons.chevron_left_rounded, size: 24, color: colors.accent),
+                          LText(
+                            '返回',
+                            style: TextStyle(fontSize: 15, color: colors.accent),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: LText(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          color: colors.text,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 76),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+              children: children,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

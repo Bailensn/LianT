@@ -20,13 +20,8 @@ class LanguagePage extends StatelessWidget {
       'ja',
       'ko',
     ];
-    return LargeTitlePage(
+    return DetailScaffold(
       title: L10n.tr('语言'),
-      trailing: IconAction(
-        icon: Icons.close_rounded,
-        tooltip: L10n.tr('返回'),
-        onTap: () => Navigator.of(context).maybePop(),
-      ),
       children: <Widget>[
         GroupCard(
           title: L10n.tr('选择语言'),

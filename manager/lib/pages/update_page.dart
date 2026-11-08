@@ -147,7 +147,7 @@ class _UpdatePageState extends State<UpdatePage> {
     final serviceCurrent = state.serviceVersion.isEmpty
         ? '未握手'
         : state.serviceVersion;
-    return LargeTitlePage(
+    return DetailScaffold(
       title: '检查更新',
       children: <Widget>[
         GroupCard(
