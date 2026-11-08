@@ -593,12 +593,16 @@ class _NavSpring extends ChangeNotifier implements ValueListenable<double> {
 
   double get _velocity => _simulation?.dx(_now - _start) ?? 0;
 
-  void springTo(double target, SpringDescription spring) {
+  void springTo(
+    double target,
+    SpringDescription spring, {
+    double? velocity,
+  }) {
     _simulation = SpringSimulation(
       spring,
       _value,
       target,
-      _velocity,
+      velocity ?? _velocity,
       tolerance: Tolerance(
         distance: rest,
         velocity: rest * math.sqrt(spring.stiffness / spring.mass),
@@ -648,7 +652,7 @@ class _GlassBottomNavState extends State<GlassBottomNav>
       SpringDescription.withDampingRatio(mass: 1, stiffness: 1024, ratio: 0.9);
   // 越界后改用高阻尼弹簧，快速甩到边缘也不会再来回撞墙。
   static final SpringDescription _boundarySpring =
-      SpringDescription.withDampingRatio(mass: 1, stiffness: 420, ratio: 1.15);
+      SpringDescription.withDampingRatio(mass: 1, stiffness: 500, ratio: 1.35);
   static final SpringDescription _pressSpring =
       SpringDescription.withDampingRatio(mass: 1, stiffness: 311, ratio: 0.593);
   // 松手回位只留很轻的余量；ratio 越低回弹越大，0.85 已接近临界阻尼。
@@ -716,7 +720,12 @@ class _GlassBottomNavState extends State<GlassBottomNav>
       HapticFeedback.selectionClick();
       setState(() => _previewIndex = index);
     }
-    _lens.springTo(position, outside ? _boundarySpring : _followSpring);
+    // 越界时清掉朝外的继承速度；内部拖动仍然保留速度，跟手更顺。
+    _lens.springTo(
+      position,
+      outside ? _boundarySpring : _followSpring,
+      velocity: outside ? 0 : null,
+    );
   }
 
   void _onUp(PointerUpEvent event) {
