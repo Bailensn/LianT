@@ -23,14 +23,14 @@ v1.0.0-RC1-eeeeeee
 | Workflow | 触发 | 产物 |
 | --- | --- | --- |
 | `Service binaries` | `service/**` 变更或手动 | GitHub pre-release：`LianT-linux-amd64`、`LianT-linux-arm64`、`SHA256SUMS.txt` |
-| `Flutter (Android)` | `manager/**` 变更或手动 | Android debug APK；Web 只做编译校验，不发布 |
+| `Flutter (Android)` | `manager/**` 变更或手动 | Android release APK（arm64 / x86_64 / universal 三个）；Web 只做编译校验，不发布 |
 | `CI` | 所有 push / PR | 协议漂移检查、`go vet`、`go test -race`（不产物） |
 
 - 服务端二进制用 `CGO_ENABLED=0` 构建，直接拷到 `/opt/liant` 就能跑；`install.sh`
   从最新的 pre-release 取资产（注意 GitHub 的 `/releases/latest` 会跳过 pre-release，
   脚本用的是 `/releases?per_page=5`）。
 - 服务端二进制不再内嵌网页管理端，只提供 `/v1/ws`、`/v1/media/` 与根路径说明。
-- Flutter 的 APK 作为 workflow artifact 上传，不建 Release；
+- Flutter 的 APK 拆成 arm64、x86_64、universal 三个 artifact 上传，不建 Release；
   **Web 构建仅供本地预览，不发布到 gh-pages 或任何公开地址**。
 - 不做桌面端构建（没有 Linux/Windows/macOS 产物）。
 
@@ -50,7 +50,8 @@ CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$VERSION" \
 ```bash
 cd manager
 flutter build web --release          # 仅预览
-flutter build apk --debug            # 唯一交付物
+flutter build apk --release          # universal
+flutter build apk --release --split-per-abi   # arm64 / x86_64 / armeabi
 ```
 
 ## 不做什么

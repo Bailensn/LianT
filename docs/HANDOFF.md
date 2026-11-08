@@ -51,7 +51,8 @@ Docker 已全部移除，不要加回来。
 - `lib/core/browser_env*.dart`：条件导入，Web 读地址栏参数，其它平台返回 null。
 - `android/` 已入库：应用 ID `com.bailensn.liant`，主清单带 `INTERNET` 权限，
   Gradle 工具链按 CI 的 Flutter 3.24.5 对齐（Gradle 8.3 / AGP 8.1.0 / Kotlin 1.8.22）。
-  启动图标是品牌蓝底白色 L，由 `tool/make_icons.py` 生成，含 Android 8+ 自适应图标与网页 favicon。
+  图标源文件是 `assets/icon.svg`（iOS squircle 蓝底 + 圆头 L）与 `assets/icon_foreground.svg`，
+  各尺寸 PNG 由浏览器原生 SVG 渲染生成；含 Android 8+ 自适应图标与网页 favicon。
   **Android 是唯一交付目标**；Web 只在本地预览，不对外发布；不做桌面端。
 
 **视觉**（`lib/ui/tokens.dart` + `widgets.dart` + 各页面）：
@@ -72,7 +73,8 @@ export PATH=$PREFIX/bin:$PREFIX/opt/flutter/bin:/system/bin
 cd /storage/emulated/0/LianT/manager
 flutter analyze
 flutter build web --release               # 预览用，约 70 秒
-flutter build apk --debug                 # Android 交付物；需要 Android SDK/JDK
+flutter build apk --release               # Android 交付物；需要 Android SDK/JDK
+flutter build apk --release --split-per-abi  # 拆出 arm64 / x86_64
 ```
 
 `dart` 不在 `$PREFIX/bin`，要把 `$PREFIX/opt/flutter/bin` 加进 PATH。
@@ -118,7 +120,7 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 
 - `CI`：`scripts/check-protocol.sh`（检查 Flutter 是否提到服务端所有消息类型）+ `go vet` + `go test -race`
 - `Service binaries`：构建 linux amd64/arm64 并发布 pre-release（`install.sh` 从这取）
-- `Flutter (Android)`：官方 Flutter 3.24.5 出 debug APK，Web 只做编译校验（不发布），路径 `manager/**`
+- `Flutter (Android)`：官方 Flutter 3.24.5 出 release APK（arm64 / x86_64 / universal），Web 只做编译校验（不发布），路径 `manager/**`
 - 推送：`git push https://x-access-token:$TOKEN@github.com/Bailensn/LianT.git HEAD:main`
   TOKEN 在 `$HOME/newtoken.txt`；这条网络链路时好时坏，用循环重试 5 次。
 
@@ -140,7 +142,7 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 - 媒体只做按需拉取 + 图片渲染，未落盘缓存；失败文案区分「已过期」与「空间不足被清理」
 - 本地消息留存上限 2000 条（约 2.5 MB），不是协议里的「本地不设上限」
 - 客户端私钥存本地 KV，未接 Keystore/WebCrypto 不可导出密钥
-- Android 还没有正式签名配置（CI 只出 debug APK），release 包需要接 signingConfig
+- Android 还没有正式签名配置（release 包临时用 debug key 签名），正式上架需要接 signingConfig
 - Android 真机还没跑过配对与收发（本机只有 Web 预览与 mock 服务）
 - Basic 认证启用后，Flutter 原生端无法在 WebSocket 握手提供凭据；用反代侧访问控制或暂不开启
 - 通知、真机截图仍是缺口

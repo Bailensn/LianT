@@ -86,10 +86,11 @@ QQ 的 `app_id/app_secret` 来自 QQ 开放平台机器人后台。
 
 **Android 是交付目标：**
 
-- 本地构建：`cd manager && flutter build apk --debug`；
-- CI 产物在 `LianT-android-debug`（debug APK）；
+- 本地构建：`cd manager && flutter build apk --release`；
+- CI 产物拆成三个（release，签名仍是 debug key）：
+  `LianT-android-arm64`、`LianT-android-x86_64`、`LianT-android-universal`；
 - 应用 ID `com.bailensn.liant`，已经带 `INTERNET` 权限；
-- v1 还没有正式分发的签名配置，CI 只出 debug APK，正式发布前需要接 signingConfig。
+- v1 还没有正式分发的签名配置，正式上架前需要接 signingConfig。
 
 **Web 只用于本地预览，不对外发布：**
 
