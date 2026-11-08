@@ -862,9 +862,11 @@ Future<T?> showLiantSheet<T>({
     enableDrag: dismissable,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
-    sheetAnimationStyle: const AnimationStyle(
-      duration: Duration(milliseconds: 260),
-      reverseDuration: Duration(milliseconds: 200),
+    // Flutter 3.24 的 AnimationStyle 构造函数不是 const。
+    // ignore: prefer_const_constructors
+    sheetAnimationStyle: AnimationStyle(
+      duration: const Duration(milliseconds: 260),
+      reverseDuration: const Duration(milliseconds: 200),
     ),
     builder: (sheetContext) {
       return Padding(
