@@ -105,8 +105,8 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 **自检情况**：
 
 - `flutter analyze` 0 issue；`flutter build web --release` 通过；
-- CI 三个 workflow 全绿：`CI`（协议对照 + go vet + go test -race）、
-  `Service binaries`、`Flutter (Android)`（3.24.5 的 APK + Web 编译校验）；
+- CI 三个 workflow：`CI`（协议对照 + go vet + go test -race + Flutter analyze/test）、
+  `Service`（服务端二进制 pre-release）、`Android`（3.24.5 的三个 release APK）；
 - `dart run tool/p256_check.dart` 与 `openssl` 双向验证签名/DER/指纹；
 - `dart run tool/mock_smoke.dart` 跑通「挑战自证 → pair.ok → auth.ok → snapshot →
   msg.list → msg.send → 事件」；
@@ -119,8 +119,8 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 ### CI
 
 - `CI`：`scripts/check-protocol.sh`（检查 Flutter 是否提到服务端所有消息类型）+ `go vet` + `go test -race`
-- `Service binaries`：构建 linux amd64/arm64 并发布 pre-release（`install.sh` 从这取）
-- `Flutter (Android)`：官方 Flutter 3.24.5 出 release APK（arm64 / x86_64 / universal），路径 `manager/**`；Web 预览不进 CI
+- `Service`：先 vet/测试，再构建 linux amd64/arm64 并发布 pre-release（`install.sh` 从这取）
+- `Android`：官方 Flutter 3.24.5 出 release APK（arm64 / x86_64 / universal），路径 `manager/**`；Web 预览不进 CI
 - 推送：`git push https://x-access-token:$TOKEN@github.com/Bailensn/LianT.git HEAD:main`
   TOKEN 在 `$HOME/newtoken.txt`；这条网络链路时好时坏，用循环重试 5 次。
 

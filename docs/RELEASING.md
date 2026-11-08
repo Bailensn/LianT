@@ -18,13 +18,13 @@ v1.0.0-RC1-eeeeeee
 
 ## 产物
 
-不再打包 Docker，也不推镜像。发布由两个 workflow 各自产出：
+不再打包 Docker，也不推镜像。发布由三个 workflow 负责：
 
 | Workflow | 触发 | 产物 |
 | --- | --- | --- |
-| `Service binaries` | `service/**` 变更或手动 | GitHub pre-release：`LianT-linux-amd64`、`LianT-linux-arm64`、`SHA256SUMS.txt` |
-| `Flutter (Android)` | `manager/**` 变更或手动 | Android release APK（arm64 / x86_64 / universal 三个） |
-| `CI` | 所有 push / PR | 协议漂移检查、`go vet`、`go test -race`（不产物） |
+| `Service` | `service/**` 变更或手动 | GitHub pre-release：`LianT-linux-amd64`、`LianT-linux-arm64`、`SHA256SUMS.txt` |
+| `Android` | `manager/**` 变更或手动 | Android release APK（arm64 / x86_64 / universal 三个） |
+| `CI` | 所有 push / PR | 协议漂移检查、`go vet`、`go test -race`、Flutter `analyze`/`test`（不产物） |
 
 - 服务端二进制用 `CGO_ENABLED=0` 构建，直接拷到 `/opt/liant` 就能跑；`install.sh`
   从最新的 pre-release 取资产（注意 GitHub 的 `/releases/latest` 会跳过 pre-release，

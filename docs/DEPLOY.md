@@ -12,7 +12,7 @@
 - 磁盘：消息库很小，媒体按单 Bot 3 GB 规划；
 - 时间同步：认证要求时差 ≤ 60 秒。
 
-二进制从 CI 的 `Service binaries` 产物里下：`LianT-linux-amd64` 或 `LianT-linux-arm64`，
+二进制从 `Service` workflow 的产物里下：`LianT-linux-amd64` 或 `LianT-linux-arm64`，
 附 `SHA256SUMS.txt`。
 
 ## 2. 安装

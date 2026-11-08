@@ -1,9 +1,12 @@
 name: CI
 
-# 只做验证：协议对照、vet、race 测试。产物由 Service binaries 与 Flutter 两个工作流负责。
+# 质量门禁：服务端 go vet / go test -race / 协议对照，客户端 analyze / test。
+# 产物只由 Service 与 Android 两个工作流负责。
 on:
   push:
-    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   pull_request:
   workflow_dispatch:
 
@@ -15,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
+  service:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -36,3 +39,26 @@ jobs:
       - name: Test
         working-directory: service
         run: go test -race ./...
+
+  client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
+
+      - name: Pub get
+        working-directory: manager
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: manager
+        run: flutter analyze
+
+      - name: Test
+        working-directory: manager
+        run: flutter test
