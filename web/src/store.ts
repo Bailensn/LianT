@@ -76,6 +76,7 @@ type State = {
   audit: AuditEntry[]
   msgs: Msg[]
   read: Record<string, number>
+  remarks: Record<string, string>
   caps: string[]
   booted: boolean
 }
@@ -103,6 +104,7 @@ type Actions = {
   revokeDevice: (id: string) => Promise<void>
   loadAudit: () => Promise<void>
   markRead: (key: string) => void
+  setRemark: (key: string, name: string) => void
   clearError: () => void
 }
 
@@ -122,6 +124,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   msgs: [],
   media: {},
   read: {},
+  remarks: {},
   caps: [],
   booted: false,
 
@@ -129,8 +132,9 @@ export const useStore = create<State & Actions>((set, get) => ({
     if (get().booted) return
     const identity = (await loadIdentity()) ?? null
     const read = await loadKV<Record<string, number>>('read', {})
+    const remarks = await loadKV<Record<string, string>>('remarks', {})
     const msgs = (await loadMessages()).sort(byTime)
-    set({ identity, read, msgs, booted: true })
+    set({ identity, read, remarks, msgs, booted: true })
     if (identity) await connect(identity, set, get)
   },
 
@@ -313,6 +317,15 @@ export const useStore = create<State & Actions>((set, get) => ({
     }
   },
 
+  setRemark(key, name) {
+    const remarks = { ...get().remarks }
+    const trimmed = name.trim()
+    if (trimmed) remarks[key] = trimmed
+    else delete remarks[key]
+    set({ remarks })
+    void putKV('remarks', remarks)
+  },
+
   markRead(key) {
     const read = { ...get().read, [key]: Date.now() }
     set({ read })
@@ -470,7 +483,11 @@ export async function loadMessages(): Promise<Msg[]> {
   })
 }
 
-export function deriveConversations(msgs: Msg[], read: Record<string, number>): Conversation[] {
+export function deriveConversations(
+  msgs: Msg[],
+  read: Record<string, number>,
+  remarks: Record<string, string> = {},
+): Conversation[] {
   const map = new Map<string, Conversation>()
   for (const m of msgs) {
     const key = convKey(m.bot_id, m.peer_id)
@@ -479,11 +496,12 @@ export function deriveConversations(msgs: Msg[], read: Record<string, number>): 
       bot_id: m.bot_id,
       peer_id: m.peer_id,
       peer_kind: m.peer_kind,
-      title: m.sender_name || m.peer_id,
+      title: remarks[key] || m.sender_name || m.peer_id,
       unread: 0,
       last: undefined,
     }
     if (!conv.last || m.ts >= conv.last.ts) conv.last = m
+    conv.title = remarks[key] || m.sender_name || conv.title
     if (m.direction === 'in' && m.ts > (read[key] ?? 0)) conv.unread++
     map.set(key, conv)
   }

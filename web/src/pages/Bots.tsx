@@ -35,9 +35,8 @@ export default function Bots() {
     setBusy(true)
     setError('')
     try {
-      const id = await addBot('qqbot', { app_id: appId.trim(), app_secret: secret.trim() }, label.trim())
-      // 添加成功就直接拉起来，省一步点击；失败不影响已保存的配置。
-      await startBot(id).catch(() => {})
+      // 服务端在 bot.add 里就会把机器人拉起来，这里只刷新列表。
+      await addBot('qqbot', { app_id: appId.trim(), app_secret: secret.trim() }, label.trim())
       setAdding(false)
       setAppId('')
       setSecret('')

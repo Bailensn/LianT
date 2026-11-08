@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { convKey, useStore } from '../store'
-import { formatTime } from '../ui/Common'
+import { formatTime, Sheet, Button } from '../ui/Common'
 import { RichBody } from '../ui/Body'
 
 export default function Chat() {
@@ -12,6 +12,8 @@ export default function Chat() {
   const send = useStore((s) => s.send)
   const retrySend = useStore((s) => s.retrySend)
   const history = useStore((s) => s.history)
+  const remarks = useStore((s) => s.remarks)
+  const setRemark = useStore((s) => s.setRemark)
   const media = useStore((s) => s.media)
   const fetchMedia = useStore((s) => s.fetchMedia)
   const markRead = useStore((s) => s.markRead)
@@ -21,6 +23,8 @@ export default function Chat() {
   const [collapsed, setCollapsed] = useState(false)
   const [historyError, setHistoryError] = useState('')
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [remarkDraft, setRemarkDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
@@ -31,8 +35,13 @@ export default function Chat() {
     [msgs, botId, peerId],
   )
   const key = convKey(botId, peerId)
-  const title = list.find((m) => m.sender_name)?.sender_name || peerId
+  const known = remarks[key] || list.find((m) => m.sender_name)?.sender_name
+  const title = known || shortPeer(peerId)
   const lastIn = [...list].reverse().find((m) => m.direction === 'in')
+
+  useEffect(() => {
+    setRemarkDraft(remarks[key] ?? '')
+  }, [remarks, key])
 
   useEffect(() => {
     markRead(key)
@@ -88,6 +97,27 @@ export default function Chat() {
 
   return (
     <div className="flex h-full flex-col">
+      <Sheet open={editing} title="设置备注" onClose={() => setEditing(false)} dismissable>
+        <div className="card mx-4 mb-4 overflow-hidden">
+          <input
+            value={remarkDraft}
+            onChange={(e) => setRemarkDraft(e.target.value)}
+            placeholder={known || shortPeer(peerId)}
+            className="h-12 w-full bg-transparent px-4 text-[16px] outline-none placeholder:text-[var(--text-3)]"
+          />
+        </div>
+        <div className="px-4 pb-4">
+          <Button
+            full
+            onClick={() => {
+              setRemark(key, remarkDraft)
+              setEditing(false)
+            }}
+          >
+            保存备注
+          </Button>
+        </div>
+      </Sheet>
       <header
         className={`glass sticky top-0 z-10 flex items-center gap-2 border-b px-2 transition-[padding] duration-200 ${
           collapsed ? 'border-[var(--sep)] py-1.5' : 'border-transparent pt-[max(0.5rem,env(safe-area-inset-top))] pb-2'
@@ -104,6 +134,7 @@ export default function Chat() {
         </button>
         <div className="min-w-0 flex-1 text-center">
           <p className={`truncate font-semibold transition-all duration-200 ${collapsed ? 'text-[15px]' : 'text-[17px]'}`}>{title}</p>
+          <p className={`truncate text-[11px] text-[var(--text-3)]`}>{peerId}</p>
           <p className={`truncate overflow-hidden text-[11px] text-[var(--text-2)] transition-all duration-200 ${collapsed ? 'max-h-0 opacity-0' : 'max-h-4 opacity-100'}`}>
             {bot?.display_name || bot?.username || botId}
             {windowLeft !== null ? ` · ${
@@ -113,7 +144,12 @@ export default function Chat() {
             }` : ''}
           </p>
         </div>
-        <div className="hidden w-[68px] md:block" />
+        <button
+          onClick={() => setEditing(true)}
+          className="flex h-10 items-center rounded-xl px-2 text-[15px] text-[var(--accent)] active:opacity-60"
+        >
+          备注
+        </button>
       </header>
 
       <div
@@ -219,4 +255,10 @@ function MediaBody({ url, fallback }: { url?: string; fallback: string }) {
       }}
     />
   )
+}
+
+// 没有昵称时用 openid 后 6 位，别把整串 openid 糊在标题上。
+function shortPeer(peer: string): string {
+  const raw = peer.includes(':') ? peer.split(':').slice(1).join(':') : peer
+  return raw.length > 8 ? `用户 ${raw.slice(-6)}` : `用户 ${raw}`
 }

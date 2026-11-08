@@ -6,10 +6,10 @@ package core
 
 import (
 	"context"
-	"log/slog"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -411,10 +411,18 @@ func (c *Core) AddBot(ctx context.Context, _ server.Session, raw json.RawMessage
 	if err != nil {
 		return nil, internal(err)
 	}
-	// 登记后置为 starting：下一次 serve 启动会认领它；如果 serve 已在跑，
-	// 客户端可以立刻调 bot.start。
+	// 登记后置为 starting，并立刻拉起来：加机器人就该是运行态，
+	// 不该让人再去点一次启动。serve 没跑时，下次启动会统一认领。
 	if err := c.opt.Store.SetBotStatus(ctx, botID, platform.Status{State: platform.StateStarting}); err != nil {
 		return nil, internal(err)
+	}
+	c.mu.RLock()
+	ctl := c.botCtl
+	c.mu.RUnlock()
+	if ctl != nil {
+		if err := ctl.Start(ctx, botID); err != nil {
+			slog.Warn("自动启动 Bot 失败", "bot", botID, "err", err)
+		}
 	}
 	return protocol.BotRef{BotID: botID}, nil
 }
