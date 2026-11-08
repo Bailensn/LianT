@@ -196,9 +196,6 @@ class _ChatPageState extends State<ChatPage> {
       final deadline = lastIn.ts + windowSeconds * 1000;
       windowLeft = ((deadline - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
     }
-    final canInitiate = bot?.constraints.canInitiate ?? false;
-    final passive = _replyTo != null || _mentioning;
-    final active = canInitiate && !passive;
     final topInset = MediaQuery.paddingOf(context).top;
     final headerHeight = _collapsed ? 58.0 : 96.0;
 
@@ -237,7 +234,7 @@ class _ChatPageState extends State<ChatPage> {
             left: 0,
             right: 0,
             bottom: 0,
-            child: _composer(context, state, bot, active),
+            child: _composer(context, state, bot),
           ),
         ],
       ),
@@ -396,6 +393,82 @@ class _ChatPageState extends State<ChatPage> {
     return widgets;
   }
 
+  Widget _imageBubble(BuildContext context, ImageProvider provider) {
+    return GestureDetector(
+      onTap: () => _openFullscreenImage(context, provider),
+      child: Stack(
+        children: <Widget>[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image(
+              image: provider,
+              width: double.infinity,
+              height: 220,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                width: double.infinity,
+                height: 160,
+                alignment: Alignment.center,
+                child: LText(
+                  '媒体加载失败',
+                  style: TextStyle(fontSize: 14, color: context.colors.text2),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 6,
+            right: 6,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.fullscreen_rounded,
+                size: 18,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openFullscreenImage(BuildContext context, ImageProvider provider) {
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        pageBuilder: (context, animation, secondaryAnimation) => Scaffold(
+          backgroundColor: Colors.black,
+          body: Stack(
+            children: <Widget>[
+              Positioned.fill(
+                child: InteractiveViewer(
+                  child: Center(
+                    child: Image(image: provider, fit: BoxFit.contain),
+                  ),
+                ),
+              ),
+              SafeArea(
+                child: Align(
+                  alignment: Alignment.topRight,
+                  child: IconButton(
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            FadeTransition(opacity: animation, child: child),
+      ),
+    );
+  }
+
   Widget _bubble(
     BuildContext context,
     AppState state,
@@ -412,10 +485,7 @@ class _ChatPageState extends State<ChatPage> {
     Widget content;
     final localBytes = state.localMedia[msg.msgId];
     if (msg.isMedia && msg.msgType == 'image' && localBytes != null) {
-      content = ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.memory(localBytes, fit: BoxFit.cover),
-      );
+      content = _imageBubble(context, MemoryImage(localBytes));
     } else if (msg.isMedia && msg.msgType == 'file') {
       final name = msg.body.plain.trim();
       content = LText(
@@ -439,17 +509,7 @@ class _ChatPageState extends State<ChatPage> {
           style: TextStyle(fontSize: 15, color: (outgoing ? Colors.white : colors.text).withOpacity(0.8)),
         );
       } else if (media.url != null) {
-        content = ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.network(
-            media.url!,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => LText(
-              '媒体加载失败',
-              style: TextStyle(fontSize: 14, color: outgoing ? Colors.white : colors.text2),
-            ),
-          ),
-        );
+        content = _imageBubble(context, NetworkImage(media.url!));
       } else {
         content = LText(
           media.error ?? msg.body.plain,
@@ -662,17 +722,9 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Widget _composer(BuildContext context, AppState state, Bot? bot, bool active) {
+  Widget _composer(BuildContext context, AppState state, Bot? bot) {
     final colors = context.colors;
     final enabled = state.online && bot != null;
-    final canInitiate = bot?.constraints.canInitiate ?? false;
-    final modeLabel = active
-        ? '主动消息：普通发送'
-        : _replyTo != null
-            ? '引用回复：被动窗口'
-            : _mentioning
-                ? '带 @：被动窗口'
-                : '被动回复：受回复窗口限制';
     return ClipRect(
       child: BackdropFilter(
         filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
@@ -778,24 +830,6 @@ class _ChatPageState extends State<ChatPage> {
                     ],
                   ),
                   if (_panelOpen) _attachPanel(context),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: LText(
-                          modeLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 11, color: colors.text3),
-                        ),
-                      ),
-                      if (!canInitiate)
-                        LText(
-                          '仅被动回复',
-                          style: TextStyle(fontSize: 11, color: colors.text3),
-                        ),
-                    ],
-                  ),
                 ],
               ),
             ),
@@ -912,10 +946,7 @@ class _ChatPageState extends State<ChatPage> {
     final colors = context.colors;
     return InkWell(
       borderRadius: BorderRadius.circular(14),
-      onTap: () {
-        setState(() => _panelOpen = false);
-        action.onTap();
-      },
+      onTap: action.onTap,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
@@ -966,7 +997,6 @@ class _ChatPageState extends State<ChatPage> {
         _pendingBytes = bytes;
         _pendingName = file.name;
         _pendingKind = kind;
-        _panelOpen = false;
         _sendError = '';
       });
       _focusInput();
@@ -1200,6 +1230,7 @@ class _ChatPageState extends State<ChatPage> {
           _pendingBytes = null;
           _pendingName = '';
           _pendingKind = '';
+          _panelOpen = false;
           _sending = false;
         });
       }
