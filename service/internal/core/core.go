@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -260,12 +261,13 @@ func (c *Core) Send(ctx context.Context, sess server.Session, raw json.RawMessag
 		if !ok {
 			return nil, bad(protocol.CodeUnsupportedCapability, "该平台不支持发送媒体")
 		}
-		msgType = req.Media.Kind
+		kind := mediaKind(req.Media.Kind, req.Media.Name)
+		msgType = kind
 		plain = req.Media.Name
 		doc = nil
 		mid, err = sender.SendMedia(ctx, accountOf(bot), creds, platform.MediaRequest{
 			Peer:      platform.Peer{ID: peer.ID, Kind: peer.Kind},
-			Media:     platform.Media{Kind: req.Media.Kind, Name: req.Media.Name, Data: data},
+			Media:     platform.Media{Kind: kind, Name: req.Media.Name, Data: data},
 			InReplyTo: req.InReplyTo,
 		})
 		if err != nil {
@@ -405,6 +407,9 @@ func (c *Core) Ingest(ctx context.Context, botID string, in platform.Inbound) (b
 		ts = c.now().UnixMilli()
 	}
 	kind := in.Kind
+	if (kind == "" || kind == "text") && len(in.Media) > 0 {
+		kind = kindFromMIME(in.Media[0].MIME)
+	}
 	if kind == "" {
 		kind = "text"
 	}
@@ -686,6 +691,36 @@ func accountOf(b store.Bot) platform.Account {
 		DisplayName: b.DisplayName,
 		Caps:        b.Caps,
 		MaxTextLen:  maxTextLen(b),
+	}
+}
+
+func kindFromMIME(mime string) string {
+	mime = strings.ToLower(mime)
+	switch {
+	case strings.HasPrefix(mime, "image/"):
+		return "image"
+	case strings.HasPrefix(mime, "video/"):
+		return "video"
+	case strings.HasPrefix(mime, "audio/"):
+		return "audio"
+	default:
+		return "file"
+	}
+}
+
+func mediaKind(kind, name string) string {
+	if kind != "" && kind != "file" {
+		return kind
+	}
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".heic", ".heif":
+		return "image"
+	case ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi":
+		return "video"
+	case ".mp3", ".wav", ".silk", ".m4a", ".ogg":
+		return "audio"
+	default:
+		return "file"
 	}
 }
 

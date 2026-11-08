@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -318,7 +319,9 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _requestOneMedia(AppState state, ChatMessage msg) {
-    if (!msg.isMedia || msg.msgType != 'image') return;
+    final maybeMedia = msg.isMedia ||
+        (msg.msgType == 'text' && msg.body.plain.isEmpty);
+    if (!maybeMedia) return;
     if (state.localMedia.containsKey(msg.msgId)) return;
     if (state.media['${msg.botId}/${msg.msgId}'] != null) return;
     final id = '$_key|${msg.msgId}';
@@ -523,25 +526,19 @@ class _ChatPageState extends State<ChatPage> {
 
     Widget content;
     final localBytes = state.localMedia[msg.msgId];
-    if (msg.isMedia && msg.msgType == 'image' && localBytes != null) {
+    final mime = (media?.mime ?? '').toLowerCase();
+    final imageLike = msg.msgType == 'image' || mime.startsWith('image/');
+    final videoLike = msg.msgType == 'video' || mime.startsWith('video/');
+    final audioLike = msg.msgType == 'audio' || mime.startsWith('audio/');
+    final fileLike = msg.msgType == 'file' ||
+        (mime.isNotEmpty && !imageLike && !videoLike && !audioLike);
+    final pendingMedia = msg.msgType == 'text' &&
+        msg.body.plain.isEmpty &&
+        _mediaRequested.contains('$_key|${msg.msgId}');
+    final mediaLike = msg.isMedia || pendingMedia || mime.isNotEmpty;
+    if (imageLike && localBytes != null) {
       content = _imageBubble(context, MemoryImage(localBytes));
-    } else if (msg.isMedia && msg.msgType == 'file') {
-      final name = msg.body.plain.trim();
-      content = LText(
-        name.isEmpty ? '[文件]' : '[文件] $name',
-        style: TextStyle(fontSize: 15, color: outgoing ? Colors.white : colors.text),
-      );
-    } else if (msg.isMedia && msg.msgType == 'video') {
-      content = LText(
-        '[视频]',
-        style: TextStyle(fontSize: 15, color: outgoing ? Colors.white : colors.text),
-      );
-    } else if (msg.isMedia && msg.msgType == 'audio') {
-      content = LText(
-        '[语音]',
-        style: TextStyle(fontSize: 15, color: outgoing ? Colors.white : colors.text),
-      );
-    } else if (msg.isMedia) {
+    } else if (imageLike) {
       if (media == null || media.loading) {
         content = LText(
           '正在加载媒体…',
@@ -551,10 +548,36 @@ class _ChatPageState extends State<ChatPage> {
         content = _imageBubble(context, NetworkImage(media.url!));
       } else {
         content = LText(
-          media.error ?? msg.body.plain,
-          style: TextStyle(fontSize: 14, color: (outgoing ? Colors.white : colors.text2)),
+          media.error ?? '媒体加载失败',
+          style: TextStyle(fontSize: 14, color: outgoing ? Colors.white : colors.text2),
         );
       }
+    } else if (fileLike) {
+      final name = msg.body.plain.trim();
+      content = LText(
+        name.isEmpty ? '[文件]' : '[文件] $name',
+        style: TextStyle(fontSize: 15, color: outgoing ? Colors.white : colors.text),
+      );
+    } else if (videoLike) {
+      content = LText(
+        '[视频]',
+        style: TextStyle(fontSize: 15, color: outgoing ? Colors.white : colors.text),
+      );
+    } else if (audioLike) {
+      content = LText(
+        '[语音]',
+        style: TextStyle(fontSize: 15, color: outgoing ? Colors.white : colors.text),
+      );
+    } else if (mediaLike && (media == null || media.loading)) {
+      content = LText(
+        '正在加载媒体…',
+        style: TextStyle(fontSize: 15, color: (outgoing ? Colors.white : colors.text).withOpacity(0.8)),
+      );
+    } else if (mediaLike) {
+      content = LText(
+        media?.error ?? msg.body.plain,
+        style: TextStyle(fontSize: 14, color: outgoing ? Colors.white : colors.text2),
+      );
     } else {
       content = RichBody(
         body: msg.body,
@@ -1022,15 +1045,27 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _pickAttachment({required bool media}) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: media ? FileType.media : FileType.any,
-        withData: true,
-        allowMultiple: false,
-      );
-      final files = result?.files ?? const <PlatformFile>[];
-      if (files.isEmpty) return;
-      final file = files.first;
-      final bytes = file.bytes;
+      Uint8List? bytes;
+      String name = '';
+      String? mime;
+      if (media) {
+        final picked = await ImagePicker().pickMedia();
+        if (picked == null) return;
+        bytes = await picked.readAsBytes();
+        name = picked.name;
+        mime = picked.mimeType;
+      } else {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.any,
+          withData: true,
+          allowMultiple: false,
+        );
+        final files = result?.files ?? const <PlatformFile>[];
+        if (files.isEmpty) return;
+        final file = files.first;
+        bytes = file.bytes;
+        name = file.name;
+      }
       if (bytes == null) {
         if (mounted) setState(() => _sendError = '读取文件失败');
         return;
@@ -1039,11 +1074,11 @@ class _ChatPageState extends State<ChatPage> {
         if (mounted) setState(() => _sendError = '文件超过 5 MiB，暂时不能发');
         return;
       }
-      final kind = _kindForName(file.name, media: media);
+      final kind = _kindOf(name, mime);
       if (!mounted) return;
       setState(() {
         _pendingBytes = bytes;
-        _pendingName = file.name;
+        _pendingName = name;
         _pendingKind = kind;
         _sendError = '';
       });
@@ -1053,21 +1088,21 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  String _kindForName(String name, {required bool media}) {
+  String _kindOf(String name, String? mime) {
+    final type = (mime ?? '').toLowerCase();
+    if (type.startsWith('image/')) return 'image';
+    if (type.startsWith('video/')) return 'video';
+    if (type.startsWith('audio/')) return 'audio';
     final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
-    if (media) {
-      if (const <String>{'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp'}.contains(ext)) {
-        return 'image';
-      }
-      if (const <String>{'mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'}.contains(ext)) {
-        return 'video';
-      }
-      if (const <String>{'mp3', 'wav', 'silk', 'm4a', 'ogg'}.contains(ext)) {
-        return 'audio';
-      }
-      return 'file';
+    if (const <String>{'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp'}.contains(ext)) {
+      return 'image';
     }
-    if (const <String>{'mp3', 'wav', 'silk', 'm4a', 'ogg'}.contains(ext)) return 'audio';
+    if (const <String>{'mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'}.contains(ext)) {
+      return 'video';
+    }
+    if (const <String>{'mp3', 'wav', 'silk', 'm4a', 'ogg'}.contains(ext)) {
+      return 'audio';
+    }
     return 'file';
   }
 

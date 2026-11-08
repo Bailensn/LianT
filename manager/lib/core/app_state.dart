@@ -19,15 +19,16 @@ import 'socket.dart';
 
 /// 媒体加载状态。
 class MediaState {
-  const MediaState._({this.url, this.error, this.loading = false});
+  const MediaState._({this.url, this.mime = '', this.error, this.loading = false});
 
   const MediaState.loading() : this._(loading: true);
 
-  const MediaState.ready(String url) : this._(url: url);
+  const MediaState.ready(String url, {String mime = ''}) : this._(url: url, mime: mime);
 
   const MediaState.failed(String error) : this._(error: error);
 
   final String? url;
+  final String mime;
   final String? error;
   final bool loading;
 }
@@ -871,9 +872,10 @@ class AppState extends ChangeNotifier {
         'msg_id': msgId,
       });
       final url = res['url'] as String? ?? '';
+      final mime = res['mime'] as String? ?? '';
       media[key] = url.isEmpty
           ? const MediaState.failed('媒体地址为空')
-          : MediaState.ready(client.resolveMediaUrl(url));
+          : MediaState.ready(client.resolveMediaUrl(url), mime: mime);
     } on ProtocolException catch (err) {
       media[key] = MediaState.failed(err.friendly);
     } catch (_) {
