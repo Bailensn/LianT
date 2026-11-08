@@ -879,10 +879,15 @@ class _ChatPageState extends State<ChatPage> {
                               shape: BoxShape.circle,
                               border: Border.all(color: colors.sep, width: 0.5),
                             ),
-                            child: Icon(
-                              _panelOpen ? Icons.close_rounded : Icons.add_rounded,
-                              size: 22,
-                              color: _panelOpen ? Colors.white : colors.text2,
+                            child: AnimatedRotation(
+                              turns: _panelOpen ? 0.125 : 0,
+                              duration: const Duration(milliseconds: 220),
+                              curve: Curves.easeOutCubic,
+                              child: Icon(
+                                _panelOpen ? Icons.close_rounded : Icons.add_rounded,
+                                size: 22,
+                                color: _panelOpen ? Colors.white : colors.text2,
+                              ),
                             ),
                           ),
                         ),
@@ -996,38 +1001,57 @@ class _ChatPageState extends State<ChatPage> {
     final colors = context.colors;
     final pages = _attachPageCount;
     final current = _panelPage.clamp(0, pages - 1).toInt();
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      height: _attachPanelHeight(current),
-      margin: const EdgeInsets.only(top: 8),
-      decoration: SquircleBoxDecoration(
-        color: colors.bg.withOpacity(0.55),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: <Widget>[
-          Expanded(
-            child: PageView.builder(
-              controller: _panelController,
-              itemCount: pages,
-              onPageChanged: (page) => setState(() => _panelPage = page),
-              itemBuilder: (context, page) {
-                final items = _pageActions(page);
-                return GridView.builder(
-                  padding: const EdgeInsets.all(8),
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    mainAxisSpacing: 8,
-                    crossAxisSpacing: 8,
-                    mainAxisExtent: 72,
-                  ),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) => _attachButton(context, items[index]),
-                );
-              },
-            ),
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        final t = Curves.easeOutCubic.transform(value);
+        return Opacity(
+          opacity: 0.72 + 0.28 * t,
+          child: Transform.scale(
+            scale: 0.96 + 0.04 * t,
+            alignment: Alignment.bottomCenter,
+            child: child,
           ),
+        );
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        height: _attachPanelHeight(current),
+        margin: const EdgeInsets.only(top: 8),
+        decoration: SquircleBoxDecoration(
+          color: colors.bg.withOpacity(0.55),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: <Widget>[
+            Expanded(
+              child: PageView.builder(
+                controller: _panelController,
+                itemCount: pages,
+                onPageChanged: (page) => setState(() => _panelPage = page),
+                itemBuilder: (context, page) {
+                  final items = _pageActions(page);
+                  return GridView.builder(
+                    padding: const EdgeInsets.all(8),
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 4,
+                      mainAxisSpacing: 8,
+                      crossAxisSpacing: 8,
+                      mainAxisExtent: 72,
+                    ),
+                    itemCount: items.length,
+                    itemBuilder: (context, index) => _StaggerIn(
+                      index: index,
+                      child: _attachButton(context, items[index]),
+                    ),
+                  );
+                },
+              ),
+            ),
           if (pages > 1)
             SizedBox(
               height: 18,
@@ -1048,7 +1072,8 @@ class _ChatPageState extends State<ChatPage> {
                 }),
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1711,4 +1736,60 @@ class _AttachAction {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+}
+
+
+class _StaggerIn extends StatefulWidget {
+  const _StaggerIn({required this.index, required this.child});
+
+  final int index;
+  final Widget child;
+
+  @override
+  State<_StaggerIn> createState() => _StaggerInState();
+}
+
+class _StaggerInState extends State<_StaggerIn>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+  );
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(Duration(milliseconds: widget.index * 26), () {
+      if (mounted) _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      child: widget.child,
+      builder: (context, child) {
+        final t = Curves.easeOutCubic.transform(_controller.value);
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, 6 * (1 - t)),
+            child: Transform.scale(
+              scale: 0.94 + 0.06 * t,
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
