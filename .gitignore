@@ -1,9 +1,3 @@
-# 网页管理端的构建产物由 scripts/build-web.sh 生成
-web/node_modules/
-web/dist/
-service/internal/webui/dist/*
-!service/internal/webui/dist/.gitkeep
-
 # 服务运行期数据
 service/data/
 data/

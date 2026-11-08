@@ -48,7 +48,7 @@ type session struct {
 // Store 是配对码的持久化后端。
 //
 // 有了它，配对码可以跨进程共享：`pair` 在一个容器里生成，
-// 正在 `serve` 的另一个容器照样能兑付——Docker 部署必须这样才能配对。
+// 正在 `serve` 的另一个进程照样能兑付——多进程部署必须这样才能配对。
 type Store interface {
 	SavePendingPair(ctx context.Context, code, nonce string, expires time.Time) error
 	LoadPendingPair(ctx context.Context) (code, nonce string, expires time.Time, err error)

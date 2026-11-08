@@ -26,7 +26,9 @@ if [ -z "$SRC" ] && [ -z "${LIANT_URL:-}" ]; then
   esac
   say "从 GitHub 取最新构建：$asset"
   SRC=$(mktemp)
-  url=$(curl -fsSL --retry 3 "https://api.github.com/repos/${REPO}/releases/latest" \
+  # Service 发的是 pre-release，GitHub 的 /releases/latest 会跳过它们，
+  # 所以直接列最近的 release 取第一个匹配资产。
+  url=$(curl -fsSL --retry 3 "https://api.github.com/repos/${REPO}/releases?per_page=5" \
     | grep -o "https://[^\"]*/${asset}" | head -1) || true
   [ -n "$url" ] || die "没有可用的 release，请检查网络或手动指定 LIANT_URL"
   curl -fSL --retry 3 -o "$SRC" "$url" || die "下载失败"
@@ -99,6 +101,6 @@ cat <<INFO
 
   1. 配对：cd $DIR && ./LianT pair --host ${IP:-<公网地址>}
   2. 反代：Nginx 指向 127.0.0.1:$PORT，并给服务加 LIANT_NO_TLS=1
-  3. 机器人：打开管理页 → 机器人 → 添加
+  3. 机器人：打开 LianT 客户端 → 机器人 → 添加
 
 INFO

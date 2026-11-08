@@ -13,46 +13,49 @@ v1.0.0-RC1-eeeeeee
 - **基线默认 `v1.0.0`**，通道默认 `Alpha`；只在有意义的里程碑才抬主/次/修或换通道，
   日常构建沿用同一基线、只换哈希（7 位短 SHA）。
 - 哈希取当前提交的短 SHA：`git rev-parse --short=7 HEAD`。
+- 版本号只体现在构建产物与 `LianT version` 输出里；仓库不打 tag、不改 `pubspec.yaml`
+  的版本（客户端的展示版本由构建时写入）。
 
 ## 产物
 
-只有一个多架构镜像：
+不再打包 Docker，也不推镜像。发布由两个 workflow 各自产出：
 
-```
-ghcr.io/bailensn/liant:v1.0.0-Alpha-<7位哈希>
-ghcr.io/bailensn/liant:latest
-```
+| Workflow | 触发 | 产物 |
+| --- | --- | --- |
+| `Service binaries` | `service/**` 变更或手动 | GitHub pre-release：`LianT-linux-amd64`、`LianT-linux-arm64`、`SHA256SUMS.txt` |
+| `Flutter` | `manager/**` 变更或手动 | gh-pages 网页预览、Android debug APK、Linux 桌面 bundle |
+| `CI` | 所有 push / PR | 协议漂移检查、`go vet`、`go test -race`（不产物） |
 
-- `linux/amd64` 与 `linux/arm64` 同时构建；
-- 网页管理端在构建镜像时就内嵌进二进制，不单独发布；
-- 不再产出独立二进制，也不再创建 GitHub Release。
-
-## 触发方式
-
-只有一条流水线 `.github/workflows/ci.yml`：
-
-1. `verify`：装依赖、构建网页、`go vet`、`go test -race`、无推送构建镜像并起容器冒烟；
-2. `image`：`verify` 通过后，构建 `linux/amd64` 与 `linux/arm64` 并推送到 GHCR。
-
-**每次 push 到 `main` 都会自动发版**，标签是 `v1.0.0-Alpha-<7 位哈希>`，同时把 `latest` 指过去。
-PR 只跑到 `verify`，不会推送镜像。
+- 服务端二进制用 `CGO_ENABLED=0` 构建，直接拷到 `/opt/liant` 就能跑；`install.sh`
+  从最新的 pre-release 取资产（注意 GitHub 的 `/releases/latest` 会跳过 pre-release，
+  脚本用的是 `/releases?per_page=5`）。
+- 服务端二进制不再内嵌网页管理端，只提供 `/v1/ws`、`/v1/media/` 与根路径说明。
+- Flutter 的 Web 预览发布到 `gh-pages`，路径前缀 `/LianT/`；APK 与桌面产物作为
+  workflow artifact 上传，不建 Release。
 
 ## 本地构建
 
-```bash
-docker build -t liant:dev .
-docker run --rm -p 8443:8443 -v liant_data:/app liant:dev serve
-```
-
-想改版本号：
+服务端：
 
 ```bash
-docker build --build-arg VERSION=v1.0.0-Alpha-local -t liant:dev .
+cd service
+VERSION="v1.0.0-Alpha-$(git rev-parse --short=7 HEAD)"
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$VERSION" \
+  -o ../dist/LianT-linux-amd64 ./cmd/liant
 ```
 
-`web/` 的 `node_modules` 与 `dist` 都不入库；镜像构建时在容器里现装现编。
+客户端（Flutter SDK 版本见 `manager/pubspec.yaml` 与 `HANDOFF.md`）：
+
+```bash
+cd manager
+flutter build web --release --base-href /LianT/
+flutter build apk --debug
+flutter build linux --release
+```
 
 ## 不做什么
 
-- 不发正式版，只有带哈希的预发布标签。
-- 不保留历史镜像以外的产物；`latest` 永远指向 `main` 最新一次构建。
+- 不发正式版，只有带哈希的 pre-release 标签。
+- 不恢复 Docker/Compose/GHCR 流程；部署以 systemd + 二进制为准。
+- 不单独发布客户端安装包；APK 与桌面产物只作为 CI artifact，网页版走 gh-pages。
+- 不保留历史产物；需要旧版本时从对应提交重新构建。

@@ -11,7 +11,7 @@ import (
 
 // basicAuth 是公网暴露时的第一道门。
 //
-// 它挡在网页、WSS 与媒体下载之前：浏览器会弹出账号密码框，认证通过后
+// 它挡在 WSS 与媒体下载之前：浏览器会弹出账号密码框，认证通过后
 // 同源的 WebSocket 握手会自动带上同一份凭据。
 func basicAuth(next http.Handler, user, pass string, onFail func(ip string)) http.Handler {
 	if user == "" || pass == "" {

@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/tls"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -31,7 +30,6 @@ import (
 	"github.com/Bailensn/LianT/service/internal/protocol"
 	"github.com/Bailensn/LianT/service/internal/server"
 	"github.com/Bailensn/LianT/service/internal/store"
-	"github.com/Bailensn/LianT/service/internal/webui"
 	"github.com/skip2/go-qrcode"
 )
 
@@ -264,7 +262,6 @@ func pairCommand(args []string) {
 
 	fs := flag.NewFlagSet("pair", flag.ExitOnError)
 	hostFlag := fs.String("host", "", "二维码里通告的主机名或 IP；留空则用 connect.address 或自动探测")
-	publicURL := fs.String("public-url", "", "对外访问地址，如 https://liant.example.com；反代部署时用它生成配对链接")
 	_ = fs.Parse(args)
 
 	pairer := pairing.New()
@@ -321,23 +318,11 @@ func pairCommand(args []string) {
 		"nonce": code.Nonce,
 		"exp":   code.Expires.Unix(),
 	})
-	// 二维码直接编码网页端的配对链接：手机相机扫一下就能打开管理页。
-	base := ""
-	if pub := strings.TrimSpace(*publicURL); pub != "" {
-		base = strings.TrimRight(pub, "/")
-	} else {
-		scheme := "https"
-		if noTLSRequested(false) {
-			scheme = "http"
-		}
-		base = fmt.Sprintf("%s://%s:%d", scheme, host, portOf(listenAddr(cfg)))
-	}
-	link := fmt.Sprintf("%s/#pair=%s", base, base64.RawURLEncoding.EncodeToString(payload))
+	// 二维码直接编码配对信息本身：客户端扫码或粘贴都能解析，不依赖某个网页。
 	fmt.Printf("配对码：%s，%d 秒内有效\n", code.Value, int(time.Until(code.Expires).Seconds()))
 	fmt.Printf("节点指纹：%s\n", id.Fingerprint())
-	fmt.Printf("管理页：%s\n", link)
 	fmt.Printf("配对信息：%s\n", payload)
-	if qr, err := qrcode.New(link, qrcode.Medium); err == nil {
+	if qr, err := qrcode.New(string(payload), qrcode.Medium); err == nil {
 		fmt.Println(qr.ToSmallString(false))
 		if err := os.MkdirAll("data", 0o700); err == nil {
 			if err := qr.WriteFile(512, "data/pair-qr.png"); err == nil {
@@ -345,7 +330,7 @@ func pairCommand(args []string) {
 			}
 		}
 	}
-	fmt.Println("手机扫上面的二维码打开管理页；首次打开要信任一次证书。本终端还会再确认一次。")
+	fmt.Println("手机打开 LianT 客户端「连接 LianT」页，粘贴上面的配对信息（或扫码）；本终端还会再确认一次。")
 
 	if delegated {
 		fmt.Println("检测到服务已在运行，这条配对码交给它处理。")
@@ -530,15 +515,22 @@ func appHandler(srv *server.Server, svc *core.Core) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/v1/ws", srv.Handler())
 	mux.Handle("/v1/media/", svc.MediaHandler())
-	// 其余路径交给内嵌的网页管理端；单页应用自己处理路由。
-	mux.Handle("/", webui.Handler())
+	// 服务本身不再内置网页管理端。根路径只回一行说明，
+	// 也让浏览器可以在这一层信任自签证书（之后 WebSocket 才能握手）。
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte("LianT Service\n\n客户端请连接 /v1/ws（WebSocket），协议见 docs/PROTOCOL.md。\n"))
+	})
 	return securityHeaders(mux)
 }
 
 // securityHeaders 给所有响应加一层浏览器侧防护。
 //
-// 页面与 WSS 同源，所以 CSP 里的 connect-src 只需要 'self'；
-// 不接受内联脚本，样式允许内联属性（组件里用 style 传动态色值）。
+// 服务端不再提供网页，但媒体下载仍可能在浏览器里打开，所以保留这些头。
 func securityHeaders(next http.Handler) http.Handler {
 	const csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
 		"img-src 'self' data: blob:; media-src 'self'; connect-src 'self'; " +
@@ -646,7 +638,7 @@ func confirmPolicy() func(context.Context, string, string, *ecdsa.PublicKey) boo
 	return confirmAuto
 }
 
-// confirmAuto 用于无终端场景（Docker 后台运行）。
+// confirmAuto 用于无终端场景（systemd/后台运行）。
 //
 // 配对码只可能由 `LianT pair` 生成并显示在终端，能拿着它来配对本身就意味着
 // 操作者已经确认；这里放行并留审计记录。

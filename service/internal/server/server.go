@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 	"path"
 	"strings"
 	"sync"
@@ -157,8 +156,10 @@ func New(opt Options) (*Server, error) {
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  4096,
 			WriteBufferSize: 4096,
-			// 网页端与 WSS 同源：只接受同源页面，其余带 Origin 的一律拒绝。
-			CheckOrigin:      sameOrigin,
+			// 认证靠设备密钥的挑战应答，不依赖 Origin 或 Cookie。
+			// 客户端可能来自 gh-pages 等不同源，所以不按 Origin 拒绝；
+			// 需要额外边界时用 Basic 认证或反代侧的访问控制。
+			CheckOrigin:      func(*http.Request) bool { return true },
 			EnableCompression: true,
 		},
 	}, nil
@@ -248,21 +249,6 @@ func (c *conn) audit(kind, deviceID, name, reason string) {
 		IP:       c.ip,
 		Reason:   reason,
 	})
-}
-
-// sameOrigin 只放行同源页面的 WebSocket 握手。
-//
-// 浏览器一定会带 Origin；命令行客户端不带，直接放行。
-func sameOrigin(r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		return true
-	}
-	u, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-	return strings.EqualFold(u.Host, r.Host)
 }
 
 func (c *conn) handshake() error {
@@ -376,7 +362,7 @@ func (c *conn) handlePair(env protocol.Envelope) error {
 		return c.denyPair(env, "devices_full")
 	}
 
-	// 已通过 Basic 认证的网页端可以不带配对码直接登记。
+	// 已通过 Basic 认证的连接可以不带配对码直接登记。
 	auto := c.autoPair && req.Ticket == ""
 
 	pending, ok := c.s.opt.Pairer.Pending()

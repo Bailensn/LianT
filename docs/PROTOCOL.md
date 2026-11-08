@@ -15,7 +15,7 @@
 | 对象 | 密钥 | 存储 | 指纹 |
 | --- | --- | --- | --- |
 | Service（节点） | ECDSA P-256 | `data/key/node.key`（0600） | `base32(SHA-256(pub))`，每 4 位分组 |
-| Manager（Android 设备） | ECDSA P-256 | Android Keystore（不可导出） | 同上，用于 Service 侧设备列表 |
+| Manager（客户端设备） | ECDSA P-256 | 客户端本地存储（v1 未接 Keystore/WebCrypto，见 SECURITY.md） | 同上，用于 Service 侧设备列表 |
 
 > D4 原写 ed25519。因 Android Keystore 对 ed25519 的支持依系统版本与厂商而异，v1 统一用 **P-256**；指纹与配对流程不变。
 
@@ -24,7 +24,7 @@
 - `platform`：`^[a-z][a-z0-9_]{1,15}$`，v1 只有 `qqbot`（`telegram` 为 v1.1）。
 - `external_id`：`^[A-Za-z0-9_-]{1,64}$`（QQ 的 openid / group_openid 都是字符串，正好按字符串处理）。
 - **`peer_id` 只在单个 `bot_id` 内唯一**：QQ 的 openid 按 App 隔离，同一个人在不同 Bot 下 ID 不同。会话键永远是 `(bot_id, peer_id)`，消息必须带 `bot_id`。
-- **v1 不使用 session 票据**：每次连接挑战应答，私钥不出 Keystore。撤销 = Service 删除该 Manager 公钥。
+- **v1 不使用 session 票据**：每次连接挑战应答，私钥不出客户端本地存储。撤销 = Service 删除该 Manager 公钥。
 
 ## 3. 配对（首次）
 
@@ -45,7 +45,7 @@
 
 ```text
 Manager                          Service
-   |── WS Upgrade ────────────────▶|   TLS 证书校验（浏览器只能靠 CA / 首次信任）
+   |── WS Upgrade ────────────────▶|   TLS 证书校验（浏览器/Flutter Web 只能靠 CA 或首次信任）
    |◀─ auth.challenge ─────────────|   {nonce, ts, service_pub, service_sig}
    |── auth.response ─────────────▶|   {manager_id, sig(nonce||fp||ts)}
    |◀─ auth.ok ────────────────────|   {service_time, caps, retention}

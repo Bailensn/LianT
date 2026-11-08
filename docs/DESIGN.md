@@ -1,6 +1,7 @@
 # LianT 设计文档（v1.3 · 已决策）
 
-> 状态：**已冻结 2026-11-07**。分叉由项目所有者拍板，记录在 §1；v1.3 追加 D9（通知策略）并把首发平台改为 QQ。
+> 状态：**已冻结 2026-11-07**，2026-11-08 追加 D12（客户端改用 Flutter，删除内嵌网页端）。
+> 分叉由项目所有者拍板，记录在 §1；v1.3 追加 D9（通知策略）并把首发平台改为 QQ。
 > 后续改动走「决策记录」增补，不直接改结论；实现偏离本文时，先改本文再改代码。
 
 ## 0. 一句话
@@ -19,13 +20,14 @@ LianT 让用户在自己服务器上托管多个 Bot，并在自己的设备上�
 | D4 | **ECDSA P-256 节点密钥 + 指纹配对 + 固定端口** | ed25519；随机端口 + token；反代自理 | Keystore 对 ed25519 支持不稳；随机端口会漂移；反代门槛高 | 要写配对流程与本地确认 |
 | D5 | **一 bot 一进程 + 启动 reconcile** | 单进程 goroutine；交给 systemd | 前者一 panic 全挂；后者失去「点一下就能管」 | 要补 PID、进程组、退避 |
 | D6-1 | **协议：单层 JSON envelope** | 保留双层 base64 | 旧债进 v1 | 旧客户端不能直连 |
-| D6-3 | **许可证** 全仓库 AGPL-3.0 | 统一许可证 | 管理端已内嵌进 Service，不再有可独立分发的宽松客户端；网络提供服务也要开源 | README 写明 |
+| D6-3 | **许可证** 全仓库 AGPL-3.0 | 统一许可证 | 服务端与客户端同仓、同一份许可；网络提供服务也要开源 | README 写明 |
 | D6-4 | **Pages 彻底删除**（已执行，连带 `deploy-on-release.yml`） | 移出仓库 | 不再维护下载站 | 官网另建 |
 | D7 | **首发 QQ**，Telegram 作为 v1.1 的第二个适配器；预留 `platform.Adapter` 与命名空间 ID | 首发 Telegram；或完全不预留 | Telegram 不是当前真实场景；不预留则第二个平台动核心 | 核心多三个约束（§4.1） |
 | D8 | **预留消息格式适配器**：核心持 `NDoc`，平台标记的渲染/解析由 `format` 适配器负责；v1 只实现 `qq-plain` + 解析降级 | 直接在适配器里拼字符串；或做「万能 Markdown」 | 前者无法复用/单测；后者是提前抽象 | 核心多一层 `NDoc`；Manager 必须能渲染 `doc` |
 | D9 | **通知策略**：所有 Bot 的消息都入库，**只有「当前活跃 Bot」发系统通知**；活跃 = App 前台当前所在的那个账号（像 QQ 多号切换里的当前号），其余 Bot 在服务端照常挂着 | 全部通知；只收活跃 Bot | 全部通知在 3 个 Bot 时已不可用；只收活跃 Bot 会丢历史 | 需要 Android 前台服务维持连接；进程被杀期间只能靠服务端 7 天缓存补 |
 | D10 | **本地媒体策略**：Wi-Fi 下自动下载图片/贴纸/语音/≤5 MB 文件；视频、文档、>5 MB 一律点开才下；本地存储可见可清理；支持导入导出 | 全部自动下载；全部点开才下 | 全部自动下载吃流量与空间；全部按需则超过 7 天窗口就永久丢图 | 需实现下载状态、存储占用页、导出格式与导入去重 |
 | D11 | **v1 的 Bot 运行在 serve 进程内（goroutine）**，D5 的「一 bot 一进程」推迟到客户端闭环之后 | 立即可做进程隔离 | 需要子进程 ↔ 父进程的事件通道，v1 客户端闭环优先 | 适配器 panic 会威胁整个进程，已用 recover 兜底；迁移时 Start/Stop/Reconcile 接口不变 |
+| D12 | **客户端改用 Flutter**（Web / Android / Linux 桌面共用一套代码），取代 D3 的 Compose 优先；服务端删除内嵌网页端 | Jetpack Compose；继续维护 React 网页端 | Compose 只能覆盖 Android，网页端要另养一套；Flutter 能把协议层与界面收敛到一份实现 | 放弃 Compose 生态与 Keystore 直连；私钥暂存本地 KV（见 SECURITY.md） |
 
 > **D9 的账号模型（QQ 多号类比）**
 >
@@ -45,9 +47,15 @@ LianT 让用户在自己服务器上托管多个 Bot，并在自己的设备上�
 > - **媒体落盘**：收到即下载到 `data/media/<bot_id>/`，不再依赖平台链接；单 Bot 上限 **3 GB**，超限时按消息时间从旧到新淘汰，并把该消息标为「媒体已清理」（客户端显示占位，不假装能点开）。
 > - 3 个 Bot 就是最多 9 GB，部署文档要写清磁盘规划；**备份只包含 DB 与主密钥，媒体可选**——媒体丢了只影响补看。
 > - **本地不设上限**：Service 的 7 天 / 3 GB 只是“补货窗口”，消息与已下载媒体进了 App 就永久保留，和消息同一套规则；清理是用户手动动作（清理媒体缓存不动文本，或整体清空某会话）。
+> - **实现现状（2026-11-08）**：Flutter v1 用本地 KV 存消息，暂定 2000 条上限以避开 localStorage
+>   容量；待换成真正的本地数据库后再恢复“本地不设上限”。见 `HANDOFF.md` 已知缺口。
 > - 验收：杀进程 1 小时后重开，7 天内的文本按游标全部补齐；3 GB 内的图片仍能打开。
 
 ## 2. 现状审计
+
+> **历史记录**：本节是基线 `a70a557` + 2026-11-07 工作区改动的审计，保留作为决策背景；
+> 其中提到的 `supervisor/`、`wss/`、`botruntime/`、`manager/android` 等路径已不存在。
+> 当前实现见 §10 与 `HANDOFF.md`。
 
 基线 `a70a557` + 2026-11-07 工作区改动。**这是代码事实，不是设计意图。**
 
@@ -231,56 +239,72 @@ QQ 的“不能主动发起、只能窗口内回复”不能变成核心里的 `
 
 **保留**：`service/internal/crypto`、单入口反代思路、CLI 四动词、按目录分许可、CI 构建矩阵。
 
-**重写**：supervisor（D5）、协议（D6-1）、身份（D4）、配置错误处理、Manager（D3）、bot 存储与运行时（D7）、消息内容层（D8）、多 Bot 汇总（D1/D9）。
+**重写**：supervisor（D5）、协议（D6-1）、身份（D4）、配置错误处理、Manager（D3，后由 D12 改为 Flutter）、bot 存储与运行时（D7）、消息内容层（D8）、多 Bot 汇总（D1/D9）。
 
 **删除**：`pages/`、`deploy-on-release.yml`、`manager/desktop/`、`build-manager-desktop.yml`（均已执行，历史可回看）。
 
 ## 7. 版本与发布
 
-`manager-vX.Y.Z`（Android）与 `service-vA.B.C` 独立打 tag、独立 Release；协议 `v1` 只加字段不升版本；`NDoc` 自带 `v`，与协议解耦。
+> **已被 `RELEASING.md` 取代（2026-11-08）**：不再给 Manager/Service 分别打 tag，
+> 统一用 `v<基线>-<通道>-<7 位哈希>` 的 pre-release；Service 只发二进制，客户端产物只做 CI artifact。
+
+协议 `v1` 只加字段不升版本；`NDoc` 自带 `v`，与协议解耦。
 
 ## 8. 后续动作
 
 - **P0**：`service/internal/platform` 接口 + `qqbot` 适配器（token 刷新、回调签名、群/单聊/频道事件）；`service/internal/format` + `qq-plain`；Service 侧 `pair` / `auth` / `bot.list` / `msg.inbound` / `msg.send`；30 行假客户端跑通七步中的 1–6。
-- **P1**：`manager/android`（Compose）多 Bot 收件箱 + 通知门控 + 前台服务；Room 存 `body`；媒体下载策略与存储占用页（D10）；导入导出（zip/ndjson）；游标 + 幂等 + 重连。
+- **P1**：`manager/`（Flutter，D12）多 Bot 收件箱 + 通知门控 + 前台服务；本地数据库存 `body`；媒体下载策略与存储占用页（D10）；导入导出（zip/ndjson）；游标 + 幂等 + 重连。
 - **P2**：Telegram 适配器（v1.1，复用 telebot）；修 A2/A3/A5/A6/A7/A8；CI 加 `-race` 与协议单测。
 
 ## 9. 文档索引
 
+完整索引见 `docs/README.md`：
+
 - `docs/DESIGN.md`（本文）：决策、现状、原则、适配器边界、切片
-- `docs/PROTOCOL.md`：v1 协议草案
-- `docs/DEPLOY.md`：部署、备份与保留策略
-- `docs/RELEASING.md`：版本号、tag 与 pre-release 规则
+- `docs/PROTOCOL.md`：v1 协议
+- `docs/UI-DESIGN.md`：Flutter 客户端视觉与交互规范
+- `docs/DEPLOY.md`：部署、配对与保留策略
+- `docs/SECURITY.md`：信任根与公网暴露
+- `docs/RELEASING.md`：版本号与发布流程
+- `docs/HANDOFF.md`：当前实现状态与待办
 - `README.md`：对外介绍 + 许可证
 
 ## 10. 仓库结构
 
 ```text
 LianT/
-├── docs/                 设计与协议（唯一真源）
-│   ├── DESIGN.md
-│   └── PROTOCOL.md
-├── service/              服务端（Go，独立 module）
-│   ├── cmd/LianT/        入口与 CLI（main / init / bot）
+├── docs/                 设计、协议与运维文档（索引见 docs/README.md）
+├── service/              Go 服务端（独立 module，只提供 API）
+│   ├── cmd/liant/        入口与 CLI（init / serve / pair / stop / config / version）
 │   ├── internal/
+│   │   ├── botrun/       Bot 运行管理（认领、启停、退避）
 │   │   ├── config/       配置（加密落盘）
+│   │   ├── core/         业务方法（bot / msg / device / audit / snapshot）
 │   │   ├── crypto/       主密钥 + HKDF 子密钥 + AEAD
-│   │   ├── supervisor/   daemon、bot 进程管理、反代入口（原 service/service）
-│   │   ├── wss/          WSS 传输与媒体服务
-│   │   ├── botruntime/   单 bot 运行循环（P0 拆进 platform）
-│   │   ├── platform/     Adapter 接口 + 注册表 + 命名空间 ID；qqbot（WSS）已建
-│   │   ├── format/       NDoc + Format 接口 + qqplain（已建）
-│   │   └── store/        会话 / 消息 / 媒体（P0 创建）
-│   ├── go.mod
-│   └── .gitignore
-├── web/                  网页管理端（随 Service 一起内嵌，AGPL-3.0）
-└── .github/workflows/    service 构建（手动触发）
+│   │   ├── format/       NDoc + Format 接口 + qqplain
+│   │   ├── node/         节点身份、证书与指纹
+│   │   ├── pairing/      配对码与落库兑付
+│   │   ├── platform/     Adapter 接口 + 注册表 + qqbot（WSS）
+│   │   ├── protocol/     信封、方法、错误码
+│   │   ├── server/       WSS 服务、握手、限流
+│   │   └── store/        SQLite：bot / 消息 / 媒体 / 设备 / 审计
+│   └── go.mod
+├── manager/              Flutter 客户端（Web / Android / Linux）
+│   ├── lib/core/         协议、P-256、身份、状态
+│   ├── lib/ui/           主题与通用组件
+│   ├── lib/pages/        配对、会话、聊天、机器人、设置
+│   ├── tool/             mock 服务与协议自检
+│   └── web/              网页外壳（index.html）
+├── deploy/liant.service  systemd 单元
+├── scripts/              install.sh、check-protocol.sh
+└── .github/workflows/    CI / Service binaries / Flutter
 ```
 
 **结构规则**
 
 1. 只有一个 Go module（`service/`），可执行入口只放 `cmd/`；库代码全在 `internal/`，不承诺对外 API。
-2. `format` 不依赖任何内部包；`platform` 可依赖 `format`（承载入站文档），反向与对 `supervisor` 的依赖一律禁止。
-3. 分层方向单向：`cmd → supervisor → {platform, format, wss, store, config, crypto}`；反向 import 一律拒绝。
+2. `format` 不依赖任何内部包；`platform` 可依赖 `format`（承载入站文档），反向与对 `server` 的依赖一律禁止。
+3. 分层方向单向：`cmd → {server, core, botrun} → {platform, format, node, pairing, store, config, crypto, protocol}`；
+   反向 import 一律拒绝。
 4. 文档只在 `docs/`，代码注释不复制文档结论（注释解释“为什么”，文档记录“是什么”）。
 5. 不保留“冻结目录”：不再维护的代码直接删，需要时从 git 历史取回。

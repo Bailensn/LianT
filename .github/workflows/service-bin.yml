@@ -30,7 +30,7 @@ jobs:
           mkdir -p ../dist
           VERSION="v1.0.0-Alpha-$(git rev-parse --short=7 HEAD)"
           LDFLAGS="-s -w -X main.version=${VERSION}"
-          # 网页管理端已经不用了，二进制里只打包 API 与静态占位
+          # 不再内嵌网页管理端：二进制里只有 API 与根路径说明
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$LDFLAGS" -o ../dist/LianT-linux-amd64 ./cmd/liant
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$LDFLAGS" -o ../dist/LianT-linux-arm64 ./cmd/liant
           cd ../dist && sha256sum * > SHA256SUMS.txt && ls -l

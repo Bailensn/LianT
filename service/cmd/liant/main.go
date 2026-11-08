@@ -13,7 +13,7 @@ func main() {
 	args := os.Args
 	if len(args) < 2 {
 		fmt.Println("用法：LianT <init|config|serve|pair|stop|version>")
-		fmt.Println("机器人管理在网页端：打开服务地址 → 机器人 → 添加")
+		fmt.Println("机器人管理在 LianT 客户端：配对后打开「机器人」页添加")
 		return
 	}
 	switch args[1] {

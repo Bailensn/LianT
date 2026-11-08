@@ -2,7 +2,8 @@
 
 面向自托管：一台能出公网（或至少有公网入口）的 Linux 机器，跑一个 `LianT` 进程。
 
-不用 Docker：二进制放进 `/opt/liant`，用 systemd 常驻。
+不用 Docker：二进制放进 `/opt/liant`，用 systemd 常驻。服务端只提供 API，
+客户端是 `manager/` 里的 Flutter 应用。
 
 ## 1. 前置
 
@@ -11,19 +12,25 @@
 - 磁盘：消息库很小，媒体按单 Bot 3 GB 规划；
 - 时间同步：认证要求时差 ≤ 60 秒。
 
-二进制从 CI 的 `Service binaries` 产物里下：`LianT-linux-amd64` 或 `LianT-linux-arm64`，附 `SHA256SUMS.txt`。
+二进制从 CI 的 `Service binaries` 产物里下：`LianT-linux-amd64` 或 `LianT-linux-arm64`，
+附 `SHA256SUMS.txt`。
 
 ## 2. 安装
 
 ```bash
 useradd -r -s /sbin/nologin liant || true
 mkdir -p /opt/liant && cd /opt/liant
-# 把下载到的二进制放进来
 mv /path/to/LianT-linux-amd64 ./LianT && chmod +x ./LianT
 sha256sum -c SHA256SUMS.txt --ignore-missing
 
 ./LianT init
 ./LianT config set connect.listen :8443
+```
+
+也可以直接跑仓库里的安装脚本：
+
+```bash
+sudo bash scripts/install.sh /path/to/LianT-linux-amd64
 ```
 
 开机自启用仓库里的 `deploy/liant.service`：
@@ -37,14 +44,14 @@ journalctl -u liant -f
 
 ## 3. 登记 Bot
 
-机器人管理全部在网页端完成，命令行不再提供 `bot` 子命令：
+机器人管理全部在 Flutter 客户端里完成，命令行不再提供 `bot` 子命令：
 
-1. 打开管理页，进「机器人」；
+1. 客户端配对成功后，打开「机器人」页；
 2. 点右上角「添加」，填 AppID 与 AppSecret，可选一个备注名；
 3. 保存时会向 QQ 开放平台校验凭据并读取机器人昵称，失败会直接提示原因；
 4. 回到列表点「启动」，状态变成「运行中」即可收消息。
 
-凭据由适配器校验后加密入库，接口不回显，网页端也不会再把它读出来。
+凭据由适配器校验后加密入库，接口不回显，客户端也不会再把它读出来。
 QQ 的 `app_id/app_secret` 来自 QQ 开放平台机器人后台。
 
 服务重启后会自动认领已登记的 Bot，不需要人工启动。
@@ -60,32 +67,31 @@ QQ 的 `app_id/app_secret` 来自 QQ 开放平台机器人后台。
 配对成功后 `pair` **不会退出**，会继续以服务模式运行（Bot 也会被认领），
 所以之后不需要再单独 `serve`；要停止按 Ctrl+C。
 
-二维码里的 `host` 按「`--host` > `config.connect.address` > 本机非回环 IPv4 > 主机名」取值；
+二维码的 `host` 按「`--host` > `config.connect.address` > 本机非回环 IPv4 > 主机名」取值；
 自动探测只适合局域网，跨网必须显式给 `--host` 或先 `LianT config set connect.address …`。
 
-终端会打印配对码、节点指纹、管理页链接和二维码。手机扫二维码直接用浏览器打开
-`https://<host>:8443/#pair=…`，页面会自动填好配对信息，点「连接」即可；
-首次打开要手动信任一次自签证书。也可以把链接或二维码 JSON 粘到配对页里。
+终端会打印配对码、节点指纹和**配对信息 JSON**，并渲染成二维码
+（`data/pair-qr.png` 也保留一份）。在客户端「连接 LianT」页：
 
-手机连上后终端要求输入 `y` 确认，成功即把设备公钥写入 `devices` 表。
+- 把配对信息粘贴到输入框，点「用配对码连接」；或
+- 扫码后把内容粘进去（客户端 v1 还没有内置扫码器）。
+
+手机连上后服务端终端会要求输入 `y` 确认，成功即把设备公钥写入 `devices` 表。
 配对码 60 秒有效、一次性；默认最多 8 台设备。
 
-> 浏览器不能做证书钉扎，网页端的安全模型是「首次信任 + 同源」：
-> 页面和 WSS 走同一个端口、同一张证书，必须先信任证书才能打开页面。
-> 换节点密钥等于换身份，所有设备都要重新配对。
+> 客户端第一次连接时要信任服务端证书。自签证书在 Android/桌面端需要装进系统信任库，
+> 浏览器则要先用 https 访问一次并手动信任；生产环境建议用反代换成正式证书。
 
-## 5. 管理页
+## 5. 客户端
 
-管理页内嵌在 Service 二进制里，不需要单独部署：
+- **Web**：CI 的 `Flutter` workflow 会发布 gh-pages 预览；也可以本地
+  `flutter build web --release`。网页版连接自签服务端时同样受证书信任限制。
+- **Android**：`flutter build apk --debug`，CI 产物在 `LianT-flutter-android`。
+- **Linux 桌面**：`flutter build linux --release`，CI 产物在 `LianT-flutter-linux`。
 
-```
-https://<host>:8443/
-```
-
-- 会话、聊天、机器人、设置四个页面；
-- 设备私钥由浏览器 Web Crypto 生成，不可导出，只存在本机 IndexedDB；
-- 断线自动重连，未读与历史留在本机；
-- 想给页面换域名/端口，用反代转发到 8443 即可，注意 WebSocket 也要转发。
+客户端本地保存消息（上限 2000 条）、备注、已读与主动消息开关；服务端只保留 7 天。
+「设置」页可以看已配对设备、吊销设备、安全日志与服务端能力。
+服务端根路径现在只返回一行纯文本说明，不再有网页管理端。
 
 ## 6. 常驻运行
 
@@ -98,34 +104,14 @@ https://<host>:8443/
 启动时会认领状态为 `running/starting` 的 Bot，失败按 1s→30s 退避重试；
 退出（SIGINT/SIGTERM）时停掉全部 Bot。
 
-systemd 示例：
-
-```ini
-[Unit]
-Description=LianT Service
-After=network-online.target
-
-[Service]
-Type=simple
-User=liant
-WorkingDirectory=/opt/liant
-ExecStart=/opt/liant/LianT serve
-Restart=on-failure
-RestartSec=5
-# 只让数据目录可写
-ProtectSystem=strict
-ReadWritePaths=/opt/liant/data /opt/liant/config.enc
-
-[Install]
-WantedBy=multi-user.target
-```
+systemd 示例见 `deploy/liant.service`。
 
 ## 7. 保留与清理
 
 - 消息与媒体默认保留 **7 天**，配置下限也是 7 天（只能调大）；
 - 单 Bot 媒体超过 **3 GB** 时按消息时间从旧到新淘汰；
 - `serve` 每小时执行一次清理：删消息、标媒体过期/淘汰，并**真正删除**磁盘文件；
-- 客户端本地不设上限，是否清理由用户在 App 里决定。
+- 客户端本地另有上限（消息 2000 条），是否清理由用户在客户端决定。
 
 ## 8. 升级与回滚
 
