@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../core/app_state.dart';
 import '../core/protocol.dart';
 import 'tokens.dart';
+import '../l10n/l10n.dart';
 import '../l10n/ltext.dart';
 
 /// 把 AppState 挂到树上；`AppScope.of(context)` 拿状态并自动重建。
@@ -352,7 +353,7 @@ class SearchField extends StatelessWidget {
               cursorColor: colors.accent,
               style: TextStyle(fontSize: 15, color: colors.text),
               decoration: InputDecoration(
-                hintText: hint,
+                hintText: L10n.tr(hint),
                 contentPadding: EdgeInsets.zero,
               ),
             ),
@@ -735,7 +736,7 @@ class FieldRow extends StatelessWidget {
                   fontFamily: monospace ? 'monospace' : null,
                 ),
                 decoration: InputDecoration(
-                  hintText: hint,
+                  hintText: L10n.tr(hint),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),

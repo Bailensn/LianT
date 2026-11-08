@@ -12,6 +12,7 @@ import '../core/protocol.dart';
 import '../ui/format.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
+import '../l10n/l10n.dart';
 import '../l10n/ltext.dart';
 
 class ChatPage extends StatefulWidget {
@@ -746,7 +747,7 @@ class _ChatPageState extends State<ChatPage> {
                             textAlignVertical: TextAlignVertical.center,
                             style: TextStyle(fontSize: 16, height: 1.35, color: colors.text),
                             decoration: InputDecoration(
-                              hintText: state.online ? '发消息…' : '连接中…',
+                              hintText: L10n.tr(state.online ? '发消息…' : '连接中…'),
                               contentPadding: const EdgeInsets.symmetric(vertical: 11),
                             ),
                           ),

@@ -9,6 +9,7 @@ import '../core/identity.dart';
 import '../core/protocol.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
+import '../l10n/l10n.dart';
 import '../l10n/ltext.dart';
 
 class PairPage extends StatefulWidget {
@@ -206,8 +207,8 @@ class _PairPageState extends State<PairPage> {
                             fontFamily: 'monospace',
                             color: colors.text,
                           ),
-                          decoration: const InputDecoration(
-                            hintText: '粘贴 LianT pair 打印的配对信息',
+                          decoration: InputDecoration(
+                            hintText: L10n.tr('粘贴 LianT pair 打印的配对信息'),
                           ),
                         ),
                       ),
@@ -296,8 +297,8 @@ class _AddressField extends StatelessWidget {
               textAlignVertical: TextAlignVertical.center,
               cursorColor: colors.accent,
               style: TextStyle(fontSize: 16, color: colors.text),
-              decoration: const InputDecoration(
-                hintText: '主机:端口',
+              decoration: InputDecoration(
+                hintText: L10n.tr('主机:端口'),
                 contentPadding: EdgeInsets.zero,
               ),
             ),
@@ -337,8 +338,8 @@ class _DeviceNameField extends StatelessWidget {
               textAlignVertical: TextAlignVertical.center,
               cursorColor: colors.accent,
               style: TextStyle(fontSize: 16, color: colors.text),
-              decoration: const InputDecoration(
-                hintText: '手机端',
+              decoration: InputDecoration(
+                hintText: L10n.tr('手机端'),
                 contentPadding: EdgeInsets.zero,
               ),
             ),
