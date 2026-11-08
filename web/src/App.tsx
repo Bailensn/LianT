@@ -19,6 +19,27 @@ export default function App() {
     void boot()
   }, [boot])
 
+  // 第一次交互时申请通知权限，后台也能收到提醒。
+  useEffect(() => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'default') return
+    const ask = () => {
+      void Notification.requestPermission()
+      window.removeEventListener('pointerdown', ask)
+    }
+    window.addEventListener('pointerdown', ask, { once: true })
+    return () => window.removeEventListener('pointerdown', ask)
+  }, [])
+
+  const state = useStore((s) => s.state)
+  const reconnect = useStore((s) => s.reconnect)
+  useEffect(() => {
+    const onVisible = () => {
+      if (!document.hidden && state !== 'online') void reconnect()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [state, reconnect])
+
   if (!booted) {
     return (
       <div className="flex h-full items-center justify-center">

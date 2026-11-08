@@ -197,6 +197,11 @@ export default function Chat() {
               {gap && (
                 <p className="my-3 text-center text-[11px] text-[var(--text-3)]">{formatTime(m.ts)}</p>
               )}
+              {!out && list[i]?.peer_kind === 'group' && (
+                <p className="mb-0.5 pl-1 text-[11px] text-[var(--text-3)]">
+                  {m.sender_name || shortPeer(m.sender_id || '')}
+                </p>
+              )}
               <div className={`flex ${out ? 'justify-end' : 'justify-start'} mb-1.5`}>
                 <div
                   className={`flex max-w-[78%] items-center gap-2 rounded-[18px] px-3.5 py-2 text-[15px] leading-relaxed whitespace-pre-wrap break-words ${

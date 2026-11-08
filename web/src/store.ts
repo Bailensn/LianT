@@ -31,6 +31,7 @@ export type Msg = {
   peer_id: string
   peer_kind: string
   sender_name?: string
+  sender_id?: string
   body: { plain: string; doc?: { blocks?: unknown[] } | null }
   msg_type?: string
   ts: number
@@ -396,6 +397,15 @@ async function connect(
         if (env.type === 'msg.inbound' || env.type === 'event.msg') {
           const p = env.payload as Omit<Msg, 'direction'>
           append(set, get, { ...p, direction: 'in' })
+          // 页面在后台时用系统通知顶一下，回到前台再看详情。
+          if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            const bot = get().bots.find((b) => b.bot_id === p.bot_id)
+            const who = p.sender_name || p.peer_id
+            new Notification(`${bot?.display_name || bot?.username || 'LianT'} · ${who}`, {
+              body: p.body?.plain || '收到一条消息',
+              tag: p.bot_id + '|' + p.peer_id,
+            })
+          }
           return
         }
         if (env.type === 'event.bot') {
