@@ -330,7 +330,7 @@ class BotsPage extends StatelessWidget {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: ListTile(
             leading: CircleAvatar(backgroundColor: theme.colorScheme.primary.withOpacity(0.12), child: const Text('连')),
-            title: const Text('连天助手'),
+            title: const Text('LianT'),
             subtitle: const Text('qqbot:1905703456 · 运行中'),
             trailing: const Icon(Icons.chevron_right),
           ),
