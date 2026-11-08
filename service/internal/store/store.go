@@ -23,7 +23,7 @@ import (
 )
 
 // schemaVersion 记录在 PRAGMA user_version 里。改表结构时 +1 并补迁移。
-const schemaVersion = 2
+const schemaVersion = 3
 
 var (
 	// ErrNotFound 表示按主键没有查到记录。
@@ -121,6 +121,7 @@ func (s *Store) migrate(ctx context.Context) error {
 	}{
 		{1, schemaV1},
 		{2, schemaV2},
+		{3, schemaV3},
 	}
 	for _, step := range steps {
 		if version >= step.version {
@@ -147,6 +148,11 @@ var schemaV2 = []string{
 		created_at   INTEGER NOT NULL,
 		last_seen_at INTEGER NOT NULL DEFAULT 0
 	)`,
+}
+
+// schemaV3 给消息加发送者角色（owner/admin/member），用于群里给群主/管理员标色。
+var schemaV3 = []string{
+	`ALTER TABLE messages ADD COLUMN sender_role TEXT NOT NULL DEFAULT ''`,
 }
 
 // schemaV1 是 v1 的全部建表语句。

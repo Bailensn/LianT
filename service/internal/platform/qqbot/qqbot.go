@@ -11,8 +11,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -28,6 +31,7 @@ type Adapter struct {
 	sandboxAPI string
 	tokens     tokenCache
 	seq        atomic.Uint32
+	roles      sync.Map
 }
 
 // New 创建适配器。测试可以替换 tokenURL / apiBase 指向本地假服务。
@@ -294,6 +298,74 @@ func (a *Adapter) postMessage(
 		return "", fmt.Errorf("qqbot: 解析发送响应失败: %w", err)
 	}
 	return out.ID, nil
+}
+
+// memberInfo 取群成员角色与昵称：owner/admin/member。
+//
+// QQ 的群消息事件通常不带角色，只能查成员信息接口；该接口需要白名单权限，
+// 失败就返回空，不阻塞消息投递。每个成员缓存 10 分钟。
+func (a *Adapter) memberInfo(ctx context.Context, c credentials, token, group, member string) (string, string) {
+	if group == "" || member == "" {
+		return "", ""
+	}
+	key := c.appID + "\x00" + group + "\x00" + member
+	if v, ok := a.roles.Load(key); ok {
+		entry := v.(roleEntry)
+		if time.Now().Before(entry.until) {
+			return entry.role, entry.name
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	role, name, err := a.fetchMemberInfo(ctx, c, token, group, member)
+	if err != nil {
+		slog.Debug("获取 QQ 群成员信息失败", "member", member, "err", err)
+	}
+	a.roles.Store(key, roleEntry{role: role, name: name, until: time.Now().Add(10 * time.Minute)})
+	return role, name
+}
+
+func (a *Adapter) fetchMemberInfo(ctx context.Context, c credentials, token, group, member string) (string, string, error) {
+	u := a.apiBaseFor(c) + "/v2/groups/" + url.PathEscape(group) + "/members/" + url.PathEscape(member)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Authorization", "QQBot "+token)
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", "", fmt.Errorf("qqbot: 成员信息返回 %d: %s", resp.StatusCode, readSnippet(resp.Body))
+	}
+	var out struct {
+		MemberRole string `json:"member_role"`
+		Username   string `json:"username"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
+		return "", "", err
+	}
+	return normalizeRole(out.MemberRole), strings.TrimSpace(out.Username), nil
+}
+
+type roleEntry struct {
+	role  string
+	name  string
+	until time.Time
+}
+
+func normalizeRole(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "owner":
+		return "owner"
+	case "admin":
+		return "admin"
+	case "member":
+		return "member"
+	}
+	return ""
 }
 
 func readSnippet(r io.Reader) string {

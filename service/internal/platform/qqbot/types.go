@@ -96,6 +96,8 @@ type messageEvent struct {
 		ID           string `json:"id"`
 		MemberOpenID string `json:"member_openid"`
 		UserOpenID   string `json:"user_openid"`
+		Username     string `json:"username"`
+		MemberRole   string `json:"member_role"`
 	} `json:"author"`
 }
 

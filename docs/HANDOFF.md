@@ -48,11 +48,12 @@ Docker 已全部移除，不要加回来。
 - `lib/core/client.dart`：WSS 客户端。挑战自证校验（指纹不符/验签失败直接断开）、30s 心跳、
   1→30s 指数退避 + ±20% 抖动、15s 请求超时、4001/4002 不重连。
 - `lib/core/app_state.dart`：`state.snapshot`（老服务端回退逐个拉取）、四类事件、乐观发送与
-  失败重试、`msg.list` 历史、`media.fetch`、设备/审计、备注/已读/主动消息持久化；
+  失败重试、`msg.list` 历史、`media.fetch`、设备/审计、备注/已读/免打扰持久化；
   消息最多留 2000 条，备注与已读不设上限。
 - `lib/core/browser_env*.dart`：条件导入，Web 读地址栏参数，其它平台返回 null。
 - `lib/core/socket*.dart`：条件导入；Android/桌面端接受自签证书（身份仍由 auth.challenge
   的节点指纹校验），Web 端交给浏览器。
+- `MessageService`：Android 前台服务，App 退到后台时保活现有 WSS 连接；通知“正在后台接收消息”。
 - `android/` 已入库：应用 ID `com.bailensn.liant`，主清单带 `INTERNET` 权限，
   Gradle 工具链按 CI 的 Flutter 3.24.5 对齐（Gradle 8.3 / AGP 8.1.0 / Kotlin 1.8.22）。
   图标源文件是 `assets/icon.svg`（iOS squircle 蓝底 + 圆头 L）与 `assets/icon_foreground.svg`，

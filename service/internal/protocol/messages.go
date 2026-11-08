@@ -238,6 +238,7 @@ type MsgInbound struct {
 	PeerKind   string `json:"peer_kind"`
 	SenderID   string `json:"sender_id,omitempty"`
 	SenderName string `json:"sender_name,omitempty"`
+	SenderRole string `json:"sender_role,omitempty"`
 	MsgType    string `json:"msg_type"`
 	Body       Body   `json:"body"`
 	MsgID      string `json:"msg_id"`

@@ -109,7 +109,7 @@ Manager                          Service
 | `bot.status` | M→S | 是 | `{bot_id}` | `{status, pid?, since?, last_error?}` |
 | `msg.list` | M→S | 是 | `{bot_id, peer_id, before?, after?, limit≤100}` | 会话内分页；返回 `{messages[], has_more}` |
 | `msg.send` | M→S | **是** | `{bot_id, peer_id, body, in_reply_to?, operator_id?}` | `in_reply_to` 为触发本次回复的入站 `msg_id`（QQ 被动回复需要），缺席时按主动消息处理；`operator_id` 仅用于审计（哪台设备/哪个人回的），**永不下发平台** |
-| `msg.inbound` | S→M | — | `{bot_id, peer_id, peer_kind, sender_id?, msg_type, body, msg_id}` | `peer_kind` ∈ `private/group/channel`；媒体消息的 `body.plain` 是说明文字 |
+| `msg.inbound` | S→M | — | `{bot_id, peer_id, peer_kind, sender_id?, sender_name?, sender_role?, msg_type, body, msg_id}` | `peer_kind` ∈ `private/group/channel`；`sender_role` ∈ `owner/admin/member`（QQ 需成员信息接口权限）；`msg_type` ∈ `text/image/video/audio/file`，媒体消息的 `body.plain` 是说明文字或文件名 |
 | `msg.ack` | M→S | 是 | `{msg_id}` | 客户端已落库；用于多端未读与缓存清理 |
 | `media.fetch` | M→S | 是 | `{bot_id, msg_id}` | 返回 `{url, exp, size, mime}`；从本地缓存返回，不再访问平台。`url` 可能是不带主机名的相对路径（如 `/v1/media/…?exp=&sig=`），客户端按当前连接的主机拼接；带签名、10 分钟有效。调用方据 `size`/`mime` 决定是否下载（D10） |
 | `event.bot` | S→M | — | `{bot_id, status, reason?}` | 单 bot 粒度状态变化 |

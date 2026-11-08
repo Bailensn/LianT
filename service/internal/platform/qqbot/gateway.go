@@ -144,7 +144,7 @@ func (a *Adapter) session(ctx context.Context, c credentials, hooks platform.Hoo
 
 		switch p.Op {
 		case opDispatch:
-			a.handleDispatch(ctx, p, hooks)
+			a.handleDispatch(ctx, p, hooks, c, token)
 		case opHeartbeatAck:
 			// 正常心跳回执，无需处理。
 		case opReconnect:
@@ -216,7 +216,7 @@ func (a *Adapter) gatewayURL(ctx context.Context, c credentials, token string) (
 // 事件类型只记一次，避免刷屏；排查「平台到底推没推」时很关键。
 var loggedEvents sync.Map
 
-func (a *Adapter) handleDispatch(ctx context.Context, p wsPayload, hooks platform.Hooks) {
+func (a *Adapter) handleDispatch(ctx context.Context, p wsPayload, hooks platform.Hooks, c credentials, token string) {
 	if p.T != "" {
 		if _, seen := loggedEvents.LoadOrStore(p.T, struct{}{}); !seen {
 			slog.Info("网关事件类型", "t", p.T, "op", p.Op)
@@ -244,6 +244,19 @@ func (a *Adapter) handleDispatch(ctx context.Context, p wsPayload, hooks platfor
 			"user_openid", ev.Author.UserOpenID, "member_openid", ev.Author.MemberOpenID)
 		return
 	}
+	if msg.Peer.Kind == platform.PeerGroup && msg.SenderRole == "" {
+		member := ev.Author.MemberOpenID
+		if member == "" {
+			member = ev.Author.ID
+		}
+		role, name := a.memberInfo(ctx, c, token, ev.GroupOpenID, member)
+		if msg.SenderRole == "" {
+			msg.SenderRole = role
+		}
+		if msg.SenderName == "" {
+			msg.SenderName = name
+		}
+	}
 	_ = hooks.OnMessage(ctx, msg)
 }
 
@@ -265,11 +278,13 @@ func toInbound(event string, ev messageEvent) (platform.Inbound, bool) {
 				ID:   platform.MakeID("qqbot", ev.GroupOpenID),
 				Kind: platform.PeerGroup,
 			},
-			SenderID: peerID(sender),
-			Kind:     platform.CapText,
-			Text:     strings.TrimSpace(ev.Content),
-			Media:    attachments(ev.Attachments),
-			At:       parseTime(ev.Timestamp),
+			SenderID:   peerID(sender),
+			SenderName: ev.Author.Username,
+			SenderRole: normalizeRole(ev.Author.MemberRole),
+			Kind:       inboundKind(ev.Attachments),
+			Text:       inboundText(ev.Content, ev.Attachments),
+			Media:      attachments(ev.Attachments),
+			At:         parseTime(ev.Timestamp),
 		}, true
 
 	case "C2C_MESSAGE_CREATE":
@@ -286,11 +301,12 @@ func toInbound(event string, ev messageEvent) (platform.Inbound, bool) {
 				ID:   platform.MakeID("qqbot", user),
 				Kind: platform.PeerPrivate,
 			},
-			SenderID: peerID(user),
-			Kind:     platform.CapText,
-			Text:     strings.TrimSpace(ev.Content),
-			Media:    attachments(ev.Attachments),
-			At:       parseTime(ev.Timestamp),
+			SenderID:   peerID(user),
+			SenderName: ev.Author.Username,
+			Kind:       inboundKind(ev.Attachments),
+			Text:       inboundText(ev.Content, ev.Attachments),
+			Media:      attachments(ev.Attachments),
+			At:         parseTime(ev.Timestamp),
 		}, true
 
 	case "AT_MESSAGE_CREATE":
@@ -303,16 +319,54 @@ func toInbound(event string, ev messageEvent) (platform.Inbound, bool) {
 				ID:   platform.MakeID("qqbot", ev.ChannelID),
 				Kind: platform.PeerChannel,
 			},
-			SenderID: peerID(ev.Author.ID),
-			Kind:     platform.CapText,
-			Text:     strings.TrimSpace(ev.Content),
-			Media:    attachments(ev.Attachments),
-			At:       parseTime(ev.Timestamp),
+			SenderID:   peerID(ev.Author.ID),
+			SenderName: ev.Author.Username,
+			Kind:       inboundKind(ev.Attachments),
+			Text:       inboundText(ev.Content, ev.Attachments),
+			Media:      attachments(ev.Attachments),
+			At:         parseTime(ev.Timestamp),
 		}, true
 
 	default:
 		return platform.Inbound{}, false
 	}
+}
+
+// inboundKind 按第一个附件判断消息类型；没有附件就是文本。
+func inboundKind(in []struct {
+	URL         string `json:"url"`
+	ContentType string `json:"content_type"`
+	Size        int64  `json:"size"`
+	Filename    string `json:"filename"`
+}) string {
+	if len(in) == 0 {
+		return "text"
+	}
+	ct := strings.ToLower(in[0].ContentType)
+	switch {
+	case strings.HasPrefix(ct, "image/"):
+		return "image"
+	case strings.HasPrefix(ct, "video/"):
+		return "video"
+	case strings.HasPrefix(ct, "audio/"):
+		return "audio"
+	default:
+		return "file"
+	}
+}
+
+// inboundText 保留文本；文件消息没文本时用文件名当摘要。
+func inboundText(content string, in []struct {
+	URL         string `json:"url"`
+	ContentType string `json:"content_type"`
+	Size        int64  `json:"size"`
+	Filename    string `json:"filename"`
+}) string {
+	text := strings.TrimSpace(content)
+	if text == "" && len(in) > 0 && inboundKind(in) == "file" {
+		return in[0].Filename
+	}
+	return text
 }
 
 // attachments 把平台附件换成核心的媒体描述；没有 url 的忽略。

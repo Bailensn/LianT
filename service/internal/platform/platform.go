@@ -88,6 +88,7 @@ type Inbound struct {
 	Peer       Peer
 	SenderID   string
 	SenderName string
+	SenderRole string
 	Kind       string
 	Text       string
 	Doc        *format.Doc

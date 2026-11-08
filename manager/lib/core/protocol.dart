@@ -206,6 +206,7 @@ class ChatMessage {
     this.msgType = 'text',
     this.senderId = '',
     this.senderName = '',
+    this.senderRole = '',
     this.inReplyTo,
     this.pending = false,
     this.failed = false,
@@ -222,6 +223,7 @@ class ChatMessage {
   final String msgType;
   final String senderId;
   final String senderName;
+  final String senderRole;
   final String? inReplyTo;
   final bool pending;
   final bool failed;
@@ -248,6 +250,7 @@ class ChatMessage {
       msgType: msgType,
       senderId: senderId,
       senderName: senderName,
+      senderRole: senderRole,
       inReplyTo: inReplyTo ?? this.inReplyTo,
       pending: pending ?? this.pending,
       failed: failed ?? this.failed,
@@ -266,6 +269,7 @@ class ChatMessage {
         'msg_type': msgType,
         if (senderId.isNotEmpty) 'sender_id': senderId,
         if (senderName.isNotEmpty) 'sender_name': senderName,
+        if (senderRole.isNotEmpty) 'sender_role': senderRole,
         if (inReplyTo != null) 'in_reply_to': inReplyTo,
       };
 
@@ -281,6 +285,7 @@ class ChatMessage {
       msgType: json['msg_type'] as String? ?? 'text',
       senderId: json['sender_id'] as String? ?? '',
       senderName: json['sender_name'] as String? ?? '',
+      senderRole: json['sender_role'] as String? ?? '',
       inReplyTo: json['in_reply_to'] as String?,
     );
   }

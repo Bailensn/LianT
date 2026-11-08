@@ -36,6 +36,12 @@ class _ChatPageState extends State<ChatPage> {
   String _historyError = '';
   String _sendError = '';
   ChatMessage? _replyTo;
+  final FocusNode _inputFocus = FocusNode();
+  bool _mentioning = false;
+  String _mentionName = '';
+  bool _panelOpen = false;
+  int _panelPage = 0;
+  final PageController _panelController = PageController();
   int _lastCount = 0;
 
   String get _key => convKey(widget.botId, widget.peerId);
@@ -97,6 +103,8 @@ class _ChatPageState extends State<ChatPage> {
     _scroll.removeListener(_onScroll);
     _scroll.dispose();
     _input.dispose();
+    _inputFocus.dispose();
+    _panelController.dispose();
     final state = _state;
     if (state?.openConversation == _key) state?.setOpenConversation(null);
     super.dispose();
@@ -181,7 +189,9 @@ class _ChatPageState extends State<ChatPage> {
       final deadline = lastIn.ts + windowSeconds * 1000;
       windowLeft = ((deadline - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
     }
-    final active = bot != null && state.activeFor(bot, widget.peerId);
+    final canInitiate = bot?.constraints.canInitiate ?? false;
+    final passive = _replyTo != null || _mentioning;
+    final active = canInitiate && !passive;
     final topInset = MediaQuery.paddingOf(context).top;
     final headerHeight = _collapsed ? 58.0 : 96.0;
 
@@ -197,7 +207,9 @@ class _ChatPageState extends State<ChatPage> {
                 16,
                 topInset + headerHeight + 8,
                 16,
-                128 + (_replyTo != null ? 54 : 0),
+                128 +
+                    (_replyTo != null ? 54 : 0) +
+                    (_panelOpen ? _attachPanelHeight(_panelPage) : 0),
               ),
               children: _messageList(context, state, list, bot),
             ),
@@ -288,6 +300,10 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     // 末尾的历史提示放在列表顶部，避免遮挡正在阅读的最后一条。
+    final byId = <String, ChatMessage>{
+      for (final m in list)
+        if (m.msgId.isNotEmpty) m.msgId: m,
+    };
     for (var i = 0; i < list.length; i++) {
       final msg = list[i];
       final prev = i > 0 ? list[i - 1] : null;
@@ -304,11 +320,54 @@ class _ChatPageState extends State<ChatPage> {
       }
       final isGroup = msg.peerKind == 'group';
       if (isGroup && !msg.outgoing) {
+        final sender = msg.senderName.isEmpty ? shortPeer(msg.senderId) : msg.senderName;
+        final role = msg.senderRole;
+        final roleLabel = role == 'owner' ? '群主' : (role == 'admin' ? '管理员' : '');
+        final roleColor = role == 'owner'
+            ? const Color(0xFFFFB300)
+            : role == 'admin'
+                ? const Color(0xFF2EAD55)
+                : colors.text2;
         widgets.add(Padding(
           padding: const EdgeInsets.only(left: 8, bottom: 3),
-          child: Text(
-            msg.senderName.isEmpty ? shortPeer(msg.senderId) : msg.senderName,
-            style: TextStyle(fontSize: 11, color: colors.text3),
+          child: Semantics(
+            button: true,
+            label: '查看 $sender 的操作',
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => unawaited(_showUserActions(msg)),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    sender,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: roleColor,
+                    ),
+                  ),
+                  if (roleLabel.isNotEmpty) ...<Widget>[
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: roleColor.withOpacity(0.14),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: Text(
+                        roleLabel,
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          color: roleColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
         ));
       }
@@ -316,7 +375,13 @@ class _ChatPageState extends State<ChatPage> {
         padding: const EdgeInsets.only(bottom: 6),
         child: Align(
           alignment: msg.outgoing ? Alignment.centerRight : Alignment.centerLeft,
-          child: _bubble(context, state, msg, bot),
+          child: _bubble(
+            context,
+            state,
+            msg,
+            bot,
+            quoted: msg.inReplyTo == null ? null : byId[msg.inReplyTo],
+          ),
         ),
       ));
     }
@@ -324,7 +389,13 @@ class _ChatPageState extends State<ChatPage> {
     return widgets;
   }
 
-  Widget _bubble(BuildContext context, AppState state, ChatMessage msg, Bot? bot) {
+  Widget _bubble(
+    BuildContext context,
+    AppState state,
+    ChatMessage msg,
+    Bot? bot, {
+    ChatMessage? quoted,
+  }) {
     final colors = context.colors;
     final outgoing = msg.outgoing;
     final mediaKey = '${msg.botId}/${msg.msgId}';
@@ -332,7 +403,23 @@ class _ChatPageState extends State<ChatPage> {
     final maxWidth = MediaQuery.sizeOf(context).width * 0.78;
 
     Widget content;
-    if (msg.isMedia) {
+    if (msg.isMedia && msg.msgType == 'file') {
+      final name = msg.body.plain.trim();
+      content = Text(
+        name.isEmpty ? '[文件]' : '[文件] $name',
+        style: TextStyle(fontSize: 15, color: outgoing ? Colors.white : colors.text),
+      );
+    } else if (msg.isMedia && msg.msgType == 'video') {
+      content = Text(
+        '[视频]',
+        style: TextStyle(fontSize: 15, color: outgoing ? Colors.white : colors.text),
+      );
+    } else if (msg.isMedia && msg.msgType == 'audio') {
+      content = Text(
+        '[语音]',
+        style: TextStyle(fontSize: 15, color: outgoing ? Colors.white : colors.text),
+      );
+    } else if (msg.isMedia) {
       if (media == null || media.loading) {
         content = Text(
           '正在加载媒体…',
@@ -381,6 +468,34 @@ class _ChatPageState extends State<ChatPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
+          if (msg.inReplyTo != null && msg.inReplyTo!.isNotEmpty)
+            Container(
+              constraints: const BoxConstraints(maxWidth: 260),
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+              decoration: BoxDecoration(
+                color: outgoing ? Colors.white.withOpacity(0.16) : colors.bg,
+                borderRadius: BorderRadius.circular(8),
+                border: Border(
+                  left: BorderSide(
+                    color: outgoing ? Colors.white70 : colors.accent,
+                    width: 2,
+                  ),
+                ),
+              ),
+              child: Text(
+                quoted == null
+                    ? '引用了一条消息'
+                    : '${quoted.outgoing ? '我' : (quoted.senderName.isEmpty ? '对方' : quoted.senderName)}：'
+                        '${quoted.body.plain.isEmpty ? '媒体消息' : quoted.body.plain}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: outgoing ? Colors.white : colors.text2,
+                ),
+              ),
+            ),
           if (msg.failed)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
@@ -407,14 +522,6 @@ class _ChatPageState extends State<ChatPage> {
               ],
             ],
           ),
-          if (msg.inReplyTo != null && msg.inReplyTo!.isNotEmpty && !outgoing)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '回复了一条消息',
-                style: TextStyle(fontSize: 11, color: colors.text3),
-              ),
-            ),
         ],
       ),
     );
@@ -424,10 +531,10 @@ class _ChatPageState extends State<ChatPage> {
         if (msg.failed && bot != null) {
           unawaited(state.retrySend(msg, bot));
         } else {
-          unawaited(_showActions(msg));
+          unawaited(_showActions(state, msg));
         }
       },
-      onLongPress: () => unawaited(_showActions(msg)),
+      onLongPress: () => unawaited(_showActions(state, msg)),
       child: bubble,
     );
   }
@@ -523,11 +630,12 @@ class _ChatPageState extends State<ChatPage> {
                     width: 60,
                     height: 44,
                     child: InkWell(
-                      onTap: () => unawaited(_openSettings(state, bot)),
+                      onTap: () => unawaited(_openSettings(state)),
                       child: Center(
-                        child: Text(
-                          '备注',
-                          style: TextStyle(fontSize: 15, color: colors.accent),
+                        child: Icon(
+                          Icons.more_horiz_rounded,
+                          size: 24,
+                          color: colors.accent,
                         ),
                       ),
                     ),
@@ -546,8 +654,12 @@ class _ChatPageState extends State<ChatPage> {
     final enabled = state.online && bot != null;
     final canInitiate = bot?.constraints.canInitiate ?? false;
     final modeLabel = active
-        ? '主动消息：不受回复窗口限制，不带 @ 与引用'
-        : '被动回复：带上 @ 与引用，受回复窗口限制';
+        ? '主动消息：普通发送'
+        : _replyTo != null
+            ? '引用回复：被动窗口'
+            : _mentioning
+                ? '带 @：被动窗口'
+                : '被动回复：受回复窗口限制';
     return ClipRect(
       child: BackdropFilter(
         filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
@@ -561,6 +673,7 @@ class _ChatPageState extends State<ChatPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   if (_replyTo != null) _replyPreview(context),
+                  if (_mentioning) _mentionPreview(context),
                   if (_sendError.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
@@ -575,6 +688,29 @@ class _ChatPageState extends State<ChatPage> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: <Widget>[
+                      Semantics(
+                        button: true,
+                        label: _panelOpen ? '收起更多功能' : '更多功能',
+                        child: GestureDetector(
+                          onTap: _togglePanel,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: _panelOpen ? colors.accent : colors.bg,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: colors.sep, width: 0.5),
+                            ),
+                            child: Icon(
+                              _panelOpen ? Icons.close_rounded : Icons.add_rounded,
+                              size: 22,
+                              color: _panelOpen ? Colors.white : colors.text2,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Container(
                           constraints: const BoxConstraints(minHeight: 44, maxHeight: 132),
@@ -588,6 +724,8 @@ class _ChatPageState extends State<ChatPage> {
                           // 单行输入框会被撑到 132。让文本域自己按内容决定高度。
                           child: TextField(
                             controller: _input,
+                            focusNode: _inputFocus,
+                            onTapOutside: (_) {},
                             minLines: 1,
                             maxLines: 5,
                             keyboardType: TextInputType.multiline,
@@ -625,6 +763,7 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                     ],
                   ),
+                  if (_panelOpen) _attachPanel(context),
                   const SizedBox(height: 4),
                   Row(
                     children: <Widget>[
@@ -648,6 +787,148 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  List<_AttachAction> get _attachActions => <_AttachAction>[
+        _AttachAction(
+          icon: Icons.perm_media_outlined,
+          label: '媒体',
+          onTap: () => _notYet('媒体'),
+        ),
+        _AttachAction(
+          icon: Icons.insert_drive_file_outlined,
+          label: '文件',
+          onTap: () => _notYet('文件'),
+        ),
+      ];
+
+  int get _attachPageCount {
+    final count = _attachActions.length;
+    return count == 0 ? 1 : (count + 7) ~/ 8;
+  }
+
+  List<_AttachAction> _pageActions(int page) =>
+      _attachActions.skip(page * 8).take(8).toList();
+
+  int _attachRows(int page) {
+    final count = _pageActions(page).length;
+    return ((count + 3) ~/ 4).clamp(1, 2).toInt();
+  }
+
+  double _attachPanelHeight(int page) {
+    final safePage = page.clamp(0, _attachPageCount - 1).toInt();
+    final rows = _attachRows(safePage);
+    final dots = _attachPageCount > 1 ? 18.0 : 0.0;
+    return 16 + rows * 72.0 + (rows - 1) * 8.0 + dots;
+  }
+
+  void _togglePanel() {
+    setState(() => _panelOpen = !_panelOpen);
+    if (_panelOpen) {
+      _scrollToBottom();
+    } else {
+      _focusInput();
+    }
+  }
+
+  void _notYet(String label) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$label发送还没接入')),
+    );
+  }
+
+  Widget _attachPanel(BuildContext context) {
+    final colors = context.colors;
+    final pages = _attachPageCount;
+    final current = _panelPage.clamp(0, pages - 1).toInt();
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      height: _attachPanelHeight(current),
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: colors.bg.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: <Widget>[
+          Expanded(
+            child: PageView.builder(
+              controller: _panelController,
+              itemCount: pages,
+              onPageChanged: (page) => setState(() => _panelPage = page),
+              itemBuilder: (context, page) {
+                final items = _pageActions(page);
+                return GridView.builder(
+                  padding: const EdgeInsets.all(8),
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    mainAxisExtent: 72,
+                  ),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) => _attachButton(context, items[index]),
+                );
+              },
+            ),
+          ),
+          if (pages > 1)
+            SizedBox(
+              height: 18,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List<Widget>.generate(pages, (page) {
+                  final on = page == current;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: on ? 14 : 6,
+                    height: 6,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: BoxDecoration(
+                      color: on ? colors.accent : colors.text3.withOpacity(0.35),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  );
+                }),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _attachButton(BuildContext context, _AttachAction action) {
+    final colors = context.colors;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () {
+        setState(() => _panelOpen = false);
+        action.onTap();
+      },
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: colors.elevated,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: colors.sep, width: 0.5),
+            ),
+            child: Icon(action.icon, size: 22, color: colors.accent),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            action.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: colors.text2),
+          ),
+        ],
       ),
     );
   }
@@ -698,17 +979,56 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  Widget _mentionPreview(BuildContext context) {
+    final colors = context.colors;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.fromLTRB(10, 5, 4, 5),
+      decoration: BoxDecoration(
+        color: colors.bg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: <Widget>[
+          Text(
+            '@$_mentionName',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colors.accent),
+          ),
+          const Spacer(),
+          IconAction(
+            icon: Icons.close_rounded,
+            size: 18,
+            onTap: () => setState(() {
+              _mentioning = false;
+              _mentionName = '';
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _submit(AppState state, Bot? bot) async {
     final text = _input.text.trim();
     if (text.isEmpty || bot == null || _sending) return;
     final list = state.messagesFor(widget.botId, widget.peerId);
     final lastIn = _lastInbound(list);
-    final active = state.activeFor(bot, widget.peerId) && _replyTo == null;
+    final canInitiate = bot.constraints.canInitiate;
+    final passive = _replyTo != null || _mentioning;
+    final active = canInitiate && !passive;
     final target = _replyTo?.msgId ?? lastIn?.msgId;
+    if (_replyTo != null && _replyTo!.outgoing) {
+      setState(() => _sendError = '只能引用对方发来的消息');
+      _focusInput();
+      return;
+    }
     if (!active && target == null) {
       setState(() {
-        _sendError = '还没有可回复的消息：等对方发一条，或在「备注」里打开主动消息';
+        _sendError = _mentioning
+            ? '还没有可 @ 的消息：等对方发一条再试'
+            : '还没有可回复的消息：等对方发一条';
       });
+      _focusInput();
       return;
     }
     setState(() {
@@ -722,35 +1042,162 @@ class _ChatPageState extends State<ChatPage> {
         peerId: widget.peerId,
         peerKind: lastIn?.peerKind ?? 'private',
         text: text,
-        inReplyTo: target,
+        inReplyTo: passive ? target : null,
         active: active,
       );
       if (mounted) {
         setState(() {
           _replyTo = null;
+          _mentioning = false;
+          _mentionName = '';
           _sending = false;
         });
       }
+      _focusInput();
       _scrollToBottom();
     } on ProtocolException catch (err) {
       if (mounted) {
         setState(() {
+          _input.text = text;
+          _input.selection = TextSelection.collapsed(offset: text.length);
           _sendError = err.friendly;
           _sending = false;
         });
       }
+      _focusInput();
     } catch (err) {
       if (mounted) {
         setState(() {
+          _input.text = text;
+          _input.selection = TextSelection.collapsed(offset: text.length);
           _sendError = '发送失败：$err';
           _sending = false;
         });
       }
+      _focusInput();
     }
   }
 
-  Future<void> _showActions(ChatMessage msg) async {
+  void _focusInput() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _inputFocus.requestFocus();
+    });
+  }
+
+  Future<void> _showUserActions(ChatMessage msg) async {
     final colors = context.colors;
+    final name = msg.senderName.isEmpty ? shortPeer(msg.senderId) : msg.senderName;
+    final id = msg.senderId;
+    final initial = name.isEmpty ? '?' : name.substring(0, 1);
+    await showLiantSheet<void>(
+      context: context,
+      title: '用户操作',
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colors.bg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: <Widget>[
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: colors.accent.withOpacity(0.12),
+                    child: Text(
+                      initial,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: colors.accent,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: colors.text,
+                          ),
+                        ),
+                        if (id.isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 2),
+                          Text(
+                            id,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11, color: colors.text3),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            PrimaryButton(
+              label: '@ 提到 $name',
+              onTap: () {
+                _insertMention(name);
+                Navigator.of(sheetContext).pop();
+              },
+            ),
+            const SizedBox(height: 8),
+            SecondaryButton(
+              label: '引用这条消息',
+              onTap: () {
+                setState(() {
+                  _replyTo = msg;
+                  _sendError = '';
+                });
+                Navigator.of(sheetContext).pop();
+                _focusInput();
+              },
+            ),
+            if (id.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 8),
+              SecondaryButton(
+                label: '复制用户 ID',
+                onTap: () async {
+                  await Clipboard.setData(ClipboardData(text: id));
+                  if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+                },
+              ),
+            ],
+            const SizedBox(height: 8),
+            SecondaryButton(
+              label: '复制昵称',
+              onTap: () async {
+                await Clipboard.setData(ClipboardData(text: name));
+                if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showActions(AppState state, ChatMessage msg) async {
+    final colors = context.colors;
+    final list = state.messagesFor(widget.botId, widget.peerId);
+    final mentionName = msg.outgoing
+        ? state.conversationTitle(widget.botId, widget.peerId, list)
+        : (msg.senderName.isNotEmpty ? msg.senderName : shortPeer(msg.senderId));
     await showLiantSheet<void>(
       context: context,
       title: '消息操作',
@@ -773,10 +1220,24 @@ class _ChatPageState extends State<ChatPage> {
               ),
             ),
             const SizedBox(height: 12),
-            PrimaryButton(
-              label: '回复这条',
+            if (!msg.outgoing) ...<Widget>[
+              PrimaryButton(
+                label: '引用这条',
+                onTap: () {
+                  setState(() {
+                    _replyTo = msg;
+                    _sendError = '';
+                  });
+                  Navigator.of(sheetContext).pop();
+                  _focusInput();
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+            SecondaryButton(
+              label: '@ ${mentionName.isEmpty ? '对方' : mentionName}',
               onTap: () {
-                setState(() => _replyTo = msg);
+                _insertMention(mentionName.isEmpty ? '对方' : mentionName);
                 Navigator.of(sheetContext).pop();
               },
             ),
@@ -795,13 +1256,31 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Future<void> _openSettings(AppState state, Bot? bot) async {
-    final key = _key;
-    final controller = TextEditingController(text: state.remarks[key] ?? '');
-    var active = state.activeFor(bot ?? _placeholderBot(), widget.peerId);
-    final canInitiate = bot?.constraints.canInitiate ?? false;
-    if (!canInitiate) active = false;
+  void _insertMention(String name) {
+    final mention = '@$name ';
+    final value = _input.value;
+    final selection = value.selection;
+    final start = selection.isValid ? selection.start : value.text.length;
+    final end = selection.isValid ? selection.end : start;
+    final next = value.text.replaceRange(start, end, mention);
+    _input.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + mention.length),
+    );
+    setState(() {
+      _mentioning = true;
+      _mentionName = name;
+      _sendError = '';
+    });
+    _focusInput();
+  }
 
+  Future<void> _openSettings(AppState state) async {
+    final key = _key;
+    final list = state.messagesFor(widget.botId, widget.peerId);
+    final isGroup = list.isNotEmpty && list.last.peerKind == 'group';
+    final controller = TextEditingController(text: state.remarks[key] ?? '');
+    var muted = state.mutedFor(key);
     await showLiantSheet<void>(
       context: context,
       title: '会话设置',
@@ -846,7 +1325,7 @@ class _ChatPageState extends State<ChatPage> {
                             hintText: state.conversationTitle(
                               widget.botId,
                               widget.peerId,
-                              state.messagesFor(widget.botId, widget.peerId),
+                              list,
                             ),
                           ),
                         ),
@@ -855,52 +1334,52 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-                  decoration: BoxDecoration(
-                    color: colors.elevated,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: colors.sep, width: 0.5),
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              '主动消息',
-                              style: context.texts.titleSmall?.copyWith(color: colors.text),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              canInitiate
-                                  ? '默认开启，不受回复窗口限制；关掉则按被动回复，带 @ 与引用。'
-                                  : '该平台不支持主动发起消息，只能回复入站消息。',
-                              style: context.texts.labelSmall?.copyWith(
-                                color: colors.text3,
-                                height: 1.5,
+              ...<Widget>[
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+                    decoration: BoxDecoration(
+                      color: colors.elevated,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: colors.sep, width: 0.5),
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                '消息免打扰',
+                                style: context.texts.titleSmall?.copyWith(color: colors.text),
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 2),
+                              Text(
+                                isGroup
+                                    ? '群消息不再提醒，仍会正常接收。'
+                                    : '这个人的消息不再提醒，仍会正常接收。',
+                                style: context.texts.labelSmall?.copyWith(
+                                  color: colors.text3,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      Switch.adaptive(
-                        value: active,
-                        onChanged: canInitiate
-                            ? (value) {
-                                state.setActiveMode(key, value);
-                                setSheet(() => active = value);
-                              }
-                            : null,
-                      ),
-                    ],
+                        Switch.adaptive(
+                          value: muted,
+                          onChanged: (value) {
+                            state.setMuted(key, value);
+                            setSheet(() => muted = value);
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              ],
               const SizedBox(height: 16),
             ],
           );
@@ -910,10 +1389,12 @@ class _ChatPageState extends State<ChatPage> {
     controller.dispose();
   }
 
-  Bot _placeholderBot() => Bot(
-        botId: widget.botId,
-        platform: 'qqbot',
-        status: 'unknown',
-        constraints: const BotConstraints(canInitiate: false),
-      );
+}
+
+class _AttachAction {
+  const _AttachAction({required this.icon, required this.label, required this.onTap});
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
 }

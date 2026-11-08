@@ -4,10 +4,11 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'background_service.dart';
 import 'client.dart';
 import 'identity.dart';
 import 'p256.dart';
@@ -61,13 +62,14 @@ class AppState extends ChangeNotifier {
   static const String _kTitles = 'liant.titles';
   static const String _kPeerHints = 'liant.peerHints';
   static const String _kRead = 'liant.read';
-  static const String _kActiveMode = 'liant.activeMode';
+  static const String _kMuted = 'liant.muted';
   static const String _kMessages = 'liant.messages';
 
   LiantClient? _client;
   bool _booted = false;
   bool _syncing = false;
   Timer? _saveTimer;
+  AppLifecycleListener? _lifecycle;
 
   Identity? identity;
   ConnState conn = ConnState.idle;
@@ -80,12 +82,13 @@ class AppState extends ChangeNotifier {
   final Map<String, String> remarks = <String, String>{};
   final Map<String, String> titles = <String, String>{};
   final Map<String, String> peerHints = <String, String>{};
-  final Map<String, bool> activeMode = <String, bool>{};
+  final Map<String, bool> muted = <String, bool>{};
   final Map<String, int> readAt = <String, int>{};
   final Map<String, MediaState> media = <String, MediaState>{};
   Set<String> caps = <String>{};
   Retention retention = const Retention();
   String? openConversation;
+  bool appInForeground = true;
 
   bool get booted => _booted;
   bool get online => conn == ConnState.online;
@@ -111,16 +114,35 @@ class AppState extends ChangeNotifier {
     _loadMap(_kRemarks, remarks);
     _loadMap(_kTitles, titles);
     _loadMap(_kPeerHints, peerHints);
-    _loadMap(_kActiveMode, activeMode);
     final read = <String, dynamic>{};
     _loadMap(_kRead, read);
     for (final entry in read.entries) {
       if (entry.value is num) readAt[entry.key] = (entry.value as num).toInt();
     }
     _loadMessages();
+    _lifecycle = AppLifecycleListener(
+      onStateChange: (state) {
+        if (state == AppLifecycleState.resumed) {
+          appInForeground = true;
+          return;
+        }
+        appInForeground = false;
+        if (state == AppLifecycleState.detached) {
+          unawaited(stopMessageService());
+        } else if (identity != null) {
+          unawaited(startMessageService());
+        }
+      },
+    );
     _booted = true;
     notifyListeners();
-    if (identity != null) _connect();
+    if (identity != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(startMessageService());
+        unawaited(requestNotificationPermission());
+      });
+      _connect();
+    }
   }
 
   /// 扫码/粘贴配对码配对。
@@ -171,6 +193,8 @@ class AppState extends ChangeNotifier {
     await _prefs.setString(_kIdentity, jsonEncode(id.toJson()));
     error = '';
     notifyListeners();
+    unawaited(startMessageService());
+    unawaited(requestNotificationPermission());
     _connect();
   }
 
@@ -417,13 +441,15 @@ class AppState extends ChangeNotifier {
       case 'msg.inbound' || 'event.msg':
         final msg = ChatMessage.fromJson(env.payload, direction: 'in');
         if (msg.msgId.isEmpty || msg.botId.isEmpty) break;
+        if (messages.any((m) => m.msgId == msg.msgId)) break;
         _append(msg);
         _ack(msg.msgId);
         final key = convKey(msg.botId, msg.peerId);
-        if (openConversation == key) {
+        if (openConversation == key && appInForeground) {
           readAt[key] = DateTime.now().millisecondsSinceEpoch;
           unawaited(_persistMap(_kRead, readAt));
         }
+        _notifyInbound(msg);
       case 'event.bot':
         final botId = env.payload['bot_id'] as String?;
         final status = env.payload['status'] as String?;
@@ -529,11 +555,55 @@ class AppState extends ChangeNotifier {
       final last = conv.last;
       if (last == null || msg.ts >= last.ts) conv.last = msg;
       conv.title = _titleFor(msg.botId, msg.peerId, conv.last?.senderName ?? '');
-      if (msg.direction == 'in' && msg.ts > (readAt[key] ?? 0)) conv.unread++;
+      if (!mutedFor(key) && msg.direction == 'in' && msg.ts > (readAt[key] ?? 0)) conv.unread++;
       map[key] = conv;
     }
     return map.values.toList()
       ..sort((a, b) => (b.last?.ts ?? 0) - (a.last?.ts ?? 0));
+  }
+
+  void _notifyInbound(ChatMessage msg) {
+    final key = convKey(msg.botId, msg.peerId);
+    if (mutedFor(key)) return;
+    if (appInForeground && openConversation == key) return;
+    final list = messagesFor(msg.botId, msg.peerId);
+    final convTitle = conversationTitle(msg.botId, msg.peerId, list);
+    final sender = msg.senderName.isEmpty ? shortPeer(msg.senderId) : msg.senderName;
+    final isGroup = msg.peerKind == 'group';
+    final title = _clipText(
+      isGroup ? convTitle : (msg.senderName.isEmpty ? convTitle : msg.senderName),
+      36,
+    );
+    final summary = _notificationSummary(msg);
+    final body = _clipText(
+      isGroup ? '$sender: $summary' : summary,
+      90,
+    );
+    final id = msg.msgId.hashCode & 0x7fffffff;
+    unawaited(showMessageNotification(id: id, title: title, body: body));
+  }
+
+  String _notificationSummary(ChatMessage msg) {
+    switch (msg.msgType) {
+      case 'image':
+        return '[图片]';
+      case 'video':
+        return '[视频]';
+      case 'audio':
+        return '[语音]';
+      case 'file':
+        final name = msg.body.plain.trim();
+        return name.isEmpty ? '[文件]' : '[文件]$name';
+      default:
+        final text = msg.body.plain.trim();
+        return text.isEmpty ? '[消息]' : text;
+    }
+  }
+
+  String _clipText(String text, int max) {
+    final flat = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (flat.length <= max) return flat;
+    return '${flat.substring(0, max)}...';
   }
 
   String _titleFor(String botId, String peerId, String senderName) {
@@ -554,9 +624,6 @@ class AppState extends ChangeNotifier {
     }
     return known;
   }
-
-  bool activeFor(Bot bot, String peerId) =>
-      activeMode[convKey(bot.botId, peerId)] ?? bot.constraints.canInitiate;
 
   // -------------------------------------------------------------------------
   // 动作
@@ -768,6 +835,18 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool mutedFor(String key) => muted[key] ?? false;
+
+  void setMuted(String key, bool on) {
+    if (on) {
+      muted[key] = true;
+    } else {
+      muted.remove(key);
+    }
+    unawaited(_persistMap(_kMuted, muted));
+    notifyListeners();
+  }
+
   void setRemark(String key, String name) {
     final trimmed = name.trim();
     if (trimmed.isEmpty) {
@@ -776,12 +855,6 @@ class AppState extends ChangeNotifier {
       remarks[key] = trimmed;
     }
     unawaited(_persistMap(_kRemarks, remarks));
-    notifyListeners();
-  }
-
-  void setActiveMode(String key, bool on) {
-    activeMode[key] = on;
-    unawaited(_persistMap(_kActiveMode, activeMode));
     notifyListeners();
   }
 
@@ -797,6 +870,8 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _lifecycle?.dispose();
+    unawaited(stopMessageService());
     _client?.stop();
     super.dispose();
   }
