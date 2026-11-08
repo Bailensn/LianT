@@ -10,6 +10,21 @@ LianT 是一个自托管的 **Bot Engine**（Bot 引擎），首发 QQ、Telegra
 - **客户端**（`manager/`）：Flutter。**Android 是唯一交付目标**；Web 只在本地用于预览，
   不对外发布；不做桌面端。会话、机器人、设备与安全日志都走同一份协议。
 
+## 一键安装
+
+在 Linux 服务器上执行（自动取最新 pre-release 二进制，装到 `/opt/liant`、初始化配置并注册 systemd）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash
+```
+
+默认目录 `/opt/liant`、端口 `8443`，可以用 `LIANT_DIR` / `LIANT_PORT` 覆盖；
+也可以直接装本地二进制：`sudo bash scripts/install.sh ./LianT-linux-amd64`。
+
+装完后在这台机器执行 `cd /opt/liant && ./LianT pair --host <手机可达地址>`，
+把终端打印的配对信息粘到 Android 客户端的「连接 LianT」页，再在终端确认一次。
+服务端只提供 `/v1/ws` 与 `/v1/media/`，没有网页管理端。
+
 ## 文档
 
 - 文档索引：[docs/README.md](docs/README.md)

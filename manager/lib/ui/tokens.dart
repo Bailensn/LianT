@@ -2,7 +2,6 @@
 //
 // 与 docs/UI-DESIGN.md 对齐：背景分层表达层级、单一品牌蓝、34px 大标题、
 // 1px 半透明分隔线、深浅色跟随系统。
-import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
 /// 一套颜色。用 ThemeExtension 挂到 ThemeData 上，页面里直接 `context.colors`。
@@ -196,15 +195,6 @@ class LiantTheme {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
         ),
-      ),
-      pageTransitionsTheme: const PageTransitionsTheme(
-        builders: <TargetPlatform, PageTransitionsBuilder>{
-          TargetPlatform.android: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
-        },
       ),
     );
   }
