@@ -676,16 +676,35 @@ class _ChatPageState extends State<ChatPage> {
       ),
     );
 
-    return GestureDetector(
-      onTap: () {
-        if (msg.failed && bot != null) {
-          unawaited(state.retrySend(msg, bot));
-        } else {
-          unawaited(_showActions(state, msg));
-        }
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      child: GestureDetector(
+        onTap: () {
+          if (msg.failed && bot != null) {
+            unawaited(state.retrySend(msg, bot));
+          } else {
+            unawaited(_showActions(state, msg));
+          }
+        },
+        onLongPress: () => unawaited(_showActions(state, msg)),
+        child: bubble,
+      ),
+      builder: (context, value, child) {
+        if (value >= 0.999) return child ?? const SizedBox.shrink();
+        final blur = (1 - value) * 3;
+        return Opacity(
+          opacity: value,
+          child: ImageFiltered(
+            imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+            child: Transform.translate(
+              offset: Offset(0, (1 - value) * 4),
+              child: child,
+            ),
+          ),
+        );
       },
-      onLongPress: () => unawaited(_showActions(state, msg)),
-      child: bubble,
     );
   }
 
@@ -778,7 +797,13 @@ class _ChatPageState extends State<ChatPage> {
                             botLine,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 11, color: colors.text2),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colors.text2,
+                              fontFeatures: const <FontFeature>[
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
                           ),
                         ],
                       ],
@@ -1457,7 +1482,7 @@ class _ChatPageState extends State<ChatPage> {
               SecondaryButton(
                 label: '复制用户 ID',
                 onTap: () async {
-                  await Clipboard.setData(ClipboardData(text: id));
+                  await _copyText(id);
                   if (sheetContext.mounted) Navigator.of(sheetContext).pop();
                 },
               ),
@@ -1466,13 +1491,24 @@ class _ChatPageState extends State<ChatPage> {
             SecondaryButton(
               label: '复制昵称',
               onTap: () async {
-                await Clipboard.setData(ClipboardData(text: name));
+                await _copyText(name);
                 if (sheetContext.mounted) Navigator.of(sheetContext).pop();
               },
             ),
             const SizedBox(height: 12),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _copyText(String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(L10n.tr('已复制')),
+        duration: const Duration(milliseconds: 2500),
       ),
     );
   }
@@ -1530,7 +1566,7 @@ class _ChatPageState extends State<ChatPage> {
             SecondaryButton(
               label: '复制文本',
               onTap: () async {
-                await Clipboard.setData(ClipboardData(text: msg.body.plain));
+                await _copyText(msg.body.plain);
                 if (sheetContext.mounted) Navigator.of(sheetContext).pop();
               },
             ),

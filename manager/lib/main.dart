@@ -16,6 +16,7 @@ import 'ui/tokens.dart';
 import 'ui/widgets.dart';
 import 'l10n/ltext.dart';
 import 'ui/squircle.dart';
+import 'ui/motion.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,6 +49,9 @@ class LiantApp extends StatelessWidget {
           theme: LiantTheme.light(),
           darkTheme: LiantTheme.dark(),
           themeMode: ThemeMode.system,
+          scrollBehavior: const MaterialScrollBehavior().copyWith(
+            physics: const SpringScrollPhysics(),
+          ),
           locale: state.locale,
           supportedLocales: const <Locale>[
             Locale('zh'),
