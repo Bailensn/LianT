@@ -23,6 +23,8 @@ func main() {
 		versionCommand()
 	case "config":
 		config.ConfigCommand(args[2:])
+	case "db":
+		dbCommand(args[2:])
 	case "serve":
 		serveCommand(args[2:])
 	case "pair":

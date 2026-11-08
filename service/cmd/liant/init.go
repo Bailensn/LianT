@@ -21,6 +21,7 @@ func initCommand() {
 		cfg := config.Config{}
 		cfg.Proxy.Enabled = false
 		cfg.Proxy.URL = ""
+		cfg.Storage.Driver = "sqlite"
 		cfg.Storage.Database =
 			"data/bots.db"
 		cfg.Storage.Key =
@@ -34,7 +35,7 @@ func initCommand() {
 	}
 
 	// 数据库交给 store 迁移，避免这里再维护一份 schema。
-	db, err := store.Open(config.LoadConfig().Storage.Database)
+	db, err := store.OpenDatabase(config.LoadConfig().Storage.Driver, config.LoadConfig().PostgresDSN(), config.LoadConfig().Storage.Database)
 	if err != nil {
 		panic(err)
 	}

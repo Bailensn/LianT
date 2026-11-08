@@ -58,7 +58,7 @@ func buildServer(
 ) (*server.Server, *node.Identity, *store.Store, *core.Core, error) {
 	cfg := loadConfigOrDie()
 
-	db, err := store.Open(cfg.Storage.Database)
+	db, err := store.OpenDatabase(cfg.Storage.Driver, cfg.PostgresDSN(), cfg.Storage.Database)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -645,7 +645,7 @@ func purgeLoop(db *store.Store) {
 
 func mustOpenStore() *store.Store {
 	cfg := loadConfigOrDie()
-	db, err := store.Open(cfg.Storage.Database)
+	db, err := store.OpenDatabase(cfg.Storage.Driver, cfg.PostgresDSN(), cfg.Storage.Database)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "打开数据库失败：", err)
 		os.Exit(1)

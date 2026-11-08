@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/glebarez/go-sqlite"
@@ -32,15 +33,32 @@ var (
 	ErrInvalid = errors.New("store: 参数不合法")
 )
 
-// Store 是 SQLite 上的持久化句柄，可被多个 goroutine 并发使用。
+// Store 是持久化句柄，可被多个 goroutine 并发使用。
+// 支持 SQLite（默认）与 PostgreSQL，SQL 用 ? 占位，PG 驱动层负责改成 $N。
 type Store struct {
-	db *sql.DB
+	db      *sql.DB
+	dialect string
 	// now 可在测试里替换，避免依赖真实时钟。
 	now func() time.Time
 }
 
-// Open 打开（必要时创建）数据库并完成迁移。
+// Open 打开（必要时创建）SQLite 数据库并完成迁移。
 func Open(path string) (*Store, error) {
+	return OpenDatabase("sqlite", "", path)
+}
+
+// OpenDatabase 按配置打开数据库。driver 为空等同 sqlite。
+func OpenDatabase(driver, dsn, path string) (*Store, error) {
+	if driver == "" || driver == "sqlite" {
+		return openSQLite(path)
+	}
+	if driver == "postgres" {
+		return openPostgres(dsn)
+	}
+	return nil, fmt.Errorf("%w: 不支持的数据库驱动 %q", ErrInvalid, driver)
+}
+
+func openSQLite(path string) (*Store, error) {
 	if path == "" {
 		return nil, fmt.Errorf("%w: 数据库路径为空", ErrInvalid)
 	}
@@ -49,21 +67,40 @@ func Open(path string) (*Store, error) {
 			return nil, fmt.Errorf("store: 创建数据目录: %w", err)
 		}
 	}
-
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("store: 打开数据库: %w", err)
 	}
-	// 单连接：v1 的写入量很小，避开 SQLITE_BUSY 比榨并发更划算。
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-
-	s := &Store{db: db, now: time.Now}
+	s := &Store{db: db, dialect: "sqlite", now: time.Now}
 	if err := s.configure(); err != nil {
 		db.Close()
 		return nil, err
 	}
 	if err := s.migrate(context.Background()); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return s, nil
+}
+
+func openPostgres(dsn string) (*Store, error) {
+	if strings.TrimSpace(dsn) == "" {
+		return nil, fmt.Errorf("%w: PostgreSQL DSN 为空", ErrInvalid)
+	}
+	db, err := sql.Open("postgresq", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("store: 打开 PostgreSQL: %w", err)
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store: 连接 PostgreSQL 失败: %w", err)
+	}
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	s := &Store{db: db, dialect: "postgres", now: time.Now}
+	if err := s.migratePostgres(context.Background()); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -85,6 +122,9 @@ func (s *Store) DB() *sql.DB { return s.db }
 func (s *Store) nowMillis() int64 { return s.now().UnixMilli() }
 
 func (s *Store) configure() error {
+	if s.dialect != "sqlite" {
+		return nil
+	}
 	// journal_mode 会返回一行结果，用 Query 读掉再关，避免连接被占住。
 	row, err := s.db.Query(`PRAGMA journal_mode = WAL`)
 	if err != nil {
@@ -105,6 +145,9 @@ func (s *Store) configure() error {
 }
 
 func (s *Store) migrate(ctx context.Context) error {
+	if s.dialect == "postgres" {
+		return s.migratePostgres(ctx)
+	}
 	var version int
 	if err := s.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("store: 读取 schema 版本: %w", err)

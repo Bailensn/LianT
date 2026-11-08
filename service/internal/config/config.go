@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -28,8 +29,15 @@ type Config struct {
 		URL     string `json:"url"`
 	} `json:"proxy"`
 	Storage struct {
-		Database string `json:"database"`
-		Key      string `json:"key"`
+		Driver     string `json:"driver,omitempty"`
+		Database   string `json:"database"`
+		Key        string `json:"key"`
+		PGHost     string `json:"pg_host,omitempty"`
+		PGPort     int    `json:"pg_port,omitempty"`
+		PGUser     string `json:"pg_user,omitempty"`
+		PGPassword string `json:"pg_password,omitempty"`
+		PGDatabase string `json:"pg_database,omitempty"`
+		PGSSLMode  string `json:"pg_sslmode,omitempty"`
 	} `json:"storage"`
 	// Auth 是暴露到公网时的一道前置认证。
 	Auth struct {
@@ -48,6 +56,33 @@ type Config struct {
 		// Listen 是 WSS 的监听地址，默认 :8443（协议 §1 的固定端口）。
 		Listen string `json:"listen"`
 	} `json:"connect"`
+}
+
+// PostgresDSN 用配置里的账号密码拼 PostgreSQL 连接串。
+func (c Config) PostgresDSN() string {
+	if c.Storage.Driver != "postgres" {
+		return ""
+	}
+	u := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(c.Storage.PGUser, c.Storage.PGPassword),
+		Host:   c.Storage.PGHost,
+		Path:   "/" + c.Storage.PGDatabase,
+	}
+	if c.Storage.PGPort > 0 {
+		u.Host = u.Host + ":" + strconv.Itoa(c.Storage.PGPort)
+	}
+	q := url.Values{}
+	q.Set("sslmode", defaultString(c.Storage.PGSSLMode, "disable"))
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func defaultString(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
 }
 
 func ConfigPath() string {
@@ -156,10 +191,29 @@ func ConfigCommand(
 			cfg.Proxy.Enabled = value
 		case "proxy.url":
 			cfg.Proxy.URL = args[2]
+		case "storage.driver":
+			cfg.Storage.Driver = args[2]
 		case "storage.database":
 			cfg.Storage.Database = args[2]
 		case "storage.key":
 			cfg.Storage.Key = args[2]
+		case "storage.pg_host":
+			cfg.Storage.PGHost = args[2]
+		case "storage.pg_port":
+			value, err := strconv.Atoi(args[2])
+			if err != nil || value < 1 || value > 65535 {
+				fmt.Println("storage.pg_port 必须是 1-65535 的整数")
+				return
+			}
+			cfg.Storage.PGPort = value
+		case "storage.pg_user":
+			cfg.Storage.PGUser = args[2]
+		case "storage.pg_password":
+			cfg.Storage.PGPassword = args[2]
+		case "storage.pg_database":
+			cfg.Storage.PGDatabase = args[2]
+		case "storage.pg_sslmode":
+			cfg.Storage.PGSSLMode = args[2]
 		case "connect.url":
 			cfg.Connect.Url = args[2]
 		case "connect.address":

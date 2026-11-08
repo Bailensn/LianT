@@ -6,6 +6,12 @@ PORT="${LIANT_PORT:-8443}"
 USER_NAME="${LIANT_USER:-liant}"
 ASSUME_YES="${LIANT_YES:-0}"
 BETA="${LIANT_BETA:-0}"
+DB_DRIVER="${LIANT_DB_DRIVER:-postgres}"
+DB_HOST="${LIANT_DB_HOST:-127.0.0.1}"
+DB_PORT="${LIANT_DB_PORT:-5432}"
+DB_NAME="${LIANT_DB_NAME:-liant}"
+DB_USER="${LIANT_DB_USER:-liant}"
+DB_PASS="${LIANT_DB_PASSWORD:-}"
 REPO="${LIANT_REPO:-Bailensn/LianT}"
 SRC=""
 
@@ -21,6 +27,12 @@ usage() {
   --user USER    运行服务的用户（默认 liant）
   --url URL      从指定地址下载二进制
   --beta         接收测试版（pre-release）；默认只装稳定版
+  --db TYPE      数据库：postgres（默认）或 sqlite
+  --db-host H    PostgreSQL 主机（默认 127.0.0.1）
+  --db-port P    PostgreSQL 端口（默认 5432）
+  --db-name N    PostgreSQL 数据库名（默认 liant）
+  --db-user U    PostgreSQL 用户（默认 liant）
+  --db-pass P    PostgreSQL 密码
   -y, --yes      全部使用默认值，不询问
   -h, --help     显示帮助
 
@@ -35,6 +47,12 @@ while [ "$#" -gt 0 ]; do
     --user) [ "$#" -ge 2 ] || die "--user 缺少值"; USER_NAME="$2"; shift 2 ;;
     --url) [ "$#" -ge 2 ] || die "--url 缺少值"; LIANT_URL="$2"; shift 2 ;;
     --beta) BETA=1; shift ;;
+    --db) [ "$#" -ge 2 ] || die "--db 缺少值"; DB_DRIVER="$2"; shift 2 ;;
+    --db-host) [ "$#" -ge 2 ] || die "--db-host 缺少值"; DB_HOST="$2"; shift 2 ;;
+    --db-port) [ "$#" -ge 2 ] || die "--db-port 缺少值"; DB_PORT="$2"; shift 2 ;;
+    --db-name) [ "$#" -ge 2 ] || die "--db-name 缺少值"; DB_NAME="$2"; shift 2 ;;
+    --db-user) [ "$#" -ge 2 ] || die "--db-user 缺少值"; DB_USER="$2"; shift 2 ;;
+    --db-pass) [ "$#" -ge 2 ] || die "--db-pass 缺少值"; DB_PASS="$2"; shift 2 ;;
     -y|--yes) ASSUME_YES=1; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) die "未知选项：$1（用 --help 查看用法）" ;;
@@ -58,9 +76,35 @@ prompt() {
   printf '%s' "${answer:-$default}"
 }
 
+prompt_secret() {
+  local label="$1" default="$2" answer=""
+  if [ "$ASSUME_YES" = "1" ] || [ ! -r /dev/tty ]; then
+    [ -n "$default" ] || die "$label 不能为空"
+    printf '%s' "$default"
+    return 0
+  fi
+  printf '%s: ' "$label" >&2
+  read -rs answer < /dev/tty || answer=""
+  printf '\n' >&2
+  [ -n "$answer" ] || die "$label 不能为空"
+  printf '%s' "$answer"
+}
+
 DIR="$(prompt '安装目录' "$DIR")"
 PORT="$(prompt '服务端口' "$PORT")"
 USER_NAME="$(prompt '运行用户' "$USER_NAME")"
+DB_DRIVER="$(prompt '数据库类型 (postgres/sqlite)' "$DB_DRIVER")"
+case "$DB_DRIVER" in
+  postgres|sqlite) ;;
+  *) die "数据库类型只能是 postgres 或 sqlite" ;;
+esac
+if [ "$DB_DRIVER" = "postgres" ]; then
+  DB_HOST="$(prompt 'PostgreSQL 主机' "$DB_HOST")"
+  DB_PORT="$(prompt 'PostgreSQL 端口' "$DB_PORT")"
+  DB_NAME="$(prompt 'PostgreSQL 数据库名' "$DB_NAME")"
+  DB_USER="$(prompt 'PostgreSQL 用户' "$DB_USER")"
+  DB_PASS="$(prompt_secret 'PostgreSQL 密码' "$DB_PASS")"
+fi
 
 DIR="${DIR%/}"
 [ -n "$DIR" ] || die "安装目录不能为空"
@@ -132,6 +176,18 @@ if [ ! -f "$DIR/config.enc" ]; then
   say "初始化配置"
   ( cd "$DIR" && ./LianT init )
 fi
+say "配置数据库：$DB_DRIVER"
+( cd "$DIR" && ./LianT config set storage.driver "$DB_DRIVER" )
+if [ "$DB_DRIVER" = "postgres" ]; then
+  ( cd "$DIR" && ./LianT config set storage.pg_host "$DB_HOST" )
+  ( cd "$DIR" && ./LianT config set storage.pg_port "$DB_PORT" )
+  ( cd "$DIR" && ./LianT config set storage.pg_database "$DB_NAME" )
+  ( cd "$DIR" && ./LianT config set storage.pg_user "$DB_USER" )
+  ( cd "$DIR" && ./LianT config set storage.pg_password "$DB_PASS" )
+  ( cd "$DIR" && ./LianT config set storage.pg_sslmode disable )
+fi
+say "校验数据库连接并迁移"
+( cd "$DIR" && ./LianT init )
 say "写入监听端口：$PORT"
 ( cd "$DIR" && ./LianT config set connect.listen ":$PORT" )
 chown -R "$USER_NAME" "$DIR"
@@ -170,6 +226,7 @@ cat <<INFO
   目录：$DIR
   用户：$USER_NAME
   端口：$PORT
+  数据库：$DB_DRIVER
   地址：https://${IP:-<本机地址>}:$PORT
   状态：systemctl status liant
   日志：journalctl -u liant -f

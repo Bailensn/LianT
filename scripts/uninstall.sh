@@ -108,6 +108,10 @@ if pgrep -f "$DIR/LianT" >/dev/null 2>&1; then
   warn "仍有 $DIR/LianT 进程在运行（可能是前台 pair/serve），请手动结束"
 fi
 
+if [ "$PURGE" = "1" ] && [ -x "$DIR/LianT" ] && [ -f "$DIR/config.enc" ]; then
+  say "清理数据库"
+  ( cd "$DIR" && ./LianT db wipe ) || warn "数据库清理失败，请手动处理"
+fi
 if [ -x "$DIR/LianT" ]; then
   say "删除二进制"
   rm -f "$DIR/LianT"
