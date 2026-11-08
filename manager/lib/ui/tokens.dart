@@ -111,8 +111,8 @@ class LTokens {
   const LTokens._();
 
   /// 卡片圆角；内部按钮 12–16，气泡 18。
-  static const double cardRadius = 20;
-  static const double controlRadius = 16;
+  static const double cardRadius = 22;
+  static const double controlRadius = 18;
 
   /// iOS 大标题与折叠后的小标题。
   static const double largeTitle = 34;
@@ -216,7 +216,7 @@ class LiantTheme {
         backgroundColor: colors.text,
         contentTextStyle: TextStyle(fontSize: 14, color: colors.bg),
         shape: ContinuousRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
         ),
       ),
     );

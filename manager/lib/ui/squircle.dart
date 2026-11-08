@@ -3,6 +3,31 @@ import 'package:flutter/material.dart';
 
 /// iOS 连续曲率圆角装饰：用 ContinuousRectangleBorder 画 squircle，
 /// 非均匀边框（例如只有底边）回退到普通 BoxDecoration。
+/// 连续曲率在同样数值下看起来比圆角更“紧”，统一放大一档。
+const double _radiusScale = 1.18;
+
+BorderRadiusGeometry squircleRadius(BorderRadiusGeometry? value) {
+  if (value is BorderRadius) {
+    Radius scale(Radius r) => Radius.elliptical(r.x * _radiusScale, r.y * _radiusScale);
+    return BorderRadius.only(
+      topLeft: scale(value.topLeft),
+      topRight: scale(value.topRight),
+      bottomLeft: scale(value.bottomLeft),
+      bottomRight: scale(value.bottomRight),
+    );
+  }
+  if (value is BorderRadiusDirectional) {
+    Radius scale(Radius r) => Radius.elliptical(r.x * _radiusScale, r.y * _radiusScale);
+    return BorderRadiusDirectional.only(
+      topStart: scale(value.topStart),
+      topEnd: scale(value.topEnd),
+      bottomStart: scale(value.bottomStart),
+      bottomEnd: scale(value.bottomEnd),
+    );
+  }
+  return value ?? BorderRadius.zero;
+}
+
 class SquircleBoxDecoration implements Decoration {
   const SquircleBoxDecoration({
     this.color,
@@ -40,7 +65,7 @@ class SquircleBoxDecoration implements Decoration {
     if (!_uniformBorder) {
       return BoxDecoration(
         color: color,
-        borderRadius: borderRadius,
+        borderRadius: squircleRadius(borderRadius),
         border: border,
         boxShadow: boxShadow,
         gradient: gradient,
@@ -50,7 +75,7 @@ class SquircleBoxDecoration implements Decoration {
     final side = border is Border ? (border as Border).top : BorderSide.none;
     return ShapeDecoration(
       shape: ContinuousRectangleBorder(
-        borderRadius: borderRadius ?? BorderRadius.zero,
+        borderRadius: squircleRadius(borderRadius),
         side: side,
       ),
       color: color,
@@ -120,7 +145,9 @@ class SquircleClip extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipPath(
       clipper: ShapeBorderClipper(
-        shape: ContinuousRectangleBorder(borderRadius: borderRadius),
+        shape: ContinuousRectangleBorder(
+          borderRadius: squircleRadius(borderRadius),
+        ),
       ),
       child: child,
     );
