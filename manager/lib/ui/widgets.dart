@@ -798,28 +798,12 @@ class FieldRow extends StatelessWidget {
   }
 }
 
-const List<Color> _avatarLinePalette = <Color>[
-  Color(0xFF2F6BFF),
-  Color(0xFF0A9B9B),
-  Color(0xFF8A5CFF),
-  Color(0xFFD9772E),
-  Color(0xFFD94F8A),
-  Color(0xFF2E9E63),
-];
-
-Color avatarLineColor(String seed, {bool accent = true}) {
-  final index = seed.isEmpty ? 0 : seed.hashCode.abs() % _avatarLinePalette.length;
-  return accent
-      ? _avatarLinePalette[index]
-      : _avatarLinePalette[index].withOpacity(0.55);
-}
-
-/// 头像接口不可用，用一根克制的竖向线代替；颜色按用户稳定变化。
+/// 圆角头像：没有头像接口时用首字，别假装有图。
 class InitialAvatar extends StatelessWidget {
   const InitialAvatar({
     super.key,
     required this.text,
-    this.size = 40,
+    this.size = 44,
     this.accent = false,
   });
 
@@ -829,17 +813,22 @@ class InitialAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    final colors = context.colors;
+    final initial = text.isEmpty ? '?' : String.fromCharCode(text.runes.first);
+    return Container(
       width: size,
       height: size,
-      child: Center(
-        child: Container(
-          width: 3,
-          height: size * 0.5,
-          decoration: BoxDecoration(
-            color: avatarLineColor(text, accent: accent),
-            borderRadius: BorderRadius.circular(2),
-          ),
+      alignment: Alignment.center,
+      decoration: SquircleBoxDecoration(
+        color: accent ? colors.accent.withOpacity(0.12) : colors.sunken,
+        borderRadius: BorderRadius.circular(size / 2.6),
+      ),
+      child: LText(
+        initial,
+        style: TextStyle(
+          fontSize: size * 0.38,
+          fontWeight: FontWeight.w600,
+          color: accent ? colors.accent : colors.text2,
         ),
       ),
     );
