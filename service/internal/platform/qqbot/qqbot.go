@@ -73,12 +73,13 @@ func (a *Adapter) Validate(ctx context.Context, creds platform.Credentials) (pla
 		Caps:        []string{platform.CapText},
 		MaxTextLen:  2000,
 		Limits:      map[string]any{"max_text_len": 2000},
-		// QQ 不能主动发起；被动回复窗口 300s，同一条入站最多回 5 次。
+		// 新一代机器人（19 开头的 appid）默认带全量群消息与主动消息权限，
+		// 所以不再把「必须 @」和「不能主动发起」写死；被动回复窗口与次数仍然生效。
 		Constraints: map[string]any{
-			"can_initiate":          false,
+			"can_initiate":          true,
 			"reply_window_s":        300,
 			"max_replies_per_inbound": 5,
-			"requires_mention":      true,
+			"requires_mention":      false,
 		},
 	}
 	// 拉一次机器人自身资料，拿平台昵称；失败不影响登记。

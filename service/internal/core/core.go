@@ -210,7 +210,10 @@ func (c *Core) Send(ctx context.Context, sess server.Session, raw json.RawMessag
 	}
 
 	// 投递约束：QQ 之类不允许主动发起，必须带上触发消息。
-	if req.InReplyTo == "" {
+	// 用户在界面上显式选择「主动消息」时跳过窗口限制，由平台自己把关。
+	if req.Active {
+		req.InReplyTo = ""
+	} else if req.InReplyTo == "" {
 		if !canInitiate(bot) {
 			return nil, bad(protocol.CodeReplyWindowClosed, "该平台不允许主动发起消息，需在会话内回复")
 		}

@@ -205,6 +205,9 @@ type MsgSend struct {
 	PeerID     string `json:"peer_id"`
 	Body       Body   `json:"body"`
 	InReplyTo  string `json:"in_reply_to,omitempty"`
+	// Active 表示按主动消息发送：不绑定触发消息，也就没有 @ 和引用样式。
+	// 平台是否允许由 bot.Constraints.can_initiate 与配额决定。
+	Active     bool   `json:"active,omitempty"`
 	OperatorID string `json:"operator_id,omitempty"`
 }
 

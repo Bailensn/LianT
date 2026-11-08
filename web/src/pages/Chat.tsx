@@ -15,6 +15,8 @@ export default function Chat() {
   const remarks = useStore((s) => s.remarks)
   const titles = useStore((s) => s.titles)
   const peerHints = useStore((s) => s.peerHints)
+  const activeMode = useStore((s) => s.activeMode)
+  const setActiveMode = useStore((s) => s.setActiveMode)
   const setRemark = useStore((s) => s.setRemark)
   const media = useStore((s) => s.media)
   const fetchMedia = useStore((s) => s.fetchMedia)
@@ -108,6 +110,18 @@ export default function Chat() {
             className="h-12 w-full bg-transparent px-4 text-[16px] outline-none placeholder:text-[var(--text-3)]"
           />
         </div>
+        <label className="mx-4 mb-3 flex items-center justify-between rounded-2xl bg-[var(--bg-elevated)] px-4 py-3">
+          <span className="text-[14px]">
+            主动消息
+            <span className="ml-2 text-[12px] text-[var(--text-3)]">不绑定原消息，也就没有 @ 和引用</span>
+          </span>
+          <input
+            type="checkbox"
+            checked={activeMode[key] === true}
+            onChange={(e) => setActiveMode(key, e.target.checked)}
+            className="h-5 w-5 accent-[var(--accent)]"
+          />
+        </label>
         <div className="px-4 pb-4">
           <Button
             full

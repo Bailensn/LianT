@@ -79,6 +79,7 @@ type State = {
   remarks: Record<string, string>
   titles: Record<string, string>
   peerHints: Record<string, string>
+  activeMode: Record<string, boolean>
   caps: string[]
   booted: boolean
 }
@@ -107,6 +108,7 @@ type Actions = {
   loadAudit: () => Promise<void>
   markRead: (key: string) => void
   setRemark: (key: string, name: string) => void
+  setActiveMode: (key: string, on: boolean) => void
   clearError: () => void
 }
 
@@ -129,6 +131,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   remarks: {},
   titles: {},
   peerHints: {},
+  activeMode: {},
   caps: [],
   booted: false,
 
@@ -139,8 +142,9 @@ export const useStore = create<State & Actions>((set, get) => ({
     const remarks = await loadKV<Record<string, string>>('remarks', {})
     const titles = await loadKV<Record<string, string>>('titles', {})
     const peerHints = await loadKV<Record<string, string>>('peerHints', {})
+    const activeMode = await loadKV<Record<string, boolean>>('activeMode', {})
     const msgs = (await loadMessages()).sort(byTime)
-    set({ identity, read, remarks, titles, peerHints, msgs, booted: true })
+    set({ identity, read, remarks, titles, peerHints, activeMode, msgs, booted: true })
     if (identity) await connect(identity, set, get)
   },
 
@@ -237,6 +241,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   async send(bot, peerId, peerKind, text, inReplyTo) {
     if (!client) throw new Error('尚未连接')
     // 先乐观上屏，服务端确认后再换成真实 msg_id。
+    const active = get().activeMode[convKey(bot.bot_id, peerId)] === true
     const localId = `local-${uuid()}`
     const optimistic: Msg = {
       msg_id: localId,
@@ -246,7 +251,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       body: { plain: text },
       ts: Date.now(),
       direction: 'out',
-      in_reply_to: inReplyTo,
+      in_reply_to: active ? undefined : inReplyTo,
       pending: true,
     }
     set({ msgs: [...get().msgs, optimistic].sort(byTime) })
@@ -256,7 +261,8 @@ export const useStore = create<State & Actions>((set, get) => ({
         bot_id: bot.bot_id,
         peer_id: peerId,
         body: { plain: text },
-        in_reply_to: inReplyTo,
+        in_reply_to: active ? undefined : inReplyTo,
+        active,
       })
       const confirmed: Msg = { ...optimistic, msg_id: res.msg_id, ts: res.ts || optimistic.ts, pending: false }
       set({
@@ -330,6 +336,12 @@ export const useStore = create<State & Actions>((set, get) => ({
     else delete remarks[key]
     set({ remarks })
     void putKV('remarks', remarks)
+  },
+
+  setActiveMode(key, on) {
+    const activeMode = { ...get().activeMode, [key]: on }
+    set({ activeMode })
+    void putKV('activeMode', activeMode)
   },
 
   markRead(key) {
