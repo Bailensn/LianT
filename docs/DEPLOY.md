@@ -6,21 +6,34 @@
 
 ## 1. 前置
 
-- Docker（推荐），或本机装 Go 1.27+ 自己 `go build ./cmd/liant`；
-- 固定端口 **8443/tcp**：`/v1/ws`（客户端 WSS）与 `/v1/media/...`（媒体下载）共用；
-- 磁盘：消息库很小，媒体按 **单 Bot 3 GB** 规划（3 个 Bot 约 9 GB 上限）；
-- 时间同步：认证要求客户端与服务端时差 ≤ 60 秒；
-- 确认版本：`./LianT version`（发布产物由 tag 注入，本地 `go build` 显示 `dev`）。
+- Linux x86_64 或 arm64，一个能跑二进制的用户；
+- 固定端口 **8443/tcp**：`/v1/ws` 与 `/v1/media/...` 共用；
+- 磁盘：消息库很小，媒体按单 Bot 3 GB 规划；
+- 时间同步：认证要求时差 ≤ 60 秒。
 
-## 2. 首次初始化
+二进制从 CI 的 `Service binaries` 产物里下：`LianT-linux-amd64` 或 `LianT-linux-arm64`，附 `SHA256SUMS.txt`。
+
+## 2. 安装
 
 ```bash
-./LianT init          # 生成 config.enc 与 data/key/master.key
-./LianT config get    # 确认 storage.database / connect.listen
+useradd -r -s /sbin/nologin liant || true
+mkdir -p /opt/liant && cd /opt/liant
+# 把下载到的二进制放进来
+mv /path/to/LianT-linux-amd64 ./LianT && chmod +x ./LianT
+sha256sum -c SHA256SUMS.txt --ignore-missing
+
+./LianT init
+./LianT config set connect.listen :8443
 ```
 
-`data/key/master.key` 是数据解密密钥：**丢了就解不开凭据与配置**。
-备份只包含 `config.enc`、`data/`（数据库 + 主密钥）；`data/media/` 可选。
+开机自启用仓库里的 `deploy/liant.service`：
+
+```bash
+cp /opt/liant/deploy/liant.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now liant
+journalctl -u liant -f
+```
 
 ## 3. 登记 Bot
 

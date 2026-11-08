@@ -8,7 +8,6 @@ A self-hosted client and service for operating chat-platform bots (QQ first; Tel
 - Wire protocol (draft): [PROTOCOL.md](docs/PROTOCOL.md)
 - UI rules (web console): [UI-DESIGN.md](docs/UI-DESIGN.md)
 - Deployment: [DEPLOY.md](docs/DEPLOY.md)
-- Docker: [DOCKER.md](docs/DOCKER.md)
 - Security model: [SECURITY.md](docs/SECURITY.md)
 - Release rules: [RELEASING.md](docs/RELEASING.md)
 
