@@ -630,10 +630,12 @@ class _ChatPageState extends State<ChatPage> {
             : '回复窗口已过',
     ].join(' · ');
 
-    return SafeArea(
-      bottom: false,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+    return ColoredBox(
+      color: colors.bg,
+      child: SafeArea(
+        bottom: false,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
         height: _collapsed ? 56 : 76,
         child: ClipRect(
           child: BackdropFilter(
@@ -716,6 +718,7 @@ class _ChatPageState extends State<ChatPage> {
                 ],
               ),
             ),
+          ),
           ),
         ),
       ),
