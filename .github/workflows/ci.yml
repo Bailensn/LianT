@@ -1,8 +1,6 @@
 name: CI
 
-# 一条流水线：先验证，再打包推送镜像。
-#   push main / 手动触发 → 构建 linux/amd64 + linux/arm64 并推送到 GHCR
-#   PR                   → 只验证，不推送
+# 只做验证：协议对照、vet、race 测试。产物由 Service binaries 与 Flutter 两个工作流负责。
 on:
   push:
     branches: [main]
@@ -28,20 +26,6 @@ jobs:
           cache: true
           cache-dependency-path: service/go.sum
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Build web console
-        working-directory: web
-        run: |
-          npm ci
-          npm run build
-          rm -rf ../service/internal/webui/dist
-          cp -r dist ../service/internal/webui/dist
-
       - name: Protocol drift check
         run: bash scripts/check-protocol.sh
 
@@ -52,89 +36,3 @@ jobs:
       - name: Test
         working-directory: service
         run: go test -race ./...
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Build image without pushing
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: false
-          load: true
-          tags: liant:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Smoke test image
-        run: |
-          set -euo pipefail
-          docker volume create liant-ci-data >/dev/null
-          docker run -d --name liant-ci -v liant-ci-data:/app liant:ci serve >/dev/null
-          trap 'docker rm -f liant-ci >/dev/null 2>&1 || true' EXIT
-          for i in $(seq 1 20); do
-            if docker logs liant-ci 2>&1 | grep -q "监听"; then
-              docker logs liant-ci 2>&1 | tail -5
-              echo "容器启动成功"
-              exit 0
-            fi
-            sleep 1
-          done
-          docker logs liant-ci 2>&1 | tail -30
-          docker inspect -f 'exit={{.State.ExitCode}} status={{.State.Status}}' liant-ci || true
-          echo "容器没有进入监听状态" >&2
-          exit 1
-
-  image:
-    needs: verify
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      version: ${{ steps.meta.outputs.version }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Compute version
-        id: meta
-        run: |
-          set -euo pipefail
-          VERSION="v1.0.0-Alpha-$(git rev-parse --short=7 HEAD)"
-          if ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-(Alpha|Beta|RC[0-9]+)-[0-9a-f]{7}$'; then
-            echo "版本格式异常：$VERSION" >&2
-            exit 1
-          fi
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
-          tags: |
-            ghcr.io/bailensn/liant:${{ steps.meta.outputs.version }}
-            ghcr.io/bailensn/liant:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Summary
-        run: |
-          {
-            echo "### 镜像已发布"
-            echo ""
-            echo "- \`ghcr.io/bailensn/liant:${{ steps.meta.outputs.version }}\`"
-            echo "- \`ghcr.io/bailensn/liant:latest\`"
-            echo "- 平台：linux/amd64, linux/arm64"
-          } >> "$GITHUB_STEP_SUMMARY"
