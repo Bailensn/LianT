@@ -16,7 +16,6 @@ import (
 	"net"
 	"net/http"
 	"path"
-	"strings"
 	"sync"
 	"time"
 
