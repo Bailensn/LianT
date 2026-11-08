@@ -165,3 +165,13 @@ sudo bash scripts/upgrade.sh --dir /srv/liant
 - 数据库有 `PRAGMA user_version` 迁移，启动时自动升级；升级前先备份 `data/`；
 - 节点密钥与证书在 `data/node/`：证书剩余不足 30 天会自动用同一私钥重签，指纹不变；
 - 回滚到旧版本前，先确认旧版本能读新 schema，否则用备份恢复。
+
+## 9. 卸载
+
+```bash
+sudo bash scripts/uninstall.sh                 # 保留 config.enc 与 data/
+sudo bash scripts/uninstall.sh --purge -y      # 连配置、消息、媒体一起删
+```
+
+卸载会停止并移除 systemd 单元、删除二进制；默认保留数据，需要时加 `--purge`。
+安装时用了自定义目录的话，用 `--dir /srv/liant` 指定，或让脚本从 systemd 单元读取。

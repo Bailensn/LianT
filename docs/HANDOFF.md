@@ -127,6 +127,7 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
   - `manager/**` → `client-check`，push 后 `android` 出三个 release APK；
   - `scripts/**` 只跑 Go 检查；`docs/**` 跳过；
   - PR 只跑 check，不发版、不出包。
+- 卸载：`scripts/uninstall.sh`（默认保数据，`--purge` 才删）
 - 推送：`git push https://x-access-token:$TOKEN@github.com/Bailensn/LianT.git HEAD:main`
   TOKEN 在 `$HOME/newtoken.txt`；这条网络链路时好时坏，用循环重试 5 次。
 

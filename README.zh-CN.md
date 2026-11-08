@@ -37,6 +37,14 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/upgrade.sh | sudo bash
 ```
 
+卸载（移除 systemd 单元和二进制，默认保留配置与消息数据）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/uninstall.sh | sudo bash
+```
+
+要连配置和数据一起删，加 `--purge -y`。
+
 ## 文档
 
 - 文档索引：[docs/README.md](docs/README.md)
