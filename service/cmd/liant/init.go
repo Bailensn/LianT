@@ -35,9 +35,15 @@ func initCommand() {
 	}
 
 	// 数据库交给 store 迁移，避免这里再维护一份 schema。
-	db, err := store.OpenDatabase(config.LoadConfig().Storage.Driver, config.LoadConfig().PostgresDSN(), config.LoadConfig().Storage.Database)
+	cfg := config.LoadConfig()
+	db, err := store.OpenDatabase(cfg.Storage.Driver, cfg.PostgresDSN(), cfg.Storage.Database)
 	if err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, "初始化数据库失败：", err)
+		if cfg.Storage.Driver == "postgres" {
+			fmt.Fprintln(os.Stderr, "请确认 PostgreSQL 已创建角色和数据库，且 storage.pg_user / storage.pg_password 正确。")
+			fmt.Fprintln(os.Stderr, "示例：CREATE ROLE \"用户名\" LOGIN PASSWORD '密码'; CREATE DATABASE 数据库名 OWNER \"用户名\";")
+		}
+		os.Exit(1)
 	}
 	_ = db.Close()
 
