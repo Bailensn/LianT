@@ -2,6 +2,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,6 +18,7 @@ import 'l10n/ltext.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   // Web 版默认要用户点一下才开启语义树；这里直接打开，
   // 无障碍、AI 浏览器的 DOM 快照与自动化都依赖它。
   if (kIsWeb) {
@@ -58,6 +60,24 @@ class LiantApp extends StatelessWidget {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
+          builder: (context, child) {
+            final dark = Theme.of(context).brightness == Brightness.dark;
+            return AnnotatedRegion<SystemUiOverlayStyle>(
+              value: (dark
+                      ? SystemUiOverlayStyle.light
+                      : SystemUiOverlayStyle.dark)
+                  .copyWith(
+                statusBarColor: Colors.transparent,
+                systemNavigationBarColor: Colors.transparent,
+                systemNavigationBarDividerColor: Colors.transparent,
+                statusBarIconBrightness:
+                    dark ? Brightness.light : Brightness.dark,
+                systemNavigationBarIconBrightness:
+                    dark ? Brightness.light : Brightness.dark,
+              ),
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
           home: const _Root(),
         ),
       ),
