@@ -649,9 +649,10 @@ class _GlassBottomNavState extends State<GlassBottomNav>
   static final SpringDescription _pressSpring =
       SpringDescription.withDampingRatio(mass: 1, stiffness: 311, ratio: 0.593);
   static final SpringDescription _travelSpring =
-      SpringDescription.withDurationAndBounce(
-    duration: const Duration(milliseconds: 400),
-    bounce: 0.15,
+      SpringDescription.withDampingRatio(
+    mass: 1,
+    stiffness: 300,
+    ratio: 0.15,
   );
 
   late final _NavSpring _lens = _NavSpring(this, widget.index.toDouble());
