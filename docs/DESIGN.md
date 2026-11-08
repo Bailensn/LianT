@@ -27,7 +27,7 @@ LianT 让用户在自己服务器上托管多个 Bot，并在自己的设备上�
 | D9 | **通知策略**：所有 Bot 的消息都入库，**只有「当前活跃 Bot」发系统通知**；活跃 = App 前台当前所在的那个账号（像 QQ 多号切换里的当前号），其余 Bot 在服务端照常挂着 | 全部通知；只收活跃 Bot | 全部通知在 3 个 Bot 时已不可用；只收活跃 Bot 会丢历史 | 需要 Android 前台服务维持连接；进程被杀期间只能靠服务端 7 天缓存补 |
 | D10 | **本地媒体策略**：Wi-Fi 下自动下载图片/贴纸/语音/≤5 MB 文件；视频、文档、>5 MB 一律点开才下；本地存储可见可清理；支持导入导出 | 全部自动下载；全部点开才下 | 全部自动下载吃流量与空间；全部按需则超过 7 天窗口就永久丢图 | 需实现下载状态、存储占用页、导出格式与导入去重 |
 | D11 | **v1 的 Bot 运行在 serve 进程内（goroutine）**，D5 的「一 bot 一进程」推迟到客户端闭环之后 | 立即可做进程隔离 | 需要子进程 ↔ 父进程的事件通道，v1 客户端闭环优先 | 适配器 panic 会威胁整个进程，已用 recover 兜底；迁移时 Start/Stop/Reconcile 接口不变 |
-| D12 | **客户端改用 Flutter**（Web / Android / Linux 桌面共用一套代码），取代 D3 的 Compose 优先；服务端删除内嵌网页端 | Jetpack Compose；继续维护 React 网页端 | Compose 只能覆盖 Android，网页端要另养一套；Flutter 能把协议层与界面收敛到一份实现 | 放弃 Compose 生态与 Keystore 直连；私钥暂存本地 KV（见 SECURITY.md） |
+| D12 | **客户端改用 Flutter**：Android 是交付目标，Web 只做本地预览、不对外发布，Linux 桌面作为 CI 附带产物；服务端删除内嵌网页端 | Jetpack Compose；继续维护 React 网页端 | Compose 只能覆盖 Android，网页端要另养一套；Flutter 能把协议层与界面收敛到一份实现 | 放弃 Compose 生态与 Keystore 直连；私钥暂存本地 KV（见 SECURITY.md） |
 
 > **D9 的账号模型（QQ 多号类比）**
 >

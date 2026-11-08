@@ -84,10 +84,25 @@ QQ 的 `app_id/app_secret` 来自 QQ 开放平台机器人后台。
 
 ## 5. 客户端
 
-- **Web**：CI 的 `Flutter` workflow 会发布 gh-pages 预览；也可以本地
-  `flutter build web --release`。网页版连接自签服务端时同样受证书信任限制。
-- **Android**：`flutter build apk --debug`，CI 产物在 `LianT-flutter-android`。
-- **Linux 桌面**：`flutter build linux --release`，CI 产物在 `LianT-flutter-linux`。
+**Android 是交付目标：**
+
+- 本地构建：`cd manager && flutter build apk --debug`；
+- CI 产物在 `LianT-flutter-android`（debug APK）；
+- 应用 ID `com.bailensn.liant`，已经带 `INTERNET` 权限；
+- v1 还没有正式分发的签名配置，CI 只出 debug APK，正式发布前需要接 signingConfig。
+
+**Web 只用于本地预览，不对外发布：**
+
+```bash
+cd manager
+flutter build web --release
+cd build/web && python3 -m http.server 8081 --bind 127.0.0.1
+```
+
+没有 gh-pages 或任何公开地址；网页版连接自签服务端时同样受证书信任限制。
+
+**Linux 桌面**是 CI 附带产物（`LianT-flutter-linux`），也可以本地
+`flutter build linux --release`。
 
 客户端本地保存消息（上限 2000 条）、备注、已读与主动消息开关；服务端只保留 7 天。
 「设置」页可以看已配对设备、吊销设备、安全日志与服务端能力。

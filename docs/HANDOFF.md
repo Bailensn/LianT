@@ -6,7 +6,8 @@
 ## 任务
 
 把 Flutter 客户端做完：**接协议**和**重排视觉**同时进行。视觉目标见 `docs/UI-DESIGN.md`。
-本轮完成了协议接入、视觉重排、删除旧网页端；下一步是桌面双栏、通知与媒体缓存。
+本轮完成了协议接入、视觉重排、删除旧网页端，并把 Android 平台脚手架加入仓库；
+下一步是桌面双栏、通知与媒体缓存。
 
 ## 当前状态
 
@@ -48,6 +49,10 @@ Docker 已全部移除，不要加回来。
   失败重试、`msg.list` 历史、`media.fetch`、设备/审计、备注/已读/主动消息持久化；
   消息最多留 2000 条，备注与已读不设上限。
 - `lib/core/browser_env*.dart`：条件导入，Web 读地址栏参数，其它平台返回 null。
+- `android/` 已入库：应用 ID `com.bailensn.liant`，主清单带 `INTERNET` 权限，
+  Gradle 工具链按 CI 的 Flutter 3.24.5 对齐（Gradle 8.3 / AGP 8.1.0 / Kotlin 1.8.22）。
+  启动图标是品牌蓝底白色 L，由 `tool/make_icons.py` 生成，含 Android 8+ 自适应图标与网页 favicon。
+  **Android 是交付目标**；Web 只在本地预览，不对外发布；Linux 桌面是 CI 附带产物。
 
 **视觉**（`lib/ui/tokens.dart` + `widgets.dart` + 各页面）：
 
@@ -66,7 +71,8 @@ Docker 已全部移除，不要加回来。
 export PATH=$PREFIX/bin:$PREFIX/opt/flutter/bin:/system/bin
 cd /storage/emulated/0/LianT/manager
 flutter analyze
-flutter build web --release               # 约 70 秒
+flutter build web --release               # 预览用，约 70 秒
+flutter build apk --debug                 # Android 交付物；需要 Android SDK/JDK
 ```
 
 `dart` 不在 `$PREFIX/bin`，要把 `$PREFIX/opt/flutter/bin` 加进 PATH。
@@ -82,6 +88,7 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 #    http://127.0.0.1:8081/?host=ws%3A%2F%2F127.0.0.1%3A8099
 ```
 
+- Web 构建只用于本地预览，**不发布到 gh-pages 或任何公开地址**。
 - 地址栏 `?host=…` 只预填服务地址；自动连接需要预览构建
   `flutter build web --dart-define=LIANT_PREVIEW=true` 再加 `&auto=1`。
   正式构建不带这个 define，链接参数不会触发静默配对。
@@ -97,7 +104,7 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 
 - `flutter analyze` 0 issue；`flutter build web --release` 通过；
 - CI 三个 workflow 全绿：`CI`（协议对照 + go vet + go test -race）、
-  `Service binaries`、`Flutter`（3.24.5 的 web/APK/Linux）；
+  `Service binaries`、`Flutter`（3.24.5 的 APK/Linux + Web 编译校验）；
 - `dart run tool/p256_check.dart` 与 `openssl` 双向验证签名/DER/指纹；
 - `dart run tool/mock_smoke.dart` 跑通「挑战自证 → pair.ok → auth.ok → snapshot →
   msg.list → msg.send → 事件」；
@@ -111,7 +118,7 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 
 - `CI`：`scripts/check-protocol.sh`（检查 Flutter 是否提到服务端所有消息类型）+ `go vet` + `go test -race`
 - `Service binaries`：构建 linux amd64/arm64 并发布 pre-release（`install.sh` 从这取）
-- `Flutter`：官方 Flutter 3.24.5 出 web(gh-pages) + APK + Linux 桌面，路径 `manager/**`
+- `Flutter`：官方 Flutter 3.24.5 出 APK + Linux 桌面，Web 只做编译校验（不发布），路径 `manager/**`
 - 推送：`git push https://x-access-token:$TOKEN@github.com/Bailensn/LianT.git HEAD:main`
   TOKEN 在 `$HOME/newtoken.txt`；这条网络链路时好时坏，用循环重试 5 次。
 
@@ -133,6 +140,8 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 - 媒体只做按需拉取 + 图片渲染，未落盘缓存；失败文案区分「已过期」与「空间不足被清理」
 - 本地消息留存上限 2000 条（约 2.5 MB），不是协议里的「本地不设上限」
 - 客户端私钥存本地 KV，未接 Keystore/WebCrypto 不可导出密钥
+- Android 还没有正式签名配置（CI 只出 debug APK），release 包需要接 signingConfig
+- Android 真机还没跑过配对与收发（本机只有 Web 预览与 mock 服务）
 - Basic 认证启用后，Flutter 原生端无法在 WebSocket 握手提供凭据；用反代侧访问控制或暂不开启
 - 桌面双栏、通知、真机截图仍是缺口
 - DSH 的 Linux 环境装不上（loader 资产校验写死在 APK 里），与项目无关，不要浪费时间

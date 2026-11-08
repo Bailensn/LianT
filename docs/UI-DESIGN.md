@@ -2,8 +2,8 @@
 
 依据移动端设计惯例（iOS HIG 的留白优先、背景分层、动效克制）与
 [Ludi-Herry/mobile-design-system-skill](https://github.com/Ludi-Herry/mobile-design-system-skill)
-的六步工作流落地。本文只记录本项目的执行口径，面向 `manager/` 里的 Flutter 客户端
-（Web / Android / Linux 桌面共用一套代码）。
+的六步工作流落地。本文只记录本项目的执行口径，面向 `manager/` 里的 Flutter 客户端：
+**Android 是交付目标**，Web 只用于本地预览（不对外发布），Linux 桌面作为宽屏参考。
 
 ## 硬门禁与实现
 

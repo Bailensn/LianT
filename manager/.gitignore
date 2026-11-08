@@ -2,6 +2,7 @@
 build/
 .flutter-plugins
 .flutter-plugins-dependencies
-android/
 linux/
 .metadata
+.idea/
+*.iml

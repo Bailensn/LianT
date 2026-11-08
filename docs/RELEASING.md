@@ -23,15 +23,15 @@ v1.0.0-RC1-eeeeeee
 | Workflow | 触发 | 产物 |
 | --- | --- | --- |
 | `Service binaries` | `service/**` 变更或手动 | GitHub pre-release：`LianT-linux-amd64`、`LianT-linux-arm64`、`SHA256SUMS.txt` |
-| `Flutter` | `manager/**` 变更或手动 | gh-pages 网页预览、Android debug APK、Linux 桌面 bundle |
+| `Flutter` | `manager/**` 变更或手动 | Android debug APK、Linux 桌面 bundle；Web 只做编译校验，不发布 |
 | `CI` | 所有 push / PR | 协议漂移检查、`go vet`、`go test -race`（不产物） |
 
 - 服务端二进制用 `CGO_ENABLED=0` 构建，直接拷到 `/opt/liant` 就能跑；`install.sh`
   从最新的 pre-release 取资产（注意 GitHub 的 `/releases/latest` 会跳过 pre-release，
   脚本用的是 `/releases?per_page=5`）。
 - 服务端二进制不再内嵌网页管理端，只提供 `/v1/ws`、`/v1/media/` 与根路径说明。
-- Flutter 的 Web 预览发布到 `gh-pages`，路径前缀 `/LianT/`；APK 与桌面产物作为
-  workflow artifact 上传，不建 Release。
+- Flutter 的 APK 与桌面产物作为 workflow artifact 上传，不建 Release；
+  **Web 构建仅供本地预览，不发布到 gh-pages 或任何公开地址**。
 
 ## 本地构建
 
@@ -57,5 +57,6 @@ flutter build linux --release
 
 - 不发正式版，只有带哈希的 pre-release 标签。
 - 不恢复 Docker/Compose/GHCR 流程；部署以 systemd + 二进制为准。
-- 不单独发布客户端安装包；APK 与桌面产物只作为 CI artifact，网页版走 gh-pages。
+- 不单独发布客户端安装包；APK 与桌面产物只作为 CI artifact。
+- 不发布 Web 构建（gh-pages 已停用）。
 - 不保留历史产物；需要旧版本时从对应提交重新构建。
