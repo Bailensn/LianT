@@ -42,6 +42,9 @@ jobs:
           rm -rf ../service/internal/webui/dist
           cp -r dist ../service/internal/webui/dist
 
+      - name: Protocol drift check
+        run: ./scripts/check-protocol.sh
+
       - name: Vet
         working-directory: service
         run: go vet ./...

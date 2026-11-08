@@ -89,6 +89,7 @@ type Actions = {
   refreshBots: () => Promise<void>
   addBot: (platform: string, credentials: Record<string, string>, label?: string) => Promise<string>
   startBot: (id: string) => Promise<void>
+  botStatus: (id: string) => Promise<void>
   stopBot: (id: string) => Promise<void>
   removeBot: (id: string) => Promise<void>
   send: (bot: Bot, peerId: string, peerKind: string, text: string, inReplyTo?: string) => Promise<void>
@@ -125,7 +126,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     if (get().booted) return
     const identity = (await loadIdentity()) ?? null
     const read = await loadKV<Record<string, number>>('read', {})
-    const msgs = await loadMessages()
+    const msgs = (await loadMessages()).sort(byTime)
     set({ identity, read, msgs, booted: true })
     if (identity) await connect(identity, set, get)
   },
@@ -197,13 +198,21 @@ export const useStore = create<State & Actions>((set, get) => ({
     return res.bot_id
   },
 
+  async botStatus(id) {
+    if (!client) return
+    const st = await client.request<{ status: string; last_error?: string }>('bot.status', { bot_id: id })
+    set({ bots: get().bots.map((b) => (b.bot_id === id ? { ...b, status: st.status } : b)) })
+  },
+
   async startBot(id) {
     await client?.request('bot.start', { bot_id: id })
+    await get().botStatus(id)
     await get().refreshBots()
   },
 
   async stopBot(id) {
     await client?.request('bot.stop', { bot_id: id })
+    await get().botStatus(id)
     await get().refreshBots()
   },
 
@@ -287,9 +296,12 @@ export const useStore = create<State & Actions>((set, get) => ({
   },
 }))
 
+// 同一毫秒内的消息按 msg_id 兜底排序，避免刷新后顺序抖动。
+const byTime = (a: Msg, b: Msg) => a.ts - b.ts || String(a.msg_id).localeCompare(String(b.msg_id))
+
 function append(set: (p: Partial<State>) => void, get: () => Store, msg: Msg) {
   if (get().msgs.some((m) => m.msg_id === msg.msg_id)) return
-  const msgs = [...get().msgs, msg].sort((a, b) => a.ts - b.ts)
+  const msgs = [...get().msgs, msg].sort(byTime)
   set({ msgs })
   void saveMessage(msg)
   if (msg.direction === 'in' && client) {
