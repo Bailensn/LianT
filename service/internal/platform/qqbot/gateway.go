@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -211,7 +213,16 @@ func (a *Adapter) gatewayURL(ctx context.Context, c credentials, token string) (
 	return out.URL, nil
 }
 
+// 事件类型只记一次，避免刷屏；排查「平台到底推没推」时很关键。
+var loggedEvents sync.Map
+
 func (a *Adapter) handleDispatch(ctx context.Context, p wsPayload, hooks platform.Hooks) {
+	if p.T != "" {
+		if _, seen := loggedEvents.LoadOrStore(p.T, struct{}{}); !seen {
+			slog.Info("网关事件类型", "t", p.T, "op", p.Op)
+		}
+	}
+
 	switch p.T {
 	case "GROUP_AT_MESSAGE_CREATE", "C2C_MESSAGE_CREATE", "AT_MESSAGE_CREATE":
 		// 其它事件（成员变动、频道管理等）v1 不关心。
@@ -228,6 +239,9 @@ func (a *Adapter) handleDispatch(ctx context.Context, p wsPayload, hooks platfor
 	}
 	msg, ok := toInbound(p.T, ev)
 	if !ok {
+		slog.Warn("消息事件缺少会话标识，已丢弃", "t", p.T,
+			"group_openid", ev.GroupOpenID, "channel_id", ev.ChannelID,
+			"user_openid", ev.Author.UserOpenID, "member_openid", ev.Author.MemberOpenID)
 		return
 	}
 	_ = hooks.OnMessage(ctx, msg)
