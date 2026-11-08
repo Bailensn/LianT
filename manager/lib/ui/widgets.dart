@@ -587,19 +587,45 @@ class GlassBottomNav extends StatelessWidget {
               borderRadius: BorderRadius.circular(28),
               border: Border.all(color: colors.sep, width: 0.5),
             ),
-            child: Row(
-              children: <Widget>[
-                for (var i = 0; i < _items.length; i++)
-                  Expanded(
-                    child: _NavItem(
-                      icon: _items[i].$1,
-                      selectedIcon: _items[i].$2,
-                      label: _items[i].$3,
-                      selected: i == index,
-                      onTap: () => onTap(i),
-                    ),
-                  ),
-              ],
+            child: SizedBox(
+              height: 52,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final itemWidth = constraints.maxWidth / _items.length;
+                  return Stack(
+                    children: <Widget>[
+                      AnimatedPositioned(
+                        duration: const Duration(milliseconds: 240),
+                        curve: Curves.easeOutCubic,
+                        left: index.clamp(0, _items.length - 1) * itemWidth,
+                        top: 0,
+                        width: itemWidth,
+                        height: 52,
+                        child: Container(
+                          decoration: SquircleBoxDecoration(
+                            color: colors.accent.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(22),
+                          ),
+                        ),
+                      ),
+                      Row(
+                        children: <Widget>[
+                          for (var i = 0; i < _items.length; i++)
+                            Expanded(
+                              child: _NavItem(
+                                icon: _items[i].$1,
+                                selectedIcon: _items[i].$2,
+                                label: _items[i].$3,
+                                selected: i == index,
+                                onTap: () => onTap(i),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -634,13 +660,8 @@ class _NavItem extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
+        child: SizedBox(
           height: 52,
-          decoration: SquircleBoxDecoration(
-            color: selected ? colors.accent.withOpacity(0.12) : Colors.transparent,
-            borderRadius: BorderRadius.circular(22),
-          ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
