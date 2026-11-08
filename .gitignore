@@ -3,3 +3,4 @@ service/data/
 data/
 *.log
 .DS_Store
+/skills/
