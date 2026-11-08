@@ -7,7 +7,7 @@
 
 把 Flutter 客户端做完：**接协议**和**重排视觉**同时进行。视觉目标见 `docs/UI-DESIGN.md`。
 本轮完成了协议接入、视觉重排、删除旧网页端，并把 Android 平台脚手架加入仓库；
-下一步是桌面双栏、通知与媒体缓存。
+下一步是通知与媒体缓存（Web 预览的宽屏布局可选，不是交付目标）。
 
 ## 当前状态
 
@@ -52,7 +52,7 @@ Docker 已全部移除，不要加回来。
 - `android/` 已入库：应用 ID `com.bailensn.liant`，主清单带 `INTERNET` 权限，
   Gradle 工具链按 CI 的 Flutter 3.24.5 对齐（Gradle 8.3 / AGP 8.1.0 / Kotlin 1.8.22）。
   启动图标是品牌蓝底白色 L，由 `tool/make_icons.py` 生成，含 Android 8+ 自适应图标与网页 favicon。
-  **Android 是交付目标**；Web 只在本地预览，不对外发布；Linux 桌面是 CI 附带产物。
+  **Android 是唯一交付目标**；Web 只在本地预览，不对外发布；不做桌面端。
 
 **视觉**（`lib/ui/tokens.dart` + `widgets.dart` + 各页面）：
 
@@ -104,7 +104,7 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 
 - `flutter analyze` 0 issue；`flutter build web --release` 通过；
 - CI 三个 workflow 全绿：`CI`（协议对照 + go vet + go test -race）、
-  `Service binaries`、`Flutter`（3.24.5 的 APK/Linux + Web 编译校验）；
+  `Service binaries`、`Flutter (Android)`（3.24.5 的 APK + Web 编译校验）；
 - `dart run tool/p256_check.dart` 与 `openssl` 双向验证签名/DER/指纹；
 - `dart run tool/mock_smoke.dart` 跑通「挑战自证 → pair.ok → auth.ok → snapshot →
   msg.list → msg.send → 事件」；
@@ -118,7 +118,7 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 
 - `CI`：`scripts/check-protocol.sh`（检查 Flutter 是否提到服务端所有消息类型）+ `go vet` + `go test -race`
 - `Service binaries`：构建 linux amd64/arm64 并发布 pre-release（`install.sh` 从这取）
-- `Flutter`：官方 Flutter 3.24.5 出 APK + Linux 桌面，Web 只做编译校验（不发布），路径 `manager/**`
+- `Flutter (Android)`：官方 Flutter 3.24.5 出 debug APK，Web 只做编译校验（不发布），路径 `manager/**`
 - 推送：`git push https://x-access-token:$TOKEN@github.com/Bailensn/LianT.git HEAD:main`
   TOKEN 在 `$HOME/newtoken.txt`；这条网络链路时好时坏，用循环重试 5 次。
 
@@ -127,7 +127,7 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 1. ~~协议客户端（Dart）~~：已完成
 2. ~~视觉重排~~：已完成
 3. ~~删 `web/` 与 `internal/webui`~~：已完成（含 `scripts/build-web.sh`、安装脚本与文档同步）
-4. 宽屏双栏：现在 ≥768 只换成左侧导航，`UI-DESIGN.md` 里的「列表 360 + 聊天窗」还没做
+4. Web 预览的宽屏双栏（可选，不是交付目标）
 5. 后台通知（Android 前台服务/厂商推送）与媒体离线缓存
 6. 用真服务端 + 真 QQ 凭据走一遍配对码流程（本机只有 mock，`AutoPair` 修复也没上真机）
 7. 本地消息换成数据库（现在 2000 条上限是为了避开 localStorage 容量）
@@ -143,7 +143,7 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 - Android 还没有正式签名配置（CI 只出 debug APK），release 包需要接 signingConfig
 - Android 真机还没跑过配对与收发（本机只有 Web 预览与 mock 服务）
 - Basic 认证启用后，Flutter 原生端无法在 WebSocket 握手提供凭据；用反代侧访问控制或暂不开启
-- 桌面双栏、通知、真机截图仍是缺口
+- 通知、真机截图仍是缺口
 - DSH 的 Linux 环境装不上（loader 资产校验写死在 APK 里），与项目无关，不要浪费时间
 
 ## 约定

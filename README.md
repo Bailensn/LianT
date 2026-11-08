@@ -6,8 +6,8 @@ A self-hosted service and client for operating chat-platform bots (QQ first; Tel
 
 - **Service** (`service/`): Go, WSS protocol v1, SQLite, 7-day message buffer. It serves
   `/v1/ws` and signed media links only — no embedded web console.
-- **Client** (`manager/`): Flutter. **Android is the shipped target**; the web build is a
-  local preview surface only and is not published; the Linux desktop build is a CI artifact.
+- **Client** (`manager/`): Flutter. **Android is the only shipped target**; the web build is
+  a local preview surface only and is not published. No desktop builds.
   Conversations, bots, devices and audit logs are part of the same protocol surface.
 
 ## Documents

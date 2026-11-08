@@ -79,7 +79,7 @@ QQ 的 `app_id/app_secret` 来自 QQ 开放平台机器人后台。
 手机连上后服务端终端会要求输入 `y` 确认，成功即把设备公钥写入 `devices` 表。
 配对码 60 秒有效、一次性；默认最多 8 台设备。
 
-> 客户端第一次连接时要信任服务端证书。自签证书在 Android/桌面端需要装进系统信任库，
+> 客户端第一次连接时要信任服务端证书。自签证书在 Android 端需要装进系统信任库，
 > 浏览器则要先用 https 访问一次并手动信任；生产环境建议用反代换成正式证书。
 
 ## 5. 客户端
@@ -87,7 +87,7 @@ QQ 的 `app_id/app_secret` 来自 QQ 开放平台机器人后台。
 **Android 是交付目标：**
 
 - 本地构建：`cd manager && flutter build apk --debug`；
-- CI 产物在 `LianT-flutter-android`（debug APK）；
+- CI 产物在 `LianT-android-debug`（debug APK）；
 - 应用 ID `com.bailensn.liant`，已经带 `INTERNET` 权限；
 - v1 还没有正式分发的签名配置，CI 只出 debug APK，正式发布前需要接 signingConfig。
 
@@ -101,8 +101,7 @@ cd build/web && python3 -m http.server 8081 --bind 127.0.0.1
 
 没有 gh-pages 或任何公开地址；网页版连接自签服务端时同样受证书信任限制。
 
-**Linux 桌面**是 CI 附带产物（`LianT-flutter-linux`），也可以本地
-`flutter build linux --release`。
+不做 Linux/Windows/macOS 桌面端：v1 的交付物只有 Android APK。
 
 客户端本地保存消息（上限 2000 条）、备注、已读与主动消息开关；服务端只保留 7 天。
 「设置」页可以看已配对设备、吊销设备、安全日志与服务端能力。

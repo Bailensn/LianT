@@ -1,7 +1,7 @@
-name: Flutter
+name: Flutter (Android)
 
-# 构建 Flutter 客户端：Android 是交付目标，Linux 桌面作为附带产物，
-# Web 只做本地预览与编译校验，不对外发布。
+# 只交付 Android：构建 debug APK 并上传 artifact。
+# Web 仅用于本地预览，这里只做一次编译校验，不发布。
 on:
   push:
     paths:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -24,36 +24,18 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Install Linux desktop deps
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq clang cmake ninja-build pkg-config libgtk-3-dev
-
-      - name: Generate Linux desktop scaffolding
-        working-directory: manager
-        run: flutter create --platforms=linux --project-name liant .
-
       - working-directory: manager
         run: flutter pub get
 
-      - name: Build web (预览用，不发布)
+      - name: Compile web preview (not published)
         working-directory: manager
         run: flutter build web --release
 
-      - name: Build APK
+      - name: Build Android APK
         working-directory: manager
         run: flutter build apk --debug
 
-      - name: Build Linux desktop
-        working-directory: manager
-        run: flutter build linux --release
-
       - uses: actions/upload-artifact@v7
         with:
-          name: LianT-flutter-android
+          name: LianT-android-debug
           path: manager/build/app/outputs/flutter-apk/*.apk
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: LianT-flutter-linux
-          path: manager/build/linux/x64/release/bundle/**
