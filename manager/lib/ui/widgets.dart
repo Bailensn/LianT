@@ -8,6 +8,7 @@ import '../core/protocol.dart';
 import 'tokens.dart';
 import '../l10n/l10n.dart';
 import '../l10n/ltext.dart';
+import 'squircle.dart';
 
 /// 把 AppState 挂到树上；`AppScope.of(context)` 拿状态并自动重建。
 class AppScope extends InheritedNotifier<AppState> {
@@ -80,7 +81,7 @@ class GroupCard extends StatelessWidget {
                 ),
               ),
             ),
-          ClipRRect(
+          SquircleClip(
             borderRadius: BorderRadius.circular(LTokens.cardRadius),
             child: ColoredBox(
               color: colors.elevated,
@@ -123,7 +124,7 @@ class ToneBadge extends StatelessWidget {
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(
+      decoration: SquircleBoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(20),
       ),
@@ -292,7 +293,7 @@ class EmptyState extends StatelessWidget {
           Container(
             width: 56,
             height: 56,
-            decoration: BoxDecoration(
+            decoration: SquircleBoxDecoration(
               color: colors.sunken,
               borderRadius: BorderRadius.circular(18),
             ),
@@ -336,7 +337,7 @@ class SearchField extends StatelessWidget {
     return Container(
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
+      decoration: SquircleBoxDecoration(
         color: colors.elevated,
         borderRadius: BorderRadius.circular(14),
       ),
@@ -516,7 +517,7 @@ class GlassBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     return Container(
-      decoration: BoxDecoration(
+      decoration: SquircleBoxDecoration(
         borderRadius: BorderRadius.circular(28),
         boxShadow: <BoxShadow>[
           BoxShadow(
@@ -526,13 +527,13 @@ class GlassBottomNav extends StatelessWidget {
           ),
         ],
       ),
-      child: ClipRRect(
+      child: SquircleClip(
         borderRadius: BorderRadius.circular(28),
         child: BackdropFilter(
           filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
           child: Container(
             padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
+            decoration: SquircleBoxDecoration(
               color: colors.elevated.withOpacity(0.72),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(color: colors.sep, width: 0.5),
@@ -587,7 +588,7 @@ class _NavItem extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           height: 52,
-          decoration: BoxDecoration(
+          decoration: SquircleBoxDecoration(
             color: selected ? colors.accent.withOpacity(0.12) : Colors.transparent,
             borderRadius: BorderRadius.circular(22),
           ),
@@ -637,7 +638,7 @@ class NoticeCard extends StatelessWidget {
     return Container(
       margin: margin,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      decoration: SquircleBoxDecoration(
         color: danger ? colors.danger.withOpacity(0.10) : colors.elevated,
         borderRadius: BorderRadius.circular(LTokens.cardRadius),
       ),
@@ -669,7 +670,7 @@ class NoticeCard extends StatelessWidget {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: colors.accent,
                   side: BorderSide(color: colors.sep),
-                  shape: RoundedRectangleBorder(
+                  shape: ContinuousRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
@@ -769,7 +770,7 @@ class InitialAvatar extends StatelessWidget {
       width: size,
       height: size,
       alignment: Alignment.center,
-      decoration: BoxDecoration(
+      decoration: SquircleBoxDecoration(
         color: accent ? colors.accent.withOpacity(0.12) : colors.sunken,
         borderRadius: BorderRadius.circular(size / 2.6),
       ),
@@ -810,7 +811,7 @@ Future<T?> showLiantSheet<T>({
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.85,
           ),
-          decoration: BoxDecoration(
+          decoration: SquircleBoxDecoration(
             color: colors.elevated,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
@@ -821,7 +822,7 @@ Future<T?> showLiantSheet<T>({
               Container(
                 width: 36,
                 height: 4,
-                decoration: BoxDecoration(
+                decoration: SquircleBoxDecoration(
                   color: colors.sep,
                   borderRadius: BorderRadius.circular(2),
                 ),
@@ -886,7 +887,7 @@ Future<bool> confirmAction(
     builder: (dialogContext) => AlertDialog(
       backgroundColor: colors.elevated,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: ContinuousRectangleBorder(borderRadius: BorderRadius.circular(20)),
       title: LText(
         title,
         style: context.texts.titleMedium?.copyWith(fontSize: 17, color: colors.text),
@@ -958,7 +959,7 @@ class RichBody extends StatelessWidget {
             width: double.infinity,
             margin: const EdgeInsets.symmetric(vertical: 4),
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
+            decoration: SquircleBoxDecoration(
               color: color.withOpacity(0.08),
               borderRadius: BorderRadius.circular(10),
             ),
@@ -973,7 +974,7 @@ class RichBody extends StatelessWidget {
           Container(
             margin: const EdgeInsets.symmetric(vertical: 4),
             padding: const EdgeInsets.only(left: 10),
-            decoration: BoxDecoration(
+            decoration: SquircleBoxDecoration(
               border: Border(
                 left: BorderSide(color: color.withOpacity(0.35), width: 2),
               ),
@@ -1066,7 +1067,7 @@ class DetailScaffold extends StatelessWidget {
             bottom: false,
             child: Container(
               height: 56,
-              decoration: BoxDecoration(
+              decoration: SquircleBoxDecoration(
                 color: colors.elevated.withOpacity(0.92),
                 border: Border(
                   bottom: BorderSide(color: colors.sep, width: 0.5),

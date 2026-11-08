@@ -11,6 +11,7 @@ import '../ui/tokens.dart';
 import '../ui/widgets.dart';
 import '../l10n/l10n.dart';
 import '../l10n/ltext.dart';
+import '../ui/squircle.dart';
 
 class PairPage extends StatefulWidget {
   const PairPage({super.key});
@@ -188,7 +189,7 @@ class _PairPageState extends State<PairPage> {
                 ),
                 const SizedBox(height: 20),
                 Container(
-                  decoration: BoxDecoration(
+                  decoration: SquircleBoxDecoration(
                     color: colors.elevated,
                     borderRadius: BorderRadius.circular(LTokens.cardRadius),
                   ),
@@ -286,7 +287,7 @@ class _AddressField extends StatelessWidget {
           child: Container(
             height: 48,
             padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
+            decoration: SquircleBoxDecoration(
               color: colors.elevated,
               borderRadius: BorderRadius.circular(LTokens.controlRadius),
             ),
@@ -320,7 +321,7 @@ class _DeviceNameField extends StatelessWidget {
     return Container(
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
+      decoration: SquircleBoxDecoration(
         color: colors.elevated,
         borderRadius: BorderRadius.circular(LTokens.cardRadius),
       ),

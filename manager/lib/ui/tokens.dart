@@ -192,7 +192,7 @@ class LiantTheme {
         behavior: SnackBarBehavior.floating,
         backgroundColor: colors.text,
         contentTextStyle: TextStyle(fontSize: 14, color: colors.bg),
-        shape: RoundedRectangleBorder(
+        shape: ContinuousRectangleBorder(
           borderRadius: BorderRadius.circular(14),
         ),
       ),

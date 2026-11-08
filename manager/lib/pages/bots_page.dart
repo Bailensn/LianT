@@ -5,6 +5,7 @@ import '../core/protocol.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
 import '../l10n/ltext.dart';
+import '../ui/squircle.dart';
 
 class BotsPage extends StatefulWidget {
   const BotsPage({super.key});
@@ -85,7 +86,7 @@ class _BotsPageState extends State<BotsPage> {
                   children: <Widget>[
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
+                      decoration: SquircleBoxDecoration(
                         color: colors.accent.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(20),
                       ),
@@ -101,7 +102,7 @@ class _BotsPageState extends State<BotsPage> {
                     const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
+                      decoration: SquircleBoxDecoration(
                         color: colors.sunken,
                         borderRadius: BorderRadius.circular(20),
                       ),
@@ -116,7 +117,7 @@ class _BotsPageState extends State<BotsPage> {
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: ClipRRect(
+                child: SquircleClip(
                   borderRadius: BorderRadius.circular(LTokens.cardRadius),
                   child: ColoredBox(
                     color: colors.bg,
@@ -411,7 +412,7 @@ class _BotRow extends StatelessWidget {
                       disabledForegroundColor: colors.text3,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       minimumSize: const Size(64, 40),
-                      shape: RoundedRectangleBorder(
+                      shape: ContinuousRectangleBorder(
                         borderRadius: BorderRadius.circular(20),
                       ),
                     ),

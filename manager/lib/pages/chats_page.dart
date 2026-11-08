@@ -8,6 +8,7 @@ import '../ui/tokens.dart';
 import '../ui/widgets.dart';
 import 'chat_page.dart';
 import '../l10n/ltext.dart';
+import '../ui/squircle.dart';
 
 class ChatsPage extends StatefulWidget {
   const ChatsPage({super.key, required this.onOpenBots});
@@ -237,7 +238,7 @@ class _ConversationTile extends StatelessWidget {
                               constraints: const BoxConstraints(minWidth: 18),
                               padding: const EdgeInsets.symmetric(horizontal: 5),
                               alignment: Alignment.center,
-                              decoration: BoxDecoration(
+                              decoration: SquircleBoxDecoration(
                                 color: colors.accent,
                                 borderRadius: BorderRadius.circular(9),
                               ),

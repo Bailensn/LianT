@@ -15,6 +15,7 @@ import 'pages/settings_page.dart';
 import 'ui/tokens.dart';
 import 'ui/widgets.dart';
 import 'l10n/ltext.dart';
+import 'ui/squircle.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -199,7 +200,7 @@ class _DesktopSidebar extends StatelessWidget {
                   width: 34,
                   height: 34,
                   alignment: Alignment.center,
-                  decoration: BoxDecoration(
+                  decoration: SquircleBoxDecoration(
                     color: colors.accent,
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -241,7 +242,7 @@ class _DesktopSidebar extends StatelessWidget {
                 Container(
                   width: 7,
                   height: 7,
-                  decoration: BoxDecoration(
+                  decoration: SquircleBoxDecoration(
                     color: switch (state.conn) {
                       ConnState.online => colors.ok,
                       ConnState.reconnecting || ConnState.error => colors.danger,

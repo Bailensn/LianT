@@ -15,6 +15,7 @@ import '../ui/tokens.dart';
 import '../ui/widgets.dart';
 import '../l10n/l10n.dart';
 import '../l10n/ltext.dart';
+import '../ui/squircle.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key, required this.botId, required this.peerId});
@@ -410,7 +411,7 @@ class _ChatPageState extends State<ChatPage> {
                   const SizedBox(width: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
+                    decoration: SquircleBoxDecoration(
                       color: roleColor.withOpacity(0.14),
                       borderRadius: BorderRadius.circular(5),
                     ),
@@ -454,7 +455,7 @@ class _ChatPageState extends State<ChatPage> {
       onTap: () => _openFullscreenImage(context, provider),
       child: Stack(
         children: <Widget>[
-          ClipRRect(
+          SquircleClip(
             borderRadius: BorderRadius.circular(12),
             child: Image(
               image: provider,
@@ -477,7 +478,7 @@ class _ChatPageState extends State<ChatPage> {
             right: 6,
             child: Container(
               padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
+              decoration: SquircleBoxDecoration(
                 color: Colors.black54,
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -603,7 +604,7 @@ class _ChatPageState extends State<ChatPage> {
     final bubble = Container(
       constraints: BoxConstraints(maxWidth: maxWidth),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
+      decoration: SquircleBoxDecoration(
         color: outgoing ? colors.accent : colors.elevated,
         borderRadius: BorderRadius.only(
           topLeft: const Radius.circular(18),
@@ -622,7 +623,7 @@ class _ChatPageState extends State<ChatPage> {
               constraints: const BoxConstraints(maxWidth: 260),
               margin: const EdgeInsets.only(bottom: 6),
               padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
-              decoration: BoxDecoration(
+              decoration: SquircleBoxDecoration(
                 color: outgoing ? Colors.white.withOpacity(0.16) : colors.bg,
                 borderRadius: BorderRadius.circular(8),
                 border: Border(
@@ -723,7 +724,7 @@ class _ChatPageState extends State<ChatPage> {
           child: BackdropFilter(
             filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
             child: Container(
-              decoration: BoxDecoration(
+              decoration: SquircleBoxDecoration(
                 color: colors.elevated.withOpacity(0.72),
                 border: Border(
                   bottom: BorderSide(
@@ -848,7 +849,7 @@ class _ChatPageState extends State<ChatPage> {
                             duration: const Duration(milliseconds: 150),
                             width: 44,
                             height: 44,
-                            decoration: BoxDecoration(
+                            decoration: SquircleBoxDecoration(
                               color: _panelOpen ? colors.accent : colors.bg,
                               shape: BoxShape.circle,
                               border: Border.all(color: colors.sep, width: 0.5),
@@ -866,7 +867,7 @@ class _ChatPageState extends State<ChatPage> {
                         child: Container(
                           constraints: const BoxConstraints(minHeight: 44, maxHeight: 132),
                           padding: const EdgeInsets.symmetric(horizontal: 14),
-                          decoration: BoxDecoration(
+                          decoration: SquircleBoxDecoration(
                             color: colors.bg,
                             borderRadius: BorderRadius.circular(22),
                             border: Border.all(color: colors.sep, width: 0.5),
@@ -900,7 +901,7 @@ class _ChatPageState extends State<ChatPage> {
                             duration: const Duration(milliseconds: 150),
                             width: 44,
                             height: 44,
-                            decoration: BoxDecoration(
+                            decoration: SquircleBoxDecoration(
                               color: enabled ? colors.accent : colors.sunken,
                               shape: BoxShape.circle,
                             ),
@@ -974,7 +975,7 @@ class _ChatPageState extends State<ChatPage> {
       duration: const Duration(milliseconds: 180),
       height: _attachPanelHeight(current),
       margin: const EdgeInsets.only(top: 8),
-      decoration: BoxDecoration(
+      decoration: SquircleBoxDecoration(
         color: colors.bg.withOpacity(0.55),
         borderRadius: BorderRadius.circular(16),
       ),
@@ -1014,7 +1015,7 @@ class _ChatPageState extends State<ChatPage> {
                     width: on ? 14 : 6,
                     height: 6,
                     margin: const EdgeInsets.symmetric(horizontal: 3),
-                    decoration: BoxDecoration(
+                    decoration: SquircleBoxDecoration(
                       color: on ? colors.accent : colors.text3.withOpacity(0.35),
                       borderRadius: BorderRadius.circular(3),
                     ),
@@ -1038,7 +1039,7 @@ class _ChatPageState extends State<ChatPage> {
           Container(
             width: 46,
             height: 46,
-            decoration: BoxDecoration(
+            decoration: SquircleBoxDecoration(
               color: colors.elevated,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: colors.sep, width: 0.5),
@@ -1138,13 +1139,13 @@ class _ChatPageState extends State<ChatPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
+      decoration: SquircleBoxDecoration(
         color: colors.bg,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: <Widget>[
-          ClipRRect(
+          SquircleClip(
             borderRadius: BorderRadius.circular(8),
             child: isImage && _pendingBytes != null
                 ? Image.memory(_pendingBytes!, width: 42, height: 42, fit: BoxFit.cover)
@@ -1200,7 +1201,7 @@ class _ChatPageState extends State<ChatPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
-      decoration: BoxDecoration(
+      decoration: SquircleBoxDecoration(
         color: colors.bg,
         borderRadius: BorderRadius.circular(14),
       ),
@@ -1244,7 +1245,7 @@ class _ChatPageState extends State<ChatPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.fromLTRB(10, 5, 4, 5),
-      decoration: BoxDecoration(
+      decoration: SquircleBoxDecoration(
         color: colors.bg,
         borderRadius: BorderRadius.circular(12),
       ),
@@ -1381,7 +1382,7 @@ class _ChatPageState extends State<ChatPage> {
           children: <Widget>[
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
+              decoration: SquircleBoxDecoration(
                 color: colors.bg,
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -1490,7 +1491,7 @@ class _ChatPageState extends State<ChatPage> {
           children: <Widget>[
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
+              decoration: SquircleBoxDecoration(
                 color: colors.bg,
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -1577,7 +1578,7 @@ class _ChatPageState extends State<ChatPage> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   height: 52,
-                  decoration: BoxDecoration(
+                  decoration: SquircleBoxDecoration(
                     color: colors.bg,
                     borderRadius: BorderRadius.circular(14),
                   ),
@@ -1616,7 +1617,7 @@ class _ChatPageState extends State<ChatPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Container(
                     padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-                    decoration: BoxDecoration(
+                    decoration: SquircleBoxDecoration(
                       color: colors.elevated,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: colors.sep, width: 0.5),
