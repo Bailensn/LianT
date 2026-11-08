@@ -1,0 +1,59 @@
+LianT
+Copyright (C) 2026 Bailensn and contributors
+
+This product is licensed under the GNU Affero General Public License v3.0.
+The full license text is in LICENSE.
+
+--------------------------------------------------------------------------------
+Third-party components
+--------------------------------------------------------------------------------
+
+LianT includes or links against the following third-party software. Each component
+remains under its own license; the license identifiers below are provided for
+attribution and convenience. Full license texts are distributed with the
+respective packages, or are available from the upstream projects.
+
+Service (Go)
+  github.com/glebarez/go-sqlite            MIT
+  github.com/gorilla/websocket             BSD-2-Clause
+  github.com/lib/pq                        MIT
+  github.com/skip2/go-qrcode               MIT
+  golang.org/x/crypto                      BSD-3-Clause
+  golang.org/x/term                        BSD-3-Clause
+  golang.org/x/sys                         BSD-3-Clause
+  github.com/dustin/go-humanize            MIT
+  github.com/google/uuid                   BSD-3-Clause
+  github.com/mattn/go-isatty               MIT
+  github.com/ncruces/go-strftime           MIT
+  github.com/remyoudompheng/bigfft         BSD-3-Clause
+  modernc.org/libc                         BSD-3-Clause
+  modernc.org/mathutil                     BSD-3-Clause
+  modernc.org/memory                       BSD-3-Clause
+  modernc.org/sqlite                       BSD-3-Clause
+
+Manager (Flutter / Dart)
+  Flutter SDK and Dart SDK                BSD-3-Clause
+  cupertino_icons                          MIT
+  crypto                                   BSD-3-Clause
+  shared_preferences                       BSD-3-Clause
+  web_socket_channel                       BSD-3-Clause
+  web                                      BSD-3-Clause
+  file_picker                              MIT
+  http                                     BSD-3-Clause
+  image_picker                             BSD-3-Clause
+  flutter_lints (development only)         BSD-3-Clause
+
+Android runtime
+  AndroidX libraries                       Apache-2.0
+  Kotlin standard library and runtime      Apache-2.0
+
+Fonts and icons
+  Roboto                                   Apache-2.0
+  Material Icons                           Apache-2.0
+
+The exact resolved versions of Go and Dart dependencies are recorded in
+service/go.mod, service/go.sum, manager/pubspec.yaml and manager/pubspec.lock.
+
+If you redistribute LianT or a modified version, retain this NOTICE and the
+LICENSE file. This NOTICE does not modify, limit, or replace any third-party
+license.

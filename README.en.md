@@ -112,6 +112,7 @@ Database roles and databases are never dropped automatically.
 - [UI rules](docs/UI-DESIGN.md)
 - [Deployment](docs/DEPLOY.md)
 - [Security](docs/SECURITY.md)
+- [Third-party notices](NOTICE)
 
 ## License
 

@@ -104,6 +104,7 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/uninsta
 - 界面规范（Flutter）：[UI-DESIGN.md](docs/UI-DESIGN.md)
 - 部署说明：[DEPLOY.md](docs/DEPLOY.md)
 - 安全模型：[SECURITY.md](docs/SECURITY.md)
+- 第三方声明：[NOTICE](NOTICE)
 - 发布规则：[RELEASING.md](docs/RELEASING.md)
 - 交接与当前状态：[HANDOFF.md](docs/HANDOFF.md)
 
