@@ -7,7 +7,7 @@ import {
   saveIdentity,
   type Identity,
 } from './lib/identity'
-import { LiantClient, pairDevice, selfRegister, type ConnState } from './lib/ws'
+import { LiantClient, pairDevice, selfRegister, uuid, type ConnState } from './lib/ws'
 
 export type Bot = {
   bot_id: string
@@ -36,6 +36,8 @@ export type Msg = {
   ts: number
   direction: 'in' | 'out'
   in_reply_to?: string
+  pending?: boolean
+  failed?: boolean
 }
 
 export type Device = {
@@ -93,6 +95,7 @@ type Actions = {
   stopBot: (id: string) => Promise<void>
   removeBot: (id: string) => Promise<void>
   send: (bot: Bot, peerId: string, peerKind: string, text: string, inReplyTo?: string) => Promise<void>
+  retrySend: (msgId: string) => Promise<void>
   history: (botId: string, peerId: string) => Promise<void>
   media: Record<string, string>
   fetchMedia: (botId: string, msgId: string) => Promise<void>
@@ -223,23 +226,48 @@ export const useStore = create<State & Actions>((set, get) => ({
 
   async send(bot, peerId, peerKind, text, inReplyTo) {
     if (!client) throw new Error('尚未连接')
-    const res = await client.request<{ msg_id: string; ts: number }>('msg.send', {
-      bot_id: bot.bot_id,
-      peer_id: peerId,
-      body: { plain: text },
-      in_reply_to: inReplyTo,
-    })
-    const msg: Msg = {
-      msg_id: res.msg_id,
+    // 先乐观上屏，服务端确认后再换成真实 msg_id。
+    const localId = `local-${uuid()}`
+    const optimistic: Msg = {
+      msg_id: localId,
       bot_id: bot.bot_id,
       peer_id: peerId,
       peer_kind: peerKind,
       body: { plain: text },
-      ts: res.ts || Date.now(),
+      ts: Date.now(),
       direction: 'out',
       in_reply_to: inReplyTo,
+      pending: true,
     }
-    append(set, get, msg)
+    set({ msgs: [...get().msgs, optimistic].sort(byTime) })
+
+    try {
+      const res = await client.request<{ msg_id: string; ts: number }>('msg.send', {
+        bot_id: bot.bot_id,
+        peer_id: peerId,
+        body: { plain: text },
+        in_reply_to: inReplyTo,
+      })
+      const confirmed: Msg = { ...optimistic, msg_id: res.msg_id, ts: res.ts || optimistic.ts, pending: false }
+      set({
+        msgs: get().msgs.map((m) => (m.msg_id === localId ? confirmed : m)).sort(byTime),
+      })
+      void saveMessage(confirmed)
+    } catch (err) {
+      set({
+        msgs: get().msgs.map((m) => (m.msg_id === localId ? { ...m, pending: false, failed: true } : m)),
+      })
+      throw err
+    }
+  },
+
+  async retrySend(msgId) {
+    const msg = get().msgs.find((m) => m.msg_id === msgId)
+    if (!msg || !msg.failed) return
+    set({ msgs: get().msgs.filter((m) => m.msg_id !== msgId) })
+    const bot = get().bots.find((b) => b.bot_id === msg.bot_id)
+    if (!bot) return
+    await get().send(bot, msg.peer_id, msg.peer_kind, msg.body.plain, msg.in_reply_to)
   },
 
   async fetchMedia(botId, msgId) {

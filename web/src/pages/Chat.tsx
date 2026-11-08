@@ -10,6 +10,7 @@ export default function Chat() {
   const msgs = useStore((s) => s.msgs)
   const bots = useStore((s) => s.bots)
   const send = useStore((s) => s.send)
+  const retrySend = useStore((s) => s.retrySend)
   const history = useStore((s) => s.history)
   const media = useStore((s) => s.media)
   const fetchMedia = useStore((s) => s.fetchMedia)
@@ -67,11 +68,12 @@ export default function Chat() {
   async function submit() {
     const value = text.trim()
     if (!value || !bot || sending) return
+    // 输入框立刻清空，消息以「发送中」状态先上屏。
+    setText('')
     setSending(true)
     setError('')
     try {
       await send(bot, peerId, lastIn?.peer_kind || 'private', value, lastIn?.msg_id)
-      setText('')
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -143,10 +145,15 @@ export default function Chat() {
               )}
               <div className={`flex ${out ? 'justify-end' : 'justify-start'} mb-1.5`}>
                 <div
-                  className={`max-w-[78%] rounded-[18px] px-3.5 py-2 text-[15px] leading-relaxed whitespace-pre-wrap break-words ${
+                  className={`flex max-w-[78%] items-center gap-2 rounded-[18px] px-3.5 py-2 text-[15px] leading-relaxed whitespace-pre-wrap break-words ${
                     out ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-elevated)]'
-                  }`}
+                  } ${m.failed ? 'opacity-60 ring-1 ring-[var(--danger)]' : ''}`}
+                  onClick={() => m.failed && void retrySend(m.msg_id)}
                 >
+                  {m.failed && <span className="text-[12px]">发送失败 · 点击重试</span>}
+                  {m.pending && (
+                    <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  )}
                   {m.msg_type && m.msg_type !== 'text' ? (
                     <MediaBody url={media[`${m.bot_id}/${m.msg_id}`]} fallback={m.body?.plain || '媒体消息'} />
                   ) : (
