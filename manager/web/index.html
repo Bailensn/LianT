@@ -8,6 +8,13 @@
   <title>LianT</title>
 </head>
 <body>
+  <script>
+    // 应用内浏览器等没有 WebGL 的 WebView，可以用 ?cpu=1 强制 CanvasKit 走 CPU 渲染。
+    // 只用于预览与截图自检；正常访问仍然使用 WebGL。
+    if (location.search.indexOf('cpu=1') >= 0) {
+      window.flutterConfiguration = { renderer: 'canvaskit', canvasKitForceCpuOnly: true };
+    }
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

@@ -37,6 +37,10 @@
    `device_id` 是服务端生成的设备标识，之后的 `auth.response.manager_id` 用它。
 6. 配对码一次性、60 秒过期；默认最多 8 台 Manager。
 
+服务端配置了 Basic 认证时，`auth.challenge.auto_pair=true`：客户端可以省掉 `ticket` 直接登记，
+这条路径以已经通过的 Basic 认证为准，不要求 nonce 签名、也不消费配对码。没有 Basic 认证时
+`auto_pair=false`，必须走上面的配对码流程。
+
 ## 4. 握手（每次连接）
 
 ```text

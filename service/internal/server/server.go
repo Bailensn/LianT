@@ -388,19 +388,24 @@ func (c *conn) handlePair(env protocol.Envelope) error {
 		c.s.limiter.Fail(c.ip)
 		return c.denyPair(env, "invalid_pub")
 	}
-	sig, err := base64.StdEncoding.DecodeString(req.Sig)
-	if err != nil {
-		c.s.limiter.Fail(c.ip)
-		return c.denyPair(env, "invalid_sig")
-	}
-	if err := node.Verify(pub, []byte(pending.Nonce), sig); err != nil {
-		c.s.limiter.Fail(c.ip)
-		return c.denyPair(env, "invalid_sig")
-	}
-	// 签名先验，再消费配对码：签名失败不应烧掉码。
-	if err := c.s.opt.Pairer.Redeem(req.Ticket, pending.Nonce); err != nil {
-		c.s.limiter.Fail(c.ip)
-		return c.denyPair(env, pairReason(err))
+	// 免码登记没有配对码，也就没有可签的 nonce；这条路只放行已经通过
+	// Basic 认证的连接（AutoPair 只在配置了 Basic 认证时打开），
+	// 所以信任的是那道认证，而不是这里的签名。
+	if !auto {
+		sig, err := base64.StdEncoding.DecodeString(req.Sig)
+		if err != nil {
+			c.s.limiter.Fail(c.ip)
+			return c.denyPair(env, "invalid_sig")
+		}
+		if err := node.Verify(pub, []byte(pending.Nonce), sig); err != nil {
+			c.s.limiter.Fail(c.ip)
+			return c.denyPair(env, "invalid_sig")
+		}
+		// 签名先验，再消费配对码：签名失败不应烧掉码。
+		if err := c.s.opt.Pairer.Redeem(req.Ticket, pending.Nonce); err != nil {
+			c.s.limiter.Fail(c.ip)
+			return c.denyPair(env, pairReason(err))
+		}
 	}
 
 	name := req.ManagerName
