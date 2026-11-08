@@ -32,6 +32,12 @@ Service (Go)
   modernc.org/sqlite                       BSD-3-Clause
 
 Manager (Flutter / Dart)
+  BottomBar interaction and spring values are adapted from FlClash
+  (https://github.com/chen08209/FlClash) and prism_ui
+  (https://github.com/chen08209/prism_ui), Copyright (C) chen08209,
+  licensed under GPL-3.0. The adapted code remains available under the
+  upstream GPL-3.0 terms; this repository as a whole is distributed under
+  AGPL-3.0.
   Flutter SDK and Dart SDK                BSD-3-Clause
   cupertino_icons                          MIT
   crypto                                   BSD-3-Clause

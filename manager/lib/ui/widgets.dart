@@ -1,7 +1,11 @@
 // 共用组件：大标题页、分组卡片、玻璃底栏、气泡、抽屉、按钮。
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/physics.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -568,14 +572,97 @@ class GlassBottomNav extends StatefulWidget {
   State<GlassBottomNav> createState() => _GlassBottomNavState();
 }
 
-class _GlassBottomNavState extends State<GlassBottomNav> {
+// 交互与弹簧参数参考 FlClash / prism_ui 的 NavigationDock（GPL-3.0），
+// 这里只保留与 LianT 底栏相关的按下、跟手、甩动和回位逻辑。
+class _NavSpring extends ChangeNotifier implements ValueListenable<double> {
+  _NavSpring(TickerProvider vsync, double value) {
+    _ticker = vsync.createTicker(_tick);
+    _value = value;
+  }
+
+  static const double rest = 1e-3;
+  late final Ticker _ticker;
+  double _value = 0;
+  double _target = 0;
+  double _now = 0;
+  double _start = 0;
+  SpringSimulation? _simulation;
+
+  @override
+  double get value => _value;
+
+  double get _velocity => _simulation?.dx(_now - _start) ?? 0;
+
+  void springTo(double target, SpringDescription spring) {
+    _simulation = SpringSimulation(
+      spring,
+      _value,
+      target,
+      _velocity,
+      tolerance: Tolerance(
+        distance: rest,
+        velocity: rest * math.sqrt(spring.stiffness / spring.mass),
+      ),
+    );
+    _target = target;
+    if (_ticker.isActive) {
+      _start = _now;
+      return;
+    }
+    _now = _start = 0;
+    _ticker.start();
+  }
+
+  void jumpTo(double value) {
+    _simulation = null;
+    _ticker.stop();
+    _value = value;
+    notifyListeners();
+  }
+
+  void _tick(Duration elapsed) {
+    _now = elapsed.inMicroseconds / Duration.microsecondsPerSecond;
+    final simulation = _simulation;
+    if (simulation == null) return;
+    final time = _now - _start;
+    if (simulation.isDone(time)) {
+      _value = _target;
+      _simulation = null;
+      _ticker.stop();
+    } else {
+      _value = simulation.x(time);
+    }
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+}
+
+class _GlassBottomNavState extends State<GlassBottomNav>
+    with TickerProviderStateMixin {
+  static final SpringDescription _followSpring =
+      SpringDescription.withDampingRatio(mass: 1, stiffness: 1024, ratio: 0.9);
+  static final SpringDescription _pressSpring =
+      SpringDescription.withDampingRatio(mass: 1, stiffness: 311, ratio: 0.593);
+  static final SpringDescription _travelSpring =
+      SpringDescription.withDurationAndBounce(
+    duration: const Duration(milliseconds: 400),
+    bounce: 0.15,
+  );
+
+  late final _NavSpring _lens = _NavSpring(this, widget.index.toDouble());
+  late final _NavSpring _press = _NavSpring(this, 0);
   int? _pointer;
   VelocityTracker? _tracker;
   double _downX = 0;
   double _itemWidth = 0;
-  double? _dragPosition;
   int? _previewIndex;
   bool _dragging = false;
+  bool _pressed = false;
 
   int get _lastIndex => GlassBottomNav._items.length - 1;
 
@@ -599,11 +686,11 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
       ..addPosition(event.timeStamp, event.localPosition);
     _downX = event.localPosition.dx;
     _dragging = false;
-    final position = _positionAt(_downX);
-    setState(() {
-      _dragPosition = position;
-      _previewIndex = _indexAt(_downX);
-    });
+    _pressed = true;
+    _previewIndex = _indexAt(_downX);
+    _press.springTo(1, _pressSpring);
+    _lens.springTo(_previewIndex!.toDouble(), _pressSpring);
+    setState(() {});
   }
 
   void _onMove(PointerMoveEvent event) {
@@ -617,19 +704,16 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
     final index = position.round().clamp(0, _lastIndex);
     if (index != _previewIndex) {
       HapticFeedback.selectionClick();
+      setState(() => _previewIndex = index);
     }
-    setState(() {
-      _dragPosition = position;
-      _previewIndex = index;
-    });
+    _lens.springTo(position, _followSpring);
   }
 
   void _onUp(PointerUpEvent event) {
     if (event.pointer != _pointer) return;
     final tracker = _tracker;
-    final position = _dragPosition ?? widget.index.toDouble();
     var target = _dragging
-        ? position.round().clamp(0, _lastIndex)
+        ? _lens.value.round().clamp(0, _lastIndex)
         : (_previewIndex ?? widget.index);
     if (_dragging && tracker != null) {
       final velocity = tracker.getVelocity().pixelsPerSecond.dx;
@@ -637,117 +721,132 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
         target = (target + (velocity > 0 ? 1 : -1)).clamp(0, _lastIndex);
       }
     }
-    _clearPointer();
+    _finish(target);
+  }
+
+  void _onCancel(PointerCancelEvent event) {
+    if (event.pointer != _pointer) return;
+    _finish(widget.index);
+  }
+
+  void _finish(int target) {
+    _pointer = null;
+    _tracker = null;
+    _dragging = false;
+    _pressed = false;
+    _previewIndex = null;
+    _press.springTo(0, _pressSpring);
+    _lens.springTo(target.toDouble(), _travelSpring);
+    setState(() {});
     if (target != widget.index) {
       HapticFeedback.selectionClick();
       widget.onTap(target);
     }
   }
 
-  void _onCancel(PointerCancelEvent event) {
-    if (event.pointer != _pointer) return;
-    _clearPointer();
+  @override
+  void didUpdateWidget(covariant GlassBottomNav oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_pointer == null && oldWidget.index != widget.index) {
+      _lens.springTo(widget.index.toDouble(), _travelSpring);
+    }
   }
 
-  void _clearPointer() {
-    _pointer = null;
-    _tracker = null;
-    _dragging = false;
-    setState(() {
-      _dragPosition = null;
-      _previewIndex = null;
-    });
+  @override
+  void dispose() {
+    _lens.dispose();
+    _press.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final selected = _previewIndex ?? widget.index;
-    final position = _dragPosition ?? widget.index.toDouble();
-    return AnimatedScale(
-      scale: _pointer == null ? 1 : 1.012,
-      duration: const Duration(milliseconds: 140),
-      curve: Curves.easeOutCubic,
-      child: Container(
-        decoration: SquircleBoxDecoration(
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: Colors.black.withOpacity(0.14),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
+    return AnimatedBuilder(
+      animation: Listenable.merge(<Listenable>[_lens, _press]),
+      builder: (context, _) {
+        final selected = _previewIndex ?? widget.index;
+        return Transform.scale(
+          scale: 1 + _press.value * 0.012,
+          child: Container(
+            decoration: SquircleBoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.14),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: SquircleClip(
-          borderRadius: BorderRadius.circular(28),
-          child: BackdropFilter(
-            filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: SquircleBoxDecoration(
-                color: colors.elevated.withOpacity(0.72),
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: colors.sep, width: 0.5),
-              ),
-              child: SizedBox(
-                height: 52,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    _itemWidth =
-                        constraints.maxWidth / GlassBottomNav._items.length;
-                    return Listener(
-                      behavior: HitTestBehavior.opaque,
-                      onPointerDown: _onDown,
-                      onPointerMove: _onMove,
-                      onPointerUp: _onUp,
-                      onPointerCancel: _onCancel,
-                      child: Stack(
-                        children: <Widget>[
-                          AnimatedPositioned(
-                            duration: _pointer == null
-                                ? const Duration(milliseconds: 240)
-                                : Duration.zero,
-                            curve: Curves.easeOutCubic,
-                            left: position * _itemWidth,
-                            top: 0,
-                            width: _itemWidth,
-                            height: 52,
-                            child: Container(
-                              decoration: SquircleBoxDecoration(
-                                color: colors.accent.withOpacity(
-                                  _pointer == null ? 0.12 : 0.18,
-                                ),
-                                borderRadius: BorderRadius.circular(22),
-                              ),
-                            ),
-                          ),
-                          Row(
+            child: SquircleClip(
+              borderRadius: BorderRadius.circular(28),
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: SquircleBoxDecoration(
+                    color: colors.elevated.withOpacity(0.72),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(color: colors.sep, width: 0.5),
+                  ),
+                  child: SizedBox(
+                    height: 52,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        _itemWidth = constraints.maxWidth /
+                            GlassBottomNav._items.length;
+                        return Listener(
+                          behavior: HitTestBehavior.opaque,
+                          onPointerDown: _onDown,
+                          onPointerMove: _onMove,
+                          onPointerUp: _onUp,
+                          onPointerCancel: _onCancel,
+                          child: Stack(
                             children: <Widget>[
-                              for (var i = 0;
-                                  i < GlassBottomNav._items.length;
-                                  i++)
-                                Expanded(
-                                  child: _NavItem(
-                                    icon: GlassBottomNav._items[i].$1,
-                                    selectedIcon: GlassBottomNav._items[i].$2,
-                                    label: GlassBottomNav._items[i].$3,
-                                    selected: i == selected,
-                                    onTap: () => widget.onTap(i),
+                              Positioned(
+                                left: _lens.value * _itemWidth,
+                                top: 0,
+                                width: _itemWidth,
+                                height: 52,
+                                child: Container(
+                                  decoration: SquircleBoxDecoration(
+                                    color: colors.accent.withOpacity(
+                                      _pressed ? 0.18 : 0.12,
+                                    ),
+                                    borderRadius: BorderRadius.circular(22),
                                   ),
                                 ),
+                              ),
+                              Row(
+                                children: <Widget>[
+                                  for (var i = 0;
+                                      i < GlassBottomNav._items.length;
+                                      i++)
+                                    Expanded(
+                                      child: _NavItem(
+                                        icon: GlassBottomNav._items[i].$1,
+                                        selectedIcon:
+                                            GlassBottomNav._items[i].$2,
+                                        label: GlassBottomNav._items[i].$3,
+                                        selected: i == selected,
+                                        onTap: () => widget.onTap(i),
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ],
                           ),
-                        ],
-                      ),
-                    );
-                  },
+                        );
+                      },
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
