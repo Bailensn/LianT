@@ -32,6 +32,9 @@ class _ChatPageState extends State<ChatPage> {
 
   AppState? _state;
   Timer? _ticker;
+  double _scrollVelocity = 0;
+  double? _lastScrollOffset;
+  DateTime? _lastScrollAt;
   bool _bootstrapped = false;
   bool _historyLoading = false;
   bool _historyLoaded = false;
@@ -120,8 +123,27 @@ class _ChatPageState extends State<ChatPage> {
 
   void _onScroll() {
     if (!_scroll.hasClients) return;
-    final collapsed = _scroll.offset > 24;
+    final now = DateTime.now();
+    final offset = _scroll.offset;
+    final last = _lastScrollAt;
+    final lastOffset = _lastScrollOffset ?? offset;
+    if (last != null) {
+      final dt = now.difference(last).inMilliseconds;
+      if (dt > 0) {
+        _scrollVelocity = ((offset - lastOffset).abs() * 1000 / dt).clamp(0, 40000).toDouble();
+      }
+    }
+    _lastScrollAt = now;
+    _lastScrollOffset = offset;
+    final collapsed = offset > 24;
     if (collapsed != _collapsed) setState(() => _collapsed = collapsed);
+  }
+
+  int get _prefetchAhead {
+    if (_scrollVelocity > 3200) return 10;
+    if (_scrollVelocity > 1800) return 6;
+    if (_scrollVelocity > 700) return 4;
+    return 2;
   }
 
   void _maybeLoadHistory(AppState state) {
@@ -288,7 +310,14 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  void _requestMedia(AppState state, ChatMessage msg) {
+  void _requestMedia(AppState state, List<ChatMessage> list, int index) {
+    final start = (index - _prefetchAhead).clamp(0, list.length - 1).toInt();
+    for (var i = start; i <= index; i++) {
+      _requestOneMedia(state, list[i]);
+    }
+  }
+
+  void _requestOneMedia(AppState state, ChatMessage msg) {
     if (!msg.isMedia || msg.msgType != 'image') return;
     if (state.localMedia.containsKey(msg.msgId)) return;
     if (state.media['${msg.botId}/${msg.msgId}'] != null) return;
@@ -309,7 +338,7 @@ class _ChatPageState extends State<ChatPage> {
   ) {
     final colors = context.colors;
     final msg = list[i];
-    _requestMedia(state, msg);
+    _requestMedia(state, list, i);
     final prev = i > 0 ? list[i - 1] : null;
     final gap = prev == null || msg.ts - prev.ts > 5 * 60 * 1000;
     final children = <Widget>[];
