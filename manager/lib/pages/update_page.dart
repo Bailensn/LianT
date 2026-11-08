@@ -15,14 +15,23 @@ class UpdatePage extends StatefulWidget {
 }
 
 class _UpdatePageState extends State<UpdatePage> {
-  bool _checking = false;
+  bool _managerBusy = false;
+  bool _serviceBusy = false;
+
+  bool get _checking => _managerBusy || _serviceBusy;
 
   Future<void> _check({required bool manager}) async {
     if (_checking) return;
     final state = AppScope.of(context);
     final serviceVersion = state.serviceVersion;
     final beta = state.acceptBeta;
-    setState(() => _checking = true);
+    setState(() {
+      if (manager) {
+        _managerBusy = true;
+      } else {
+        _serviceBusy = true;
+      }
+    });
     try {
       final releases = await fetchReleases();
       final current = manager ? managerVersion : serviceVersion;
@@ -80,7 +89,15 @@ class _UpdatePageState extends State<UpdatePage> {
         );
       }
     } finally {
-      if (mounted) setState(() => _checking = false);
+      if (mounted) {
+        setState(() {
+          if (manager) {
+            _managerBusy = false;
+          } else {
+            _serviceBusy = false;
+          }
+        });
+      }
     }
   }
 
@@ -196,13 +213,13 @@ class _UpdatePageState extends State<UpdatePage> {
             _UpdateRow(
               title: '检查 Manager',
               subtitle: '当前版本 $managerVersion',
-              busy: _checking,
+              busy: _managerBusy,
               onTap: _checking ? null : () => _check(manager: true),
             ),
             _UpdateRow(
               title: '检查 Service',
               subtitle: '当前版本 $serviceCurrent',
-              busy: _checking,
+              busy: _serviceBusy,
               onTap: _checking ? null : () => _check(manager: false),
             ),
           ],
