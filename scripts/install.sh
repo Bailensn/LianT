@@ -5,6 +5,7 @@ DIR="${LIANT_DIR:-/opt/liant}"
 PORT="${LIANT_PORT:-8443}"
 USER_NAME="${LIANT_USER:-liant}"
 ASSUME_YES="${LIANT_YES:-0}"
+BETA="${LIANT_BETA:-0}"
 REPO="${LIANT_REPO:-Bailensn/LianT}"
 SRC=""
 
@@ -19,6 +20,7 @@ usage() {
   --port PORT    服务端口（默认 8443）
   --user USER    运行服务的用户（默认 liant）
   --url URL      从指定地址下载二进制
+  --beta         接收测试版（pre-release）；默认只装稳定版
   -y, --yes      全部使用默认值，不询问
   -h, --help     显示帮助
 
@@ -32,6 +34,7 @@ while [ "$#" -gt 0 ]; do
     --port) [ "$#" -ge 2 ] || die "--port 缺少值"; PORT="$2"; shift 2 ;;
     --user) [ "$#" -ge 2 ] || die "--user 缺少值"; USER_NAME="$2"; shift 2 ;;
     --url) [ "$#" -ge 2 ] || die "--url 缺少值"; LIANT_URL="$2"; shift 2 ;;
+    --beta) BETA=1; shift ;;
     -y|--yes) ASSUME_YES=1; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) die "未知选项：$1（用 --help 查看用法）" ;;
@@ -81,9 +84,15 @@ if [ -z "$SRC" ] && [ -z "${LIANT_URL:-}" ]; then
   esac
   say "从 GitHub 取最新构建：$asset"
   SRC="$(mktemp)"
-  url=$(curl -fsSL --retry 3 "https://api.github.com/repos/${REPO}/releases?per_page=5" \
-    | grep -o "https://[^\"]*/${asset}" | head -1) || true
-  [ -n "$url" ] || die "没有可用的 release，请检查网络或手动指定 LIANT_URL"
+  if [ "$BETA" = "1" ]; then
+    releases=$(curl -fsSL --retry 3 "https://api.github.com/repos/${REPO}/releases?per_page=5") \
+      || die "无法读取 release 列表"
+  else
+    releases=$(curl -fsSL --retry 3 "https://api.github.com/repos/${REPO}/releases/latest") \
+      || die "没有可用的稳定版；如需测试版请加 --beta"
+  fi
+  url=$(printf '%s' "$releases" | grep -o "https://[^\"]*/${asset}" | head -1) || true
+  [ -n "$url" ] || die "没有可用的 release；如需测试版请加 --beta，或手动指定 LIANT_URL"
   curl -fSL --retry 3 -o "$SRC" "$url" || die "下载失败"
 elif [ -n "${LIANT_URL:-}" ] && [ -z "$SRC" ]; then
   say "下载二进制：$LIANT_URL"

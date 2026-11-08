@@ -25,7 +25,13 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash -s -- -y
 ```
 
-也支持 `--dir PATH`、`--port PORT`、`--user USER`、`--url URL`。
+默认只装稳定版；Service 目前只发 pre-release（Alpha）测试版，需要显式加 `--beta`：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash -s -- --beta
+```
+
+也支持 `--dir PATH`、`--port PORT`、`--user USER`、`--url URL`、`--beta`。
 
 装完后在这台机器执行 `cd /opt/liant && ./LianT pair --host <手机可达地址>`，
 把终端打印的配对信息粘到 Android 客户端的「连接 LianT」页，再在终端确认一次。
@@ -36,6 +42,8 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/upgrade.sh | sudo bash
 ```
+
+升级同样默认只跟稳定版，测试版需要显式 `--beta`。
 
 卸载（移除 systemd 单元、二进制，默认连配置和消息数据一起删）：
 

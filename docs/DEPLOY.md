@@ -46,6 +46,14 @@ sudo bash scripts/install.sh /path/to/LianT-linux-amd64
 sudo bash scripts/install.sh --dir /srv/liant --port 9443 --user liant --url https://example.com/LianT-linux-amd64
 ```
 
+默认只装稳定版；Service 目前只发 pre-release，安装测试版必须显式声明：
+
+```bash
+sudo bash scripts/install.sh --beta
+# 或
+sudo LIANT_BETA=1 bash scripts/install.sh
+```
+
 开机自启用仓库里的 `deploy/liant.service`：
 
 ```bash
@@ -153,7 +161,7 @@ systemd 示例见 `deploy/liant.service`。
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/upgrade.sh | sudo bash
 ```
 
-升级默认从 systemd 的 `WorkingDirectory` 找安装目录，也可以用 `--dir` 指定：
+升级默认只跟稳定版；测试版需要 `--beta`。升级默认从 systemd 的 `WorkingDirectory` 找安装目录，也可以用 `--dir` 指定：
 
 ```bash
 sudo bash scripts/upgrade.sh --dir /srv/liant

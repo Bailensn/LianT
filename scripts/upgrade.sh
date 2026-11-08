@@ -4,6 +4,7 @@ set -euo pipefail
 DIR="${LIANT_DIR:-}"
 REPO="${LIANT_REPO:-Bailensn/LianT}"
 SERVICE="liant"
+BETA="${LIANT_BETA:-0}"
 SRC=""
 
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -15,6 +16,7 @@ usage() {
 
   --dir PATH     安装目录；默认从 systemd 单元的 WorkingDirectory 读取
   --url URL      从指定地址下载二进制
+  --beta         接收测试版（pre-release）；默认只升稳定版
   -y, --yes      不询问（当前无交互，保留给脚本调用）
   -h, --help     显示帮助
 USAGE
@@ -24,6 +26,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --dir) [ "$#" -ge 2 ] || die "--dir 缺少值"; DIR="$2"; shift 2 ;;
     --url) [ "$#" -ge 2 ] || die "--url 缺少值"; LIANT_URL="$2"; shift 2 ;;
+    --beta) BETA=1; shift ;;
     -y|--yes) shift ;;
     -h|--help) usage; exit 0 ;;
     -*) die "未知选项：$1（用 --help 查看用法）" ;;
@@ -62,10 +65,16 @@ elif [ -n "${LIANT_URL:-}" ]; then
   curl -fSL --retry 3 -o "$tmp/$asset" "$LIANT_URL" || die "下载失败"
 else
   say "从 GitHub 取最新构建：$asset"
-  releases=$(curl -fsSL --retry 3 "https://api.github.com/repos/${REPO}/releases?per_page=5") || die "无法读取 release 列表"
+  if [ "$BETA" = "1" ]; then
+    releases=$(curl -fsSL --retry 3 "https://api.github.com/repos/${REPO}/releases?per_page=5") \
+      || die "无法读取 release 列表"
+  else
+    releases=$(curl -fsSL --retry 3 "https://api.github.com/repos/${REPO}/releases/latest") \
+      || die "没有可用的稳定版；如需测试版请加 --beta"
+  fi
   bin_url=$(printf '%s' "$releases" | grep -o "https://[^\"]*/${asset}" | head -1) || true
   sum_url=$(printf '%s' "$releases" | grep -o "https://[^\"]*/SHA256SUMS.txt" | head -1) || true
-  [ -n "$bin_url" ] || die "没有可用的 release，请检查网络或手动指定 LIANT_URL"
+  [ -n "$bin_url" ] || die "没有可用的 release；如需测试版请加 --beta，或手动指定 LIANT_URL"
   curl -fSL --retry 3 -o "$tmp/$asset" "$bin_url" || die "下载二进制失败"
   if [ -n "$sum_url" ]; then
     curl -fSL --retry 3 -o "$tmp/SHA256SUMS.txt" "$sum_url" || true

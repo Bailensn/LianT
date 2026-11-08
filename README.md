@@ -26,7 +26,14 @@ Non-interactive with defaults `/opt/liant`, `8443`, user `liant`:
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash -s -- -y
 ```
 
-Flags: `--dir PATH`, `--port PORT`, `--user USER`, `--url URL`, `-y`.
+Only stable releases are used by default. Service currently publishes pre-release (Alpha) builds only,
+so testing builds must be requested explicitly with `--beta` (or `LIANT_BETA=1`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash -s -- --beta
+```
+
+Flags: `--dir PATH`, `--port PORT`, `--user USER`, `--url URL`, `--beta`, `-y`.
 
 Then open the Android Manager, paste the pairing info printed by `LianT pair`, and confirm
 on the server terminal. The Service serves `/v1/ws` and `/v1/media/` only; there is no web console.
@@ -36,6 +43,8 @@ Upgrade in place (stops the service, verifies SHA256, backs up the old binary, r
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/upgrade.sh | sudo bash
 ```
+
+Same update channel rule: stable by default, `--beta` for pre-release.
 
 Uninstall (removes the unit, binary, config and messages by default):
 
