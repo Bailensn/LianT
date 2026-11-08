@@ -192,9 +192,13 @@ class PrimaryButton extends StatelessWidget {
       enabled: enabled,
       child: Material(
       color: enabled ? colors.accent : colors.sunken,
-      borderRadius: BorderRadius.circular(LTokens.controlRadius),
-      child: InkWell(
+      shape: ContinuousRectangleBorder(
         borderRadius: BorderRadius.circular(LTokens.controlRadius),
+      ),
+      child: InkWell(
+        customBorder: ContinuousRectangleBorder(
+          borderRadius: BorderRadius.circular(LTokens.controlRadius),
+        ),
         onTap: enabled ? onTap : null,
         child: SizedBox(
           height: 48,
@@ -246,9 +250,13 @@ class SecondaryButton extends StatelessWidget {
       enabled: enabled,
       child: Material(
       color: colors.sunken,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
+      shape: ContinuousRectangleBorder(
         borderRadius: BorderRadius.circular(14),
+      ),
+      child: InkWell(
+        customBorder: ContinuousRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
         onTap: enabled ? onTap : null,
         child: SizedBox(
           height: height,
