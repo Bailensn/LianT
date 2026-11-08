@@ -103,3 +103,5 @@ Elimina la unidad, las tablas de LianT (si `LianT` y `config.enc` existen), el d
 ## Licencia
 
 AGPL-3.0. Consulte [LICENSE](LICENSE).
+
+Los avisos de terceros están en [NOTICE](NOTICE).

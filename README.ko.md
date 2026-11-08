@@ -102,3 +102,5 @@ systemd 유닛, LianT 테이블(`LianT`와 `config.enc`가 있을 때), 설치 �
 ## 라이선스
 
 AGPL-3.0. [LICENSE](LICENSE) 참고.
+
+서드파티 고지는 [NOTICE](NOTICE)를 참조하세요.

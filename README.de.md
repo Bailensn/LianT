@@ -113,3 +113,5 @@ und -datenbanken werden nie automatisch gelöscht.
 ## Lizenz
 
 AGPL-3.0. Siehe [LICENSE](LICENSE).
+
+Hinweise zu Drittanbieterkomponenten stehen in [NOTICE](NOTICE).

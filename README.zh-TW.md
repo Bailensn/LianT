@@ -102,3 +102,5 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/uninsta
 ## 授權
 
 AGPL-3.0，詳見 [LICENSE](LICENSE)。
+
+第三方元件聲明見 [NOTICE](NOTICE)。

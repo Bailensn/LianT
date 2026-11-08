@@ -102,3 +102,5 @@ systemd ユニット、LianT テーブル（`LianT` と `config.enc` が存在�
 ## ライセンス
 
 AGPL-3.0。[LICENSE](LICENSE) を参照。
+
+サードパーティ通知は [NOTICE](NOTICE) を参照してください。

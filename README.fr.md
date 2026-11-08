@@ -113,3 +113,5 @@ données ne sont jamais supprimés automatiquement.
 ## Licence
 
 AGPL-3.0. Voir [LICENSE](LICENSE).
+
+Les mentions des composants tiers figurent dans [NOTICE](NOTICE).

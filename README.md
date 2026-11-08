@@ -126,3 +126,5 @@ LianT/
 
 修改后通过网络提供服务，同样需要按 AGPL-3.0 公开对应源码。
 完整条款见根目录 [LICENSE](LICENSE)。
+
+第三方组件声明见 [NOTICE](NOTICE)。

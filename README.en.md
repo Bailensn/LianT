@@ -117,3 +117,5 @@ Database roles and databases are never dropped automatically.
 ## License
 
 AGPL-3.0. See [LICENSE](LICENSE).
+
+Third-party notices are in [NOTICE](NOTICE).
