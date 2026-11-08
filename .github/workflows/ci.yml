@@ -249,8 +249,8 @@ jobs:
             echo "release $tag already exists"
             exit 0
           fi
-          args=(release create "$tag" --title "LianT Manager $version" --notes "Manager $version")
-          case "$version" in
-            *-*) args+=(--prerelease) ;;
-          esac
-          gh "${args[@]}" /tmp/LianT-universal.apk /tmp/LianT-arm64.apk /tmp/LianT-x86_64.apk
+          gh release create "$tag" \
+            --title "LianT Manager $version (test)" \
+            --notes "Manager $version（测试版）" \
+            --prerelease \
+            /tmp/LianT-universal.apk /tmp/LianT-arm64.apk /tmp/LianT-x86_64.apk
