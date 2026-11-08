@@ -224,7 +224,7 @@ func (a *Adapter) handleDispatch(ctx context.Context, p wsPayload, hooks platfor
 	}
 
 	switch p.T {
-	case "GROUP_AT_MESSAGE_CREATE", "C2C_MESSAGE_CREATE", "AT_MESSAGE_CREATE":
+	case "GROUP_AT_MESSAGE_CREATE", "GROUP_MESSAGE_CREATE", "C2C_MESSAGE_CREATE", "AT_MESSAGE_CREATE":
 		// 其它事件（成员变动、频道管理等）v1 不关心。
 	default:
 		return
@@ -251,7 +251,7 @@ func (a *Adapter) handleDispatch(ctx context.Context, p wsPayload, hooks platfor
 // peer_id 只在单个 bot 内唯一，因此必须带命名空间。
 func toInbound(event string, ev messageEvent) (platform.Inbound, bool) {
 	switch event {
-	case "GROUP_AT_MESSAGE_CREATE":
+	case "GROUP_AT_MESSAGE_CREATE", "GROUP_MESSAGE_CREATE":
 		if ev.GroupOpenID == "" {
 			return platform.Inbound{}, false
 		}
