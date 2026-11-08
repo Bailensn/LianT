@@ -1,10 +1,10 @@
 name: Flutter
 
-# 构建 Flutter 客户端：Web 版发到 GitHub Pages 供预览，Android 版出 APK。
+# 构建 Flutter 客户端：Web 版发 GitHub Pages 预览，Android 出 APK，Linux 出桌面二进制。
 on:
   push:
     paths:
-      - 'apps/flutter/**'
+      - 'manager/flutter/**'
       - '.github/workflows/flutter.yml'
   workflow_dispatch:
 
@@ -23,33 +23,46 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Generate platform scaffolding
-        working-directory: apps/flutter
+      - name: Install Linux desktop deps
         run: |
-          flutter create --platforms=android,web --project-name liant .
-          # 覆盖回仓库里的 web/index.html，避免被脚手架替换
-          git -C "$GITHUB_WORKSPACE" checkout -- apps/flutter/web/index.html
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang cmake ninja-build pkg-config libgtk-3-dev
 
-      - working-directory: apps/flutter
+      - name: Generate platform scaffolding
+        working-directory: manager/flutter
+        run: |
+          flutter create --platforms=android,web,linux --project-name liant .
+          git -C "$GITHUB_WORKSPACE" checkout -- manager/flutter/web/index.html
+
+      - working-directory: manager/flutter
         run: flutter pub get
 
-      - name: Build web
-        working-directory: apps/flutter
+      - name: Build web preview
+        working-directory: manager/flutter
         run: flutter build web --release --base-href /LianT/
 
       - name: Build APK
-        working-directory: apps/flutter
+        working-directory: manager/flutter
         run: flutter build apk --debug
+
+      - name: Build Linux desktop
+        working-directory: manager/flutter
+        run: flutter build linux --release
 
       - name: Deploy preview to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: apps/flutter/build/web
+          publish_dir: manager/flutter/build/web
           publish_branch: gh-pages
           force_orphan: true
 
       - uses: actions/upload-artifact@v7
         with:
-          name: LianT-flutter-apk
-          path: apps/flutter/build/app/outputs/flutter-apk/*.apk
+          name: LianT-flutter-android
+          path: manager/flutter/build/app/outputs/flutter-apk/*.apk
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: LianT-flutter-linux
+          path: manager/flutter/build/linux/x64/release/bundle/**
