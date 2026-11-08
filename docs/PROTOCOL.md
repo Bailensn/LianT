@@ -6,8 +6,8 @@
 ## 1. 传输
 
 - **WSS**（TLS 1.3 起），路径 `/v1/ws`，**固定端口**（默认 `8443`，可配置）。
-- 文本帧：UTF-8 JSON，单层，不嵌套 base64；二进制帧保留不使用。
-- 单帧上限 1 MiB；超限断开并记 `frame_too_large`。
+- 文本帧：UTF-8 JSON；媒体在 `msg.send.media.data` 里用 base64，单帧上限相应放宽。
+- 单帧上限 8 MiB；超限断开并记 `frame_too_large`。
 - 服务端证书由节点密钥签发（自签），客户端**钉指纹**；**不允许关闭校验**。
 
 ## 2. 身份与命名空间
@@ -108,7 +108,7 @@ Manager                          Service
 | `bot.start` / `bot.stop` | M→S | 是 | `{bot_id}` | — |
 | `bot.status` | M→S | 是 | `{bot_id}` | `{status, pid?, since?, last_error?}` |
 | `msg.list` | M→S | 是 | `{bot_id, peer_id, before?, after?, limit≤100}` | 会话内分页；返回 `{messages[], has_more}` |
-| `msg.send` | M→S | **是** | `{bot_id, peer_id, body, in_reply_to?, operator_id?}` | `in_reply_to` 为触发本次回复的入站 `msg_id`（QQ 被动回复需要），缺席时按主动消息处理；`operator_id` 仅用于审计（哪台设备/哪个人回的），**永不下发平台** |
+| `msg.send` | M→S | **是** | `{bot_id, peer_id, body, media?, in_reply_to?, operator_id?}` | `in_reply_to` 为触发本次回复的入站 `msg_id`（QQ 被动回复需要），缺席时按主动消息处理；`media={kind,name,data}`，`kind∈image/video/audio/file`，`data` 为 ≤5 MiB 的 base64；`operator_id` 仅用于审计，**永不下发平台** |
 | `msg.inbound` | S→M | — | `{bot_id, peer_id, peer_kind, sender_id?, sender_name?, sender_role?, msg_type, body, msg_id}` | `peer_kind` ∈ `private/group/channel`；`sender_role` ∈ `owner/admin/member`（QQ 需成员信息接口权限）；`msg_type` ∈ `text/image/video/audio/file`，媒体消息的 `body.plain` 是说明文字或文件名 |
 | `msg.ack` | M→S | 是 | `{msg_id}` | 客户端已落库；用于多端未读与缓存清理 |
 | `media.fetch` | M→S | 是 | `{bot_id, msg_id}` | 返回 `{url, exp, size, mime}`；从本地缓存返回，不再访问平台。`url` 可能是不带主机名的相对路径（如 `/v1/media/…?exp=&sig=`），客户端按当前连接的主机拼接；带签名、10 分钟有效。调用方据 `size`/`mime` 决定是否下载（D10） |
@@ -212,7 +212,7 @@ Manager                          Service
 
 ## 11. 仍开放
 
-- `OPEN-P5`：v1.1 是否支持 Manager 发送媒体；`msg.send` 已预留 `file_ref`。
+- `OPEN-P5`：Manager 发送媒体已支持 ≤5 MiB 直传；更大的文件留到 v1.1 分片上传。
 - `OPEN-P6`：Android 后台常驻方案（前台服务 / 厂商推送），决定“全部入库”的可靠性。
 - `OPEN-P7`：多 Manager 的未读聚合（v1 只做单端 ack）。
 - `OPEN-P8`：`caps` 由适配器导出、`bot.list` 透传，核心不维护列表。

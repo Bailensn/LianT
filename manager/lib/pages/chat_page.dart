@@ -2,6 +2,8 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:file_picker/file_picker.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -41,6 +43,9 @@ class _ChatPageState extends State<ChatPage> {
   String _mentionName = '';
   bool _panelOpen = false;
   int _panelPage = 0;
+  Uint8List? _pendingBytes;
+  String _pendingName = '';
+  String _pendingKind = '';
   final PageController _panelController = PageController();
   int _lastCount = 0;
 
@@ -403,7 +408,13 @@ class _ChatPageState extends State<ChatPage> {
     final maxWidth = MediaQuery.sizeOf(context).width * 0.78;
 
     Widget content;
-    if (msg.isMedia && msg.msgType == 'file') {
+    final localBytes = state.localMedia[msg.msgId];
+    if (msg.isMedia && msg.msgType == 'image' && localBytes != null) {
+      content = ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.memory(localBytes, fit: BoxFit.cover),
+      );
+    } else if (msg.isMedia && msg.msgType == 'file') {
       final name = msg.body.plain.trim();
       content = Text(
         name.isEmpty ? '[文件]' : '[文件] $name',
@@ -672,6 +683,7 @@ class _ChatPageState extends State<ChatPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
+                  if (_pendingBytes != null) _pendingPreview(context),
                   if (_replyTo != null) _replyPreview(context),
                   if (_mentioning) _mentionPreview(context),
                   if (_sendError.isNotEmpty)
@@ -795,12 +807,12 @@ class _ChatPageState extends State<ChatPage> {
         _AttachAction(
           icon: Icons.perm_media_outlined,
           label: '媒体',
-          onTap: () => _notYet('媒体'),
+          onTap: () => unawaited(_pickAttachment(media: true)),
         ),
         _AttachAction(
           icon: Icons.insert_drive_file_outlined,
           label: '文件',
-          onTap: () => _notYet('文件'),
+          onTap: () => unawaited(_pickAttachment(media: false)),
         ),
       ];
 
@@ -831,12 +843,6 @@ class _ChatPageState extends State<ChatPage> {
     } else {
       _focusInput();
     }
-  }
-
-  void _notYet(String label) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$label发送还没接入')),
-    );
   }
 
   Widget _attachPanel(BuildContext context) {
@@ -933,6 +939,131 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  Future<void> _pickAttachment({required bool media}) async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: media ? FileType.media : FileType.any,
+        withData: true,
+        allowMultiple: false,
+      );
+      final files = result?.files ?? const <PlatformFile>[];
+      if (files.isEmpty) return;
+      final file = files.first;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        if (mounted) setState(() => _sendError = '读取文件失败');
+        return;
+      }
+      if (bytes.length > 5 << 20) {
+        if (mounted) setState(() => _sendError = '文件超过 5 MiB，暂时不能发');
+        return;
+      }
+      final kind = _kindForName(file.name, media: media);
+      if (!mounted) return;
+      setState(() {
+        _pendingBytes = bytes;
+        _pendingName = file.name;
+        _pendingKind = kind;
+        _panelOpen = false;
+        _sendError = '';
+      });
+      _focusInput();
+    } catch (err) {
+      if (mounted) setState(() => _sendError = '选择文件失败：$err');
+    }
+  }
+
+  String _kindForName(String name, {required bool media}) {
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    if (media) {
+      if (const <String>{'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp'}.contains(ext)) {
+        return 'image';
+      }
+      if (const <String>{'mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'}.contains(ext)) {
+        return 'video';
+      }
+      if (const <String>{'mp3', 'wav', 'silk', 'm4a', 'ogg'}.contains(ext)) {
+        return 'audio';
+      }
+      return 'file';
+    }
+    if (const <String>{'mp3', 'wav', 'silk', 'm4a', 'ogg'}.contains(ext)) return 'audio';
+    return 'file';
+  }
+
+  Widget _pendingPreview(BuildContext context) {
+    final colors = context.colors;
+    final isImage = _pendingKind == 'image';
+    final label = switch (_pendingKind) {
+      'image' => '图片',
+      'video' => '视频',
+      'audio' => '语音',
+      _ => '文件',
+    };
+    final icon = switch (_pendingKind) {
+      'image' => Icons.image_outlined,
+      'video' => Icons.videocam_outlined,
+      'audio' => Icons.mic_none_rounded,
+      _ => Icons.insert_drive_file_outlined,
+    };
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: colors.bg,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: <Widget>[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: isImage && _pendingBytes != null
+                ? Image.memory(_pendingBytes!, width: 42, height: 42, fit: BoxFit.cover)
+                : Container(
+                    width: 42,
+                    height: 42,
+                    color: colors.elevated,
+                    child: Icon(icon, size: 20, color: colors.accent),
+                  ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  _pendingName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: colors.text),
+                ),
+                Text(
+                  '$label · ${_formatBytes(_pendingBytes?.length ?? 0)}',
+                  style: TextStyle(fontSize: 11, color: colors.text3),
+                ),
+              ],
+            ),
+          ),
+          IconAction(
+            icon: Icons.close_rounded,
+            size: 18,
+            onTap: () => setState(() {
+              _pendingBytes = null;
+              _pendingName = '';
+              _pendingKind = '';
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatBytes(int n) {
+    if (n < 1024) return '$n B';
+    if (n < 1024 * 1024) return '${(n / 1024).toStringAsFixed(0)} KB';
+    return '${(n / 1024 / 1024).toStringAsFixed(1)} MB';
+  }
+
   Widget _replyPreview(BuildContext context) {
     final colors = context.colors;
     final msg = _replyTo!;
@@ -1010,7 +1141,8 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _submit(AppState state, Bot? bot) async {
     final text = _input.text.trim();
-    if (text.isEmpty || bot == null || _sending) return;
+    final hasMedia = _pendingBytes != null;
+    if ((!hasMedia && text.isEmpty) || bot == null || _sending) return;
     final list = state.messagesFor(widget.botId, widget.peerId);
     final lastIn = _lastInbound(list);
     final canInitiate = bot.constraints.canInitiate;
@@ -1037,19 +1169,35 @@ class _ChatPageState extends State<ChatPage> {
     });
     _input.clear();
     try {
-      await state.send(
-        bot: bot,
-        peerId: widget.peerId,
-        peerKind: lastIn?.peerKind ?? 'private',
-        text: text,
-        inReplyTo: passive ? target : null,
-        active: active,
-      );
+      if (hasMedia) {
+        await state.sendMedia(
+          bot: bot,
+          peerId: widget.peerId,
+          peerKind: lastIn?.peerKind ?? 'private',
+          data: _pendingBytes!,
+          name: _pendingName,
+          kind: _pendingKind,
+          inReplyTo: passive ? target : null,
+          active: active,
+        );
+      } else {
+        await state.send(
+          bot: bot,
+          peerId: widget.peerId,
+          peerKind: lastIn?.peerKind ?? 'private',
+          text: text,
+          inReplyTo: passive ? target : null,
+          active: active,
+        );
+      }
       if (mounted) {
         setState(() {
           _replyTo = null;
           _mentioning = false;
           _mentionName = '';
+          _pendingBytes = null;
+          _pendingName = '';
+          _pendingKind = '';
           _sending = false;
         });
       }
@@ -1058,8 +1206,10 @@ class _ChatPageState extends State<ChatPage> {
     } on ProtocolException catch (err) {
       if (mounted) {
         setState(() {
-          _input.text = text;
-          _input.selection = TextSelection.collapsed(offset: text.length);
+          if (!hasMedia) {
+            _input.text = text;
+            _input.selection = TextSelection.collapsed(offset: text.length);
+          }
           _sendError = err.friendly;
           _sending = false;
         });
@@ -1068,8 +1218,10 @@ class _ChatPageState extends State<ChatPage> {
     } catch (err) {
       if (mounted) {
         setState(() {
-          _input.text = text;
-          _input.selection = TextSelection.collapsed(offset: text.length);
+          if (!hasMedia) {
+            _input.text = text;
+            _input.selection = TextSelection.collapsed(offset: text.length);
+          }
           _sendError = '发送失败：$err';
           _sending = false;
         });

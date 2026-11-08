@@ -245,33 +245,64 @@ func (c *Core) Send(ctx context.Context, sess server.Session, raw json.RawMessag
 		}
 	}
 
-	text := req.Body.Plain
-	if req.Body.Doc != nil {
-		f, ok := format.Get(adapter.Format())
-		if !ok {
-			return nil, bad(protocol.CodeInternal, "平台声明的格式适配器没有注册")
-		}
-		rendered, err := f.Render(req.Body.Doc)
+	var (
+		mid     platform.MessageID
+		msgType = "text"
+		plain   = req.Body.Plain
+		doc     = req.Body.Doc
+	)
+	if req.Media != nil {
+		data, err := req.Media.Bytes()
 		if err != nil {
-			return nil, bad(protocol.CodeInvalidDoc, err.Error())
+			return nil, bad(protocol.CodeInvalidPayload, "媒体数据不合法")
 		}
-		text = rendered
-	}
-	if max := maxTextLen(bot); max > 0 && utf8.RuneCountInString(text) > max {
-		return nil, bad(protocol.CodeContentTooLong, fmt.Sprintf("渲染后超过 %d 字符", max))
-	}
-
-	mid, err := adapter.SendText(ctx, accountOf(bot), creds, platform.SendRequest{
-		Peer:      platform.Peer{ID: peer.ID, Kind: peer.Kind},
-		Text:      text,
-		InReplyTo: req.InReplyTo,
-	})
-	if err != nil {
-		return nil, &protocol.Error{
-			Code:      protocol.CodeUpstreamError,
-			Message:   "平台投递失败",
-			Retryable: protocol.Retryable(protocol.CodeUpstreamError),
-			Details:   map[string]any{"reason": err.Error()},
+		sender, ok := adapter.(platform.MediaSender)
+		if !ok {
+			return nil, bad(protocol.CodeUnsupportedCapability, "该平台不支持发送媒体")
+		}
+		msgType = req.Media.Kind
+		plain = req.Media.Name
+		doc = nil
+		mid, err = sender.SendMedia(ctx, accountOf(bot), creds, platform.MediaRequest{
+			Peer:      platform.Peer{ID: peer.ID, Kind: peer.Kind},
+			Media:     platform.Media{Kind: req.Media.Kind, Name: req.Media.Name, Data: data},
+			InReplyTo: req.InReplyTo,
+		})
+		if err != nil {
+			return nil, &protocol.Error{
+				Code:      protocol.CodeUpstreamError,
+				Message:   "平台投递失败",
+				Retryable: protocol.Retryable(protocol.CodeUpstreamError),
+				Details:   map[string]any{"reason": err.Error()},
+			}
+		}
+	} else {
+		if req.Body.Doc != nil {
+			f, ok := format.Get(adapter.Format())
+			if !ok {
+				return nil, bad(protocol.CodeInternal, "平台声明的格式适配器没有注册")
+			}
+			rendered, err := f.Render(req.Body.Doc)
+			if err != nil {
+				return nil, bad(protocol.CodeInvalidDoc, err.Error())
+			}
+			plain = rendered
+		}
+		if max := maxTextLen(bot); max > 0 && utf8.RuneCountInString(plain) > max {
+			return nil, bad(protocol.CodeContentTooLong, fmt.Sprintf("渲染后超过 %d 字符", max))
+		}
+		mid, err = adapter.SendText(ctx, accountOf(bot), creds, platform.SendRequest{
+			Peer:      platform.Peer{ID: peer.ID, Kind: peer.Kind},
+			Text:      plain,
+			InReplyTo: req.InReplyTo,
+		})
+		if err != nil {
+			return nil, &protocol.Error{
+				Code:      protocol.CodeUpstreamError,
+				Message:   "平台投递失败",
+				Retryable: protocol.Retryable(protocol.CodeUpstreamError),
+				Details:   map[string]any{"reason": err.Error()},
+			}
 		}
 	}
 
@@ -286,10 +317,10 @@ func (c *Core) Send(ctx context.Context, sess server.Session, raw json.RawMessag
 		PeerID:     peer.ID,
 		PeerKind:   peer.Kind,
 		Direction:  store.DirectionOut,
-		Type:       "text",
+		Type:       msgType,
 		TS:         ts,
-		Plain:      text,
-		Doc:        req.Body.Doc,
+		Plain:      plain,
+		Doc:        doc,
 		InReplyTo:  req.InReplyTo,
 		OperatorID: operator,
 	})

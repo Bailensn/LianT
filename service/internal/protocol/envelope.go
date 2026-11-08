@@ -15,8 +15,8 @@ import (
 // Version 是线上协议版本。只加字段不升版本（docs/DESIGN.md §7）。
 const Version = 1
 
-// MaxFrame 是单帧上限：1 MiB，超限断开并记 frame_too_large。
-const MaxFrame = 1 << 20
+// MaxFrame 是单帧上限：8 MiB，给 5 MiB 媒体的 base64 留出余量。
+const MaxFrame = 8 << 20
 
 // Envelope 是唯一的帧形状：单层 JSON，不嵌套 base64。
 type Envelope struct {

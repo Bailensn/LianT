@@ -6,6 +6,7 @@ package qqbot
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"context"
 	"encoding/json"
@@ -171,6 +172,99 @@ func sendPath(kind, external string) (string, error) {
 }
 
 // nextSeq 返回非 0 的递增序号；QQ 要求同一 msg_id 下 msg_seq 唯一。
+// SendMedia 走 QQ 的富媒体直传（file_data ≤5M），拿到 file_info 后再发 msg_type=7。
+func (a *Adapter) SendMedia(
+	ctx context.Context,
+	acc platform.Account,
+	creds platform.Credentials,
+	req platform.MediaRequest,
+) (platform.MessageID, error) {
+	c, err := parseCredentials(creds)
+	if err != nil {
+		return "", err
+	}
+	_, external, err := platform.SplitID(req.Peer.ID)
+	if err != nil {
+		return "", err
+	}
+	if req.Peer.Kind != platform.PeerGroup && req.Peer.Kind != platform.PeerPrivate {
+		return "", fmt.Errorf("qqbot: 该会话类型不支持媒体")
+	}
+	if len(req.Media.Data) == 0 || len(req.Media.Data) > 5<<20 {
+		return "", fmt.Errorf("qqbot: 媒体为空或超过 5 MiB")
+	}
+	fileType := 4
+	switch req.Media.Kind {
+	case "image":
+		fileType = 1
+	case "video":
+		fileType = 2
+	case "audio":
+		fileType = 3
+	case "file":
+		fileType = 4
+	default:
+		return "", fmt.Errorf("qqbot: 不支持的媒体类型 %q", req.Media.Kind)
+	}
+	token, err := a.accessToken(ctx, c)
+	if err != nil {
+		return "", err
+	}
+	base := "/v2/groups/"
+	if req.Peer.Kind == platform.PeerPrivate {
+		base = "/v2/users/"
+	}
+	body, err := json.Marshal(map[string]any{
+		"file_type": fileType,
+		"file_name": req.Media.Name,
+		"file_data": base64.StdEncoding.EncodeToString(req.Media.Data),
+	})
+	if err != nil {
+		return "", err
+	}
+	uploadReq, err := http.NewRequestWithContext(ctx, http.MethodPost, a.apiBaseFor(c)+base+url.PathEscape(external)+"/files", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	uploadReq.Header.Set("Authorization", "QQBot "+token)
+	uploadReq.Header.Set("Content-Type", "application/json")
+	resp, err := a.httpClient.Do(uploadReq)
+	if err != nil {
+		return "", fmt.Errorf("qqbot: 媒体上传失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("qqbot: 媒体上传返回 %d: %s", resp.StatusCode, readSnippet(resp.Body))
+	}
+	var uploaded struct {
+		FileInfo string `json:"file_info"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&uploaded); err != nil {
+		return "", fmt.Errorf("qqbot: 解析媒体上传响应失败: %w", err)
+	}
+	if uploaded.FileInfo == "" {
+		return "", fmt.Errorf("qqbot: 媒体上传没有返回 file_info")
+	}
+	path, err := sendPath(req.Peer.Kind, external)
+	if err != nil {
+		return "", err
+	}
+	payload := map[string]any{
+		"content":  "",
+		"msg_type": 7,
+		"media":    map[string]any{"file_info": uploaded.FileInfo},
+	}
+	if req.InReplyTo != "" {
+		payload["msg_id"] = req.InReplyTo
+		payload["msg_seq"] = a.nextSeq()
+	}
+	id, err := a.postMessage(ctx, c, path, payload)
+	if err != nil {
+		return "", err
+	}
+	return platform.MessageID(id), nil
+}
+
 func (a *Adapter) nextSeq() uint32 {
 	for {
 		if v := a.seq.Add(1); v != 0 {

@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"encoding/base64"
 	"fmt"
 
 	"github.com/Bailensn/LianT/service/internal/format"
@@ -201,10 +202,11 @@ type BotStatusOK struct {
 // InReplyTo 是触发本次回复的入站 msg_id（QQ 被动回复必须带）；
 // OperatorID 只用于审计，永不下发平台。
 type MsgSend struct {
-	BotID      string `json:"bot_id"`
-	PeerID     string `json:"peer_id"`
-	Body       Body   `json:"body"`
-	InReplyTo  string `json:"in_reply_to,omitempty"`
+	BotID      string    `json:"bot_id"`
+	PeerID     string    `json:"peer_id"`
+	Body       Body      `json:"body"`
+	Media      *OutMedia `json:"media,omitempty"`
+	InReplyTo  string    `json:"in_reply_to,omitempty"`
 	// Active 表示按主动消息发送：不绑定触发消息，也就没有 @ 和引用样式。
 	// 平台是否允许由 bot.Constraints.can_initiate 与配额决定。
 	Active     bool   `json:"active,omitempty"`
@@ -219,10 +221,47 @@ func (r MsgSend) Validate() error {
 	if !platform.IsValidID(r.PeerID) {
 		return fmt.Errorf("非法 peer_id %q", r.PeerID)
 	}
-	if err := r.Body.Validate(); err != nil {
+	if r.Media != nil {
+		if err := r.Media.Validate(); err != nil {
+			return err
+		}
+	} else if err := r.Body.Validate(); err != nil {
 		return err
 	}
 	return nil
+}
+
+// OutMedia 是 Manager 发来的媒体：最多 5 MiB 的 base64，由 Service 转传平台。
+type OutMedia struct {
+	Kind string `json:"kind"` // image / video / audio / file
+	Name string `json:"name"`
+	Data string `json:"data"` // 标准 base64
+}
+
+func (m OutMedia) Validate() error {
+	switch m.Kind {
+	case "image", "video", "audio", "file":
+	default:
+		return fmt.Errorf("%w: 不支持的媒体类型 %q", ErrInvalidEnvelope, m.Kind)
+	}
+	if m.Name == "" {
+		return fmt.Errorf("%w: 媒体缺少文件名", ErrInvalidEnvelope)
+	}
+	raw, err := base64.StdEncoding.DecodeString(m.Data)
+	if err != nil {
+		return fmt.Errorf("%w: 媒体不是合法 base64", ErrInvalidEnvelope)
+	}
+	if len(raw) == 0 {
+		return fmt.Errorf("%w: 媒体为空", ErrInvalidEnvelope)
+	}
+	if len(raw) > 5<<20 {
+		return fmt.Errorf("%w: 媒体超过 5 MiB", ErrInvalidEnvelope)
+	}
+	return nil
+}
+
+func (m OutMedia) Bytes() ([]byte, error) {
+	return base64.StdEncoding.DecodeString(m.Data)
 }
 
 // MsgSendOK 是 msg.send 的成功响应。

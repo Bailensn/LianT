@@ -3,6 +3,7 @@
 // 只在这里改状态并 notifyListeners；页面通过 AppScope 订阅。
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -85,6 +86,7 @@ class AppState extends ChangeNotifier {
   final Map<String, bool> muted = <String, bool>{};
   final Map<String, int> readAt = <String, int>{};
   final Map<String, MediaState> media = <String, MediaState>{};
+  final Map<String, Uint8List> localMedia = <String, Uint8List>{};
   Set<String> caps = <String>{};
   Retention retention = const Retention();
   String? openConversation;
@@ -513,6 +515,8 @@ class AppState extends ChangeNotifier {
   }
 
   void _replace(String localId, ChatMessage next) {
+    final bytes = localMedia.remove(localId);
+    if (bytes != null && next.msgId.isNotEmpty) localMedia[next.msgId] = bytes;
     messages = messages.map((m) => m.msgId == localId ? next : m).toList()
       ..sort(_byTime);
     _scheduleSaveMessages();
@@ -750,6 +754,56 @@ class AppState extends ChangeNotifier {
         'bot_id': bot.botId,
         'peer_id': peerId,
         'body': <String, dynamic>{'plain': text},
+        if (!active && inReplyTo != null) 'in_reply_to': inReplyTo,
+        if (active) 'active': true,
+      });
+      final msgId = res['msg_id'] as String? ?? localId;
+      final ts = res['ts'] is num ? (res['ts'] as num).toInt() : optimistic.ts;
+      _replace(localId, optimistic.copyWith(msgId: msgId, ts: ts, pending: false));
+    } catch (err) {
+      _replace(localId, optimistic.copyWith(pending: false, failed: true));
+      rethrow;
+    }
+  }
+
+  Future<void> sendMedia({
+    required Bot bot,
+    required String peerId,
+    required String peerKind,
+    required Uint8List data,
+    required String name,
+    required String kind,
+    String? inReplyTo,
+    bool active = false,
+  }) async {
+    final client = _client;
+    if (client == null) throw const ProtocolException('offline', '连接未就绪');
+    final localId = 'local-${newId()}';
+    final optimistic = ChatMessage(
+      msgId: localId,
+      botId: bot.botId,
+      peerId: peerId,
+      peerKind: peerKind,
+      body: MsgBody(plain: name),
+      ts: DateTime.now().millisecondsSinceEpoch,
+      direction: 'out',
+      msgType: kind,
+      inReplyTo: active ? null : inReplyTo,
+      pending: true,
+      active: active,
+    );
+    localMedia[localId] = data;
+    _append(optimistic);
+    try {
+      final res = await client.request('msg.send', <String, dynamic>{
+        'bot_id': bot.botId,
+        'peer_id': peerId,
+        'body': <String, dynamic>{'plain': name},
+        'media': <String, dynamic>{
+          'kind': kind,
+          'name': name,
+          'data': base64Encode(data),
+        },
         if (!active && inReplyTo != null) 'in_reply_to': inReplyTo,
         if (active) 'active': true,
       });

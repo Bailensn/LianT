@@ -18,6 +18,7 @@ dependencies:
   web_socket_channel: ^3.0.1
   # 只在 Web 上用来读地址栏参数（预览用），其它平台走条件导入的空实现。
   web: ^1.0.0
+  file_picker: ^11.0.3
 
 dev_dependencies:
   flutter_test:

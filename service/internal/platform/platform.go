@@ -138,6 +138,25 @@ type SendRequest struct {
 	InReplyTo string
 }
 
+// Media 是待发送的富媒体；Data 已经在内存里，上限由调用方校验。
+type Media struct {
+	Kind string
+	Name string
+	Data []byte
+}
+
+// MediaRequest 是一条富媒体发送请求。
+type MediaRequest struct {
+	Peer      Peer
+	Media     Media
+	InReplyTo string
+}
+
+// MediaSender 是可选能力；不实现的适配器只能发文本。
+type MediaSender interface {
+	SendMedia(ctx context.Context, acc Account, creds Credentials, req MediaRequest) (MessageID, error)
+}
+
 // Hooks 是适配器向核心回调的入口。
 //
 // OnMessage 返回错误时，适配器应记录日志并继续运行，而不是退出；
