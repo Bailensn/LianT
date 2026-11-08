@@ -1371,7 +1371,7 @@ class _ChatPageState extends State<ChatPage> {
     final colors = context.colors;
     final name = msg.senderName.isEmpty ? shortPeer(msg.senderId) : msg.senderName;
     final id = msg.senderId;
-    final initial = name.isEmpty ? '?' : name.substring(0, 1);
+
     await showLiantSheet<void>(
       context: context,
       title: '用户操作',
@@ -1388,15 +1388,17 @@ class _ChatPageState extends State<ChatPage> {
               ),
               child: Row(
                 children: <Widget>[
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: colors.accent.withOpacity(0.12),
-                    child: LText(
-                      initial,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: colors.accent,
+                  SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Center(
+                      child: Container(
+                        width: 3,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: avatarLineColor(name),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
                   ),

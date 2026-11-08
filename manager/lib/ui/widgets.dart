@@ -137,6 +137,41 @@ class ToneBadge extends StatelessWidget {
 }
 
 /// 主 CTA：全宽、48 高、圆角 16。
+class PressScale extends StatefulWidget {
+  const PressScale({super.key, required this.child, this.enabled = true});
+
+  final Widget child;
+  final bool enabled;
+
+  @override
+  State<PressScale> createState() => _PressScaleState();
+}
+
+class _PressScaleState extends State<PressScale> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: widget.enabled
+          ? (_) => setState(() => _pressed = true)
+          : null,
+      onPointerUp: widget.enabled
+          ? (_) => setState(() => _pressed = false)
+          : null,
+      onPointerCancel: widget.enabled
+          ? (_) => setState(() => _pressed = false)
+          : null,
+      child: AnimatedScale(
+        scale: _pressed ? 0.975 : 1,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOutCubic,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
 class PrimaryButton extends StatelessWidget {
   const PrimaryButton({
     super.key,
@@ -153,7 +188,9 @@ class PrimaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final enabled = onTap != null && !busy;
-    return Material(
+    return PressScale(
+      enabled: enabled,
+      child: Material(
       color: enabled ? colors.accent : colors.sunken,
       borderRadius: BorderRadius.circular(LTokens.controlRadius),
       child: InkWell(
@@ -183,6 +220,7 @@ class PrimaryButton extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -204,7 +242,9 @@ class SecondaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final enabled = onTap != null;
-    return Material(
+    return PressScale(
+      enabled: enabled,
+      child: Material(
       color: colors.sunken,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
@@ -225,6 +265,7 @@ class SecondaryButton extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -264,7 +305,7 @@ class IconAction extends StatelessWidget {
         icon: Icon(icon, color: color ?? context.colors.text2),
       ),
     );
-    return button;
+    return PressScale(enabled: onTap != null, child: button);
   }
 }
 
@@ -749,12 +790,28 @@ class FieldRow extends StatelessWidget {
   }
 }
 
-/// 圆角头像：没有头像接口时用首字，别假装有图。
+const List<Color> _avatarLinePalette = <Color>[
+  Color(0xFF2F6BFF),
+  Color(0xFF0A9B9B),
+  Color(0xFF8A5CFF),
+  Color(0xFFD9772E),
+  Color(0xFFD94F8A),
+  Color(0xFF2E9E63),
+];
+
+Color avatarLineColor(String seed, {bool accent = true}) {
+  final index = seed.isEmpty ? 0 : seed.hashCode.abs() % _avatarLinePalette.length;
+  return accent
+      ? _avatarLinePalette[index]
+      : _avatarLinePalette[index].withOpacity(0.55);
+}
+
+/// 头像接口不可用，用一根克制的竖向线代替；颜色按用户稳定变化。
 class InitialAvatar extends StatelessWidget {
   const InitialAvatar({
     super.key,
     required this.text,
-    this.size = 44,
+    this.size = 40,
     this.accent = false,
   });
 
@@ -764,22 +821,17 @@ class InitialAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
-    final initial = text.isEmpty ? '?' : String.fromCharCode(text.runes.first);
-    return Container(
+    return SizedBox(
       width: size,
       height: size,
-      alignment: Alignment.center,
-      decoration: SquircleBoxDecoration(
-        color: accent ? colors.accent.withOpacity(0.12) : colors.sunken,
-        borderRadius: BorderRadius.circular(size / 2.6),
-      ),
-      child: LText(
-        initial,
-        style: TextStyle(
-          fontSize: size * 0.38,
-          fontWeight: FontWeight.w600,
-          color: accent ? colors.accent : colors.text2,
+      child: Center(
+        child: Container(
+          width: 3,
+          height: size * 0.5,
+          decoration: BoxDecoration(
+            color: avatarLineColor(text, accent: accent),
+            borderRadius: BorderRadius.circular(2),
+          ),
         ),
       ),
     );
@@ -802,6 +854,10 @@ Future<T?> showLiantSheet<T>({
     enableDrag: dismissable,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
+    sheetAnimationStyle: const AnimationStyle(
+      duration: Duration(milliseconds: 260),
+      reverseDuration: Duration(milliseconds: 200),
+    ),
     builder: (sheetContext) {
       return Padding(
         padding: EdgeInsets.only(

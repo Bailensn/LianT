@@ -32,13 +32,13 @@ class LColors extends ThemeExtension<LColors> {
   final Color ok;
 
   static const LColors light = LColors(
-    bg: Color(0xFFF2F2F7),
+    bg: Color(0xFFF4F4F7),
     elevated: Color(0xFFFFFFFF),
-    sunken: Color(0xFFE9E9EE),
-    text: Color(0xFF101014),
-    text2: Color(0xFF6B6B70),
-    text3: Color(0xFF6F6F76),
-    sep: Color(0x12000000),
+    sunken: Color(0xFFEAEAEF),
+    text: Color(0xFF111114),
+    text2: Color(0xFF616168),
+    text3: Color(0xFF8A8A92),
+    sep: Color(0x14000000),
     accent: Color(0xFF2F6BFF),
     danger: Color(0xFFD93A40),
     ok: Color(0xFF2E9E63),
@@ -46,14 +46,14 @@ class LColors extends ThemeExtension<LColors> {
 
   /// 深色背景是纯黑（OLED 省电），卡片提亮一级。
   static const LColors dark = LColors(
-    bg: Color(0xFF000000),
-    elevated: Color(0xFF1C1C1E),
-    sunken: Color(0xFF121214),
-    text: Color(0xFFF5F5F7),
-    text2: Color(0xFF9A9AA0),
-    text3: Color(0xFF8E8E96),
-    sep: Color(0x1AFFFFFF),
-    accent: Color(0xFF2F6BFF),
+    bg: Color(0xFF0E0E10),
+    elevated: Color(0xFF1B1B1F),
+    sunken: Color(0xFF141417),
+    text: Color(0xFFF4F4F7),
+    text2: Color(0xFFA6A6AE),
+    text3: Color(0xFF7E7E87),
+    sep: Color(0x1FFFFFFF),
+    accent: Color(0xFF4C7DFF),
     danger: Color(0xFFFF6B6B),
     ok: Color(0xFF4CD07D),
   );
@@ -148,28 +148,42 @@ class LiantTheme {
 
     // 显式给每个文字样式上色：自定义 TextTheme 不带 color 时，
     // Android 上部分控件（尤其 TextField）会落到默认白色，白底上直接看不见。
-    final textTheme = const TextTheme(
+    final dark = brightness == Brightness.dark;
+    FontWeight? w(FontWeight? weight) {
+      if (!dark || weight == null) return weight;
+      if (weight == FontWeight.w700) return FontWeight.w600;
+      if (weight == FontWeight.w600) return FontWeight.w500;
+      if (weight == FontWeight.w500) return FontWeight.w400;
+      return weight;
+    }
+
+    final textTheme = TextTheme(
       displaySmall: TextStyle(
         fontSize: LTokens.largeTitle,
-        fontWeight: FontWeight.w700,
+        fontWeight: w(FontWeight.w700),
         letterSpacing: -0.8,
         height: 1.12,
       ),
       headlineSmall: TextStyle(
         fontSize: 22,
-        fontWeight: FontWeight.w700,
+        fontWeight: w(FontWeight.w700),
         letterSpacing: -0.3,
         height: 1.2,
       ),
-      titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, height: 1.25),
-      titleMedium: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, height: 1.3),
-      titleSmall: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, height: 1.3),
-      bodyLarge: TextStyle(fontSize: 16, height: 1.4),
-      bodyMedium: TextStyle(fontSize: 15, height: 1.4),
-      bodySmall: TextStyle(fontSize: 13, height: 1.45),
-      labelLarge: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-      labelMedium: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-      labelSmall: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.2),
+      titleLarge: TextStyle(fontSize: 20, fontWeight: w(FontWeight.w700), height: 1.25),
+      titleMedium: TextStyle(fontSize: 17, fontWeight: w(FontWeight.w600), height: 1.3),
+      titleSmall: TextStyle(fontSize: 15, fontWeight: w(FontWeight.w600), height: 1.3),
+      bodyLarge: const TextStyle(fontSize: 16, height: 1.4),
+      bodyMedium: const TextStyle(fontSize: 15, height: 1.4),
+      bodySmall: const TextStyle(fontSize: 13, height: 1.45),
+      labelLarge: TextStyle(fontSize: 15, fontWeight: w(FontWeight.w600)),
+      labelMedium: TextStyle(fontSize: 13, fontWeight: w(FontWeight.w500)),
+      labelSmall: TextStyle(
+        fontSize: 12,
+        fontWeight: w(FontWeight.w500),
+        letterSpacing: 0.2,
+        fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+      ),
     ).apply(bodyColor: colors.text, displayColor: colors.text);
 
     return base.copyWith(
@@ -187,6 +201,15 @@ class LiantTheme {
         color: colors.sep,
         thickness: 0.5,
         space: 0.5,
+      ),
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: <TargetPlatform, PageTransitionsBuilder>{
+          TargetPlatform.android: _SoftPageTransitionsBuilder(),
+          TargetPlatform.iOS: _SoftPageTransitionsBuilder(),
+          TargetPlatform.linux: _SoftPageTransitionsBuilder(),
+          TargetPlatform.macOS: _SoftPageTransitionsBuilder(),
+          TargetPlatform.windows: _SoftPageTransitionsBuilder(),
+        },
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
@@ -209,4 +232,35 @@ extension LBuildContext on BuildContext {
   bool get isDesktop => MediaQuery.sizeOf(this).width >= 768;
 
   double get bottomInset => MediaQuery.paddingOf(this).bottom;
+}
+
+
+/// 克制的进入/退出动效：轻微上移 + 淡入，曲线只做 ease-out。
+class _SoftPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _SoftPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0.015, 0),
+          end: Offset.zero,
+        ).animate(curved),
+        child: child,
+      ),
+    );
+  }
 }
