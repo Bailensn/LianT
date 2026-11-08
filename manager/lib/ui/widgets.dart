@@ -1046,10 +1046,12 @@ class DetailScaffold extends StatelessWidget {
     super.key,
     required this.title,
     required this.children,
+    this.trailing,
   });
 
   final String title;
   final List<Widget> children;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -1101,7 +1103,12 @@ class DetailScaffold extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 76),
+                  SizedBox(
+                    width: 76,
+                    child: trailing == null
+                        ? null
+                        : Center(child: trailing),
+                  ),
                 ],
               ),
             ),

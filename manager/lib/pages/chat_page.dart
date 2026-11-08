@@ -101,7 +101,6 @@ class _ChatPageState extends State<ChatPage> {
         if (mounted) _maybeLoadHistory(AppScope.of(context));
       });
     }
-    _fetchMedia(state, list);
   }
 
   @override
@@ -149,18 +148,6 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  void _fetchMedia(AppState state, List<ChatMessage> list) {
-    for (final msg in list) {
-      if (!msg.isMedia) continue;
-      final id = '$_key|${msg.msgId}';
-      if (_mediaRequested.contains(id)) continue;
-      _mediaRequested.add(id);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(state.fetchMedia(msg.botId, msg.msgId));
-      });
-    }
-  }
-
   void _scrollToBottom({bool jump = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scroll.hasClients) return;
@@ -190,6 +177,10 @@ class _ChatPageState extends State<ChatPage> {
     final colors = context.colors;
     final bot = state.botById(widget.botId);
     final list = state.messagesFor(widget.botId, widget.peerId);
+    final byId = <String, ChatMessage>{
+      for (final m in list)
+        if (m.msgId.isNotEmpty) m.msgId: m,
+    };
     final title = state.conversationTitle(widget.botId, widget.peerId, list);
     final lastIn = _lastInbound(list);
     final windowSeconds = bot?.constraints.replyWindowS;
@@ -207,7 +198,7 @@ class _ChatPageState extends State<ChatPage> {
       body: Stack(
         children: <Widget>[
           Positioned.fill(
-            child: ListView(
+            child: ListView.builder(
               controller: _scroll,
               padding: EdgeInsets.fromLTRB(
                 16,
@@ -217,7 +208,11 @@ class _ChatPageState extends State<ChatPage> {
                     (_replyTo != null ? 54 : 0) +
                     (_panelOpen ? _attachPanelHeight(_panelPage) : 0),
               ),
-              children: _messageList(context, state, list, bot),
+              itemCount: list.isEmpty ? 1 : list.length,
+              itemBuilder: (context, index) {
+                if (list.isEmpty) return _emptyMessages(context, state);
+                return _messageItem(context, state, list, index, bot, byId);
+              },
             ),
           ),
           Positioned(
@@ -243,156 +238,169 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  List<Widget> _messageList(
-    BuildContext context,
-    AppState state,
-    List<ChatMessage> list,
-    Bot? bot,
-  ) {
+  Widget _emptyMessages(BuildContext context, AppState state) {
     final colors = context.colors;
-    final widgets = <Widget>[];
-    if (list.isEmpty) {
-      if (_historyLoading) {
-        widgets.add(const Padding(
-          padding: EdgeInsets.symmetric(vertical: 40),
-          child: Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
+    if (_historyLoading) {
+      return Column(
+        children: <Widget>[
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             ),
           ),
-        ));
-        widgets.add(LText(
-          '正在加载历史…',
-          textAlign: TextAlign.center,
-          style: context.texts.bodySmall?.copyWith(color: colors.text3),
-        ));
-      } else if (_historyError.isNotEmpty) {
-        widgets.add(NoticeCard(
-          title: '历史消息拉取失败',
-          message: _historyError,
-          actionLabel: '重试',
-          onAction: () => unawaited(_loadHistory(state)),
-        ));
-      } else if (!state.online) {
-        widgets.add(Padding(
-          padding: const EdgeInsets.only(top: 56),
-          child: LText(
-            '连接恢复后会自动加载历史',
+          LText(
+            '正在加载历史…',
             textAlign: TextAlign.center,
             style: context.texts.bodySmall?.copyWith(color: colors.text3),
           ),
-        ));
-      } else {
-        widgets.add(EmptyState(
-          icon: Icons.chat_outlined,
-          title: '还没有消息',
-          hint: state.bots.isEmpty
-              ? '这台服务上还没有配置机器人'
-              : '对方发来消息后会出现在这里',
-        ));
-      }
-      return widgets;
+        ],
+      );
     }
-
     if (_historyError.isNotEmpty) {
-      widgets.add(NoticeCard(
+      return NoticeCard(
+        title: '历史消息拉取失败',
+        message: _historyError,
+        actionLabel: '重试',
+        onAction: () => unawaited(_loadHistory(state)),
+      );
+    }
+    if (!state.online) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 56),
+        child: LText(
+          '连接恢复后会自动加载历史',
+          textAlign: TextAlign.center,
+          style: context.texts.bodySmall?.copyWith(color: colors.text3),
+        ),
+      );
+    }
+    return EmptyState(
+      icon: Icons.chat_outlined,
+      title: '还没有消息',
+      hint: state.bots.isEmpty
+          ? '这台服务上还没有配置机器人'
+          : '对方发来消息后会出现在这里',
+    );
+  }
+
+  void _requestMedia(AppState state, ChatMessage msg) {
+    if (!msg.isMedia || msg.msgType != 'image') return;
+    if (state.localMedia.containsKey(msg.msgId)) return;
+    if (state.media['${msg.botId}/${msg.msgId}'] != null) return;
+    final id = '$_key|${msg.msgId}';
+    if (!_mediaRequested.add(id)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(state.fetchMedia(msg.botId, msg.msgId));
+    });
+  }
+
+  Widget _messageItem(
+    BuildContext context,
+    AppState state,
+    List<ChatMessage> list,
+    int i,
+    Bot? bot,
+    Map<String, ChatMessage> byId,
+  ) {
+    final colors = context.colors;
+    final msg = list[i];
+    _requestMedia(state, msg);
+    final prev = i > 0 ? list[i - 1] : null;
+    final gap = prev == null || msg.ts - prev.ts > 5 * 60 * 1000;
+    final children = <Widget>[];
+    if (_historyError.isNotEmpty && i == 0) {
+      children.add(NoticeCard(
         title: '历史消息拉取失败',
         message: _historyError,
         actionLabel: '重试',
         onAction: () => unawaited(_loadHistory(state)),
       ));
     }
-
-    // 末尾的历史提示放在列表顶部，避免遮挡正在阅读的最后一条。
-    final byId = <String, ChatMessage>{
-      for (final m in list)
-        if (m.msgId.isNotEmpty) m.msgId: m,
-    };
-    for (var i = 0; i < list.length; i++) {
-      final msg = list[i];
-      final prev = i > 0 ? list[i - 1] : null;
-      final gap = prev == null || msg.ts - prev.ts > 5 * 60 * 1000;
-      if (gap) {
-        widgets.add(Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: LText(
-            formatMessageTime(msg.ts),
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: colors.text3),
-          ),
-        ));
-      }
-      final isGroup = msg.peerKind == 'group';
-      if (isGroup && !msg.outgoing) {
-        final sender = msg.senderName.isEmpty ? shortPeer(msg.senderId) : msg.senderName;
-        final role = msg.senderRole;
-        final roleLabel = role == 'owner' ? '群主' : (role == 'admin' ? '管理员' : '');
-        final roleColor = role == 'owner'
-            ? const Color(0xFFFFB300)
-            : role == 'admin'
-                ? const Color(0xFF2EAD55)
-                : colors.text2;
-        widgets.add(Padding(
-          padding: const EdgeInsets.only(left: 8, bottom: 3),
-          child: Semantics(
-            button: true,
-            label: '查看 $sender 的操作',
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => unawaited(_showUserActions(msg)),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  LText(
-                    sender,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: roleColor,
+    if (gap) {
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: LText(
+          formatMessageTime(msg.ts),
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 11, color: colors.text3),
+        ),
+      ));
+    }
+    final isGroup = msg.peerKind == 'group';
+    if (isGroup && !msg.outgoing) {
+      final sender = msg.senderName.isEmpty ? shortPeer(msg.senderId) : msg.senderName;
+      final role = msg.senderRole;
+      final roleLabel = role == 'owner' ? '群主' : (role == 'admin' ? '管理员' : '');
+      final roleColor = role == 'owner'
+          ? const Color(0xFFFFB300)
+          : role == 'admin'
+              ? const Color(0xFF2EAD55)
+              : colors.text2;
+      children.add(Padding(
+        padding: const EdgeInsets.only(left: 8, bottom: 3),
+        child: Semantics(
+          button: true,
+          label: '查看 $sender 的操作',
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => unawaited(_showUserActions(msg)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                LText(
+                  sender,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: roleColor,
+                  ),
+                ),
+                if (roleLabel.isNotEmpty) ...<Widget>[
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: roleColor.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: LText(
+                      roleLabel,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: roleColor,
+                      ),
                     ),
                   ),
-                  if (roleLabel.isNotEmpty) ...<Widget>[
-                    const SizedBox(width: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: roleColor.withOpacity(0.14),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: LText(
-                        roleLabel,
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w600,
-                          color: roleColor,
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
-              ),
+              ],
             ),
-          ),
-        ));
-      }
-      widgets.add(Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Align(
-          alignment: msg.outgoing ? Alignment.centerRight : Alignment.centerLeft,
-          child: _bubble(
-            context,
-            state,
-            msg,
-            bot,
-            quoted: msg.inReplyTo == null ? null : byId[msg.inReplyTo],
           ),
         ),
       ));
     }
-    widgets.add(const SizedBox(height: 8));
-    return widgets;
+    children.add(Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Align(
+        alignment: msg.outgoing ? Alignment.centerRight : Alignment.centerLeft,
+        child: _bubble(
+          context,
+          state,
+          msg,
+          bot,
+          quoted: msg.inReplyTo == null ? null : byId[msg.inReplyTo],
+        ),
+      ),
+    ));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    );
   }
 
   Widget _imageBubble(BuildContext context, ImageProvider provider) {

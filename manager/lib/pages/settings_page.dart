@@ -8,16 +8,11 @@ import '../ui/tokens.dart';
 import '../ui/widgets.dart';
 import '../l10n/l10n.dart';
 import 'language_page.dart';
+import 'security_log_page.dart';
 import 'update_page.dart';
 import '../l10n/ltext.dart';
 
-const Map<String, String> _auditKindText = <String, String>{
-  'auth.ok': '登录成功',
-  'auth.fail': '登录失败',
-  'pair.ok': '配对成功',
-  'pair.denied': '配对被拒',
-  'device.revoke': '设备吊销',
-};
+
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -136,31 +131,16 @@ class SettingsPage extends StatelessWidget {
         ],
       ),
       GroupCard(
-        title: '安全日志',
-        footer: '最近 20 条，成功与失败都会记录来源 IP。',
-        children: <Widget>[
-          if (state.audit.isEmpty)
-            const _SettingsRow(title: '暂无记录')
-          else
-            for (var i = 0; i < state.audit.length && i < 8; i++)
-              _SettingsRow(
-                title: _auditKindText[state.audit[i].kind] ?? state.audit[i].kind,
-                subtitle: <String>[
-                  if (state.audit[i].name.isNotEmpty) state.audit[i].name,
-                  if (state.audit[i].reason.isNotEmpty) state.audit[i].reason,
-                  if (state.audit[i].ip.isNotEmpty) state.audit[i].ip,
-                ].join(' · '),
-                trailing: LText(
-                  formatDateTime(state.audit[i].ts),
-                  style: TextStyle(fontSize: 12, color: colors.text3),
-                ),
-              ),
-        ],
-      ),
-      GroupCard(
         title: '安全',
         footer: '私钥从不离开本机；服务端只保存公钥，撤销设备即删除公钥。',
         children: <Widget>[
+          _SettingsRow(
+            title: '安全日志',
+            subtitle: '最近 20 条登录、配对、吊销记录',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const SecurityLogPage()),
+            ),
+          ),
           const _SettingsRow(
             title: '设备密钥',
             subtitle: 'P-256 私钥在本机生成，仅存设备本地，不随消息上传。',
