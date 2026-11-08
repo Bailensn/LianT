@@ -373,3 +373,13 @@ func reverse(ms []Message) {
 		ms[i], ms[j] = ms[j], ms[i]
 	}
 }
+
+// SetPeerDisplayName 写入会话标题（群名等）；没有该会话时静默忽略。
+func (s *Store) SetPeerDisplayName(ctx context.Context, botID, peerID, name string) error {
+	_, err := s.db.ExecContext(ctx, `
+UPDATE peers SET display_name = ? WHERE bot_id = ? AND peer_id = ?`, name, botID, peerID)
+	if err != nil {
+		return fmt.Errorf("store: 更新会话标题: %w", err)
+	}
+	return nil
+}

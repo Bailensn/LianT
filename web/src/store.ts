@@ -77,6 +77,8 @@ type State = {
   msgs: Msg[]
   read: Record<string, number>
   remarks: Record<string, string>
+  titles: Record<string, string>
+  peerHints: Record<string, string>
   caps: string[]
   booted: boolean
 }
@@ -125,6 +127,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   media: {},
   read: {},
   remarks: {},
+  titles: {},
+  peerHints: {},
   caps: [],
   booted: false,
 
@@ -133,8 +137,10 @@ export const useStore = create<State & Actions>((set, get) => ({
     const identity = (await loadIdentity()) ?? null
     const read = await loadKV<Record<string, number>>('read', {})
     const remarks = await loadKV<Record<string, string>>('remarks', {})
+    const titles = await loadKV<Record<string, string>>('titles', {})
+    const peerHints = await loadKV<Record<string, string>>('peerHints', {})
     const msgs = (await loadMessages()).sort(byTime)
-    set({ identity, read, remarks, msgs, booted: true })
+    set({ identity, read, remarks, titles, peerHints, msgs, booted: true })
     if (identity) await connect(identity, set, get)
   },
 
@@ -386,6 +392,21 @@ async function connect(
           set({ bots })
           return
         }
+        if (env.type === 'event.peer') {
+          const ev = env.payload as { bot_id: string; peer_id: string; title?: string; hint?: string }
+          const key = convKey(ev.bot_id, ev.peer_id)
+          if (ev.title) {
+            const titles = { ...get().titles, [key]: ev.title }
+            set({ titles })
+            void putKV('titles', titles)
+          }
+          if (ev.hint) {
+            const peerHints = { ...get().peerHints, [key]: ev.hint }
+            set({ peerHints })
+            void putKV('peerHints', peerHints)
+          }
+          return
+        }
         if (env.type === 'event.audit') {
           const entry = env.payload as AuditEntry
           set({ audit: [entry, ...get().audit].slice(0, 20) })
@@ -487,6 +508,7 @@ export function deriveConversations(
   msgs: Msg[],
   read: Record<string, number>,
   remarks: Record<string, string> = {},
+  titles: Record<string, string> = {},
 ): Conversation[] {
   const map = new Map<string, Conversation>()
   for (const m of msgs) {
@@ -496,12 +518,12 @@ export function deriveConversations(
       bot_id: m.bot_id,
       peer_id: m.peer_id,
       peer_kind: m.peer_kind,
-      title: remarks[key] || m.sender_name || m.peer_id,
+      title: remarks[key] || titles[key] || m.sender_name || m.peer_id,
       unread: 0,
       last: undefined,
     }
     if (!conv.last || m.ts >= conv.last.ts) conv.last = m
-    conv.title = remarks[key] || m.sender_name || conv.title
+    conv.title = remarks[key] || titles[key] || m.sender_name || conv.title
     if (m.direction === 'in' && m.ts > (read[key] ?? 0)) conv.unread++
     map.set(key, conv)
   }

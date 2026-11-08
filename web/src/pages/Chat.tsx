@@ -13,6 +13,8 @@ export default function Chat() {
   const retrySend = useStore((s) => s.retrySend)
   const history = useStore((s) => s.history)
   const remarks = useStore((s) => s.remarks)
+  const titles = useStore((s) => s.titles)
+  const peerHints = useStore((s) => s.peerHints)
   const setRemark = useStore((s) => s.setRemark)
   const media = useStore((s) => s.media)
   const fetchMedia = useStore((s) => s.fetchMedia)
@@ -35,7 +37,7 @@ export default function Chat() {
     [msgs, botId, peerId],
   )
   const key = convKey(botId, peerId)
-  const known = remarks[key] || list.find((m) => m.sender_name)?.sender_name
+  const known = remarks[key] || titles[key] || list.find((m) => m.sender_name)?.sender_name
   const title = known || shortPeer(peerId)
   const lastIn = [...list].reverse().find((m) => m.direction === 'in')
 
@@ -134,7 +136,9 @@ export default function Chat() {
         </button>
         <div className="min-w-0 flex-1 text-center">
           <p className={`truncate font-semibold transition-all duration-200 ${collapsed ? 'text-[15px]' : 'text-[17px]'}`}>{title}</p>
-          <p className={`truncate text-[11px] text-[var(--text-3)]`}>{peerId}</p>
+          <p className={`truncate text-[11px] text-[var(--text-3)]`}>
+            {peerHints[key] === 'whitelist' ? '群名需 QQ 白名单授权' : peerId}
+          </p>
           <p className={`truncate overflow-hidden text-[11px] text-[var(--text-2)] transition-all duration-200 ${collapsed ? 'max-h-0 opacity-0' : 'max-h-4 opacity-100'}`}>
             {bot?.display_name || bot?.username || botId}
             {windowLeft !== null ? ` · ${

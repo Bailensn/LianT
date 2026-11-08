@@ -72,6 +72,9 @@ type Core struct {
 
 	mu     sync.RWMutex
 	botCtl BotController
+
+	profileMu    sync.Mutex
+	profileTried map[string]bool
 }
 
 // New 校验依赖并构造 Core。
@@ -293,6 +296,63 @@ func (c *Core) Send(ctx context.Context, sess server.Session, raw json.RawMessag
 	return protocol.MsgSendOK{MsgID: string(mid), TS: ts}, nil
 }
 
+// enrichPeer 首次见到某个群时补一次群名。
+//
+// QQ 的群资料接口要白名单，没有权限就推一条带 hint 的事件，
+// 让界面明确告诉用户「去申请白名单」，而不是一直显示 openid。
+func (c *Core) enrichPeer(botID, peerID string) {
+	c.profileMu.Lock()
+	if c.profileTried == nil {
+		c.profileTried = make(map[string]bool)
+	}
+	if c.profileTried[botID+"|"+peerID] {
+		c.profileMu.Unlock()
+		return
+	}
+	c.profileTried[botID+"|"+peerID] = true
+	c.profileMu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	b, err := c.opt.Store.Bot(ctx, botID)
+	if err != nil {
+		return
+	}
+	creds, err := c.opt.DecodeCredentials(b)
+	if err != nil {
+		return
+	}
+	adapter, ok := c.opt.Adapter(b.Platform)
+	if !ok {
+		return
+	}
+	profiler, ok := adapter.(platform.PeerProfiler)
+	if !ok {
+		return
+	}
+	profile, err := profiler.PeerProfile(ctx, creds, peerID)
+	if err != nil {
+		if errors.Is(err, platform.ErrProfileForbidden) {
+			c.broadcastPeer(protocol.PeerEvent{BotID: botID, PeerID: peerID, Hint: "whitelist"})
+		}
+		return
+	}
+	if profile.Title == "" {
+		return
+	}
+	if err := c.opt.Store.SetPeerDisplayName(ctx, botID, peerID, profile.Title); err != nil {
+		return
+	}
+	c.broadcastPeer(protocol.PeerEvent{BotID: botID, PeerID: peerID, Title: profile.Title})
+}
+
+func (c *Core) broadcastPeer(ev protocol.PeerEvent) {
+	if c.opt.Broadcaster != nil {
+		c.opt.Broadcaster.Broadcast(protocol.TypeEventPeer, ev)
+	}
+}
+
 // Ack 记录客户端已落库；v1 服务端没有未读表，只做应答。
 func (c *Core) Ack(context.Context, server.Session, json.RawMessage) (any, *protocol.Error) {
 	return struct{}{}, nil
@@ -339,6 +399,9 @@ func (c *Core) Ingest(ctx context.Context, botID string, in platform.Inbound) (b
 	}
 	if inserted && len(in.Media) > 0 {
 		go c.downloadMedia(botID, in.MessageID, in.Media)
+	}
+	if inserted && in.Peer.Kind == platform.PeerGroup {
+		go c.enrichPeer(botID, in.Peer.ID)
 	}
 	return inserted, nil
 }

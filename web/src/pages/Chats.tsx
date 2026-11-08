@@ -31,13 +31,14 @@ export default function Chats() {
   const msgs = useStore((s) => s.msgs)
   const read = useStore((s) => s.read)
   const remarks = useStore((s) => s.remarks)
+  const titles = useStore((s) => s.titles)
   const state = useStore((s) => s.state)
   const detail = useStore((s) => s.detail)
   const bots = useStore((s) => s.bots)
   const reconnect = useStore((s) => s.reconnect)
 
   const [query, setQuery] = useState('')
-  const allConvs = deriveConversations(msgs, read, remarks)
+  const allConvs = deriveConversations(msgs, read, remarks, titles)
   const q = query.trim().toLowerCase()
   const convs = q
     ? allConvs.filter(

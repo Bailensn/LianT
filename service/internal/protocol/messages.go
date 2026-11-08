@@ -38,6 +38,7 @@ const (
 
 	TypeEventBot   = "event.bot"
 	TypeEventAudit = "event.audit"
+	TypeEventPeer  = "event.peer"
 	TypeEventMsg = "event.msg"
 
 	TypeError = "error"
@@ -339,6 +340,14 @@ type AuditList struct {
 // AuditListOK 是 audit.list 的响应，新的在前。
 type AuditListOK struct {
 	Entries []AuditEntry `json:"entries"`
+}
+
+// PeerEvent 通知会话资料变化：拿到群名，或需要白名单授权。
+type PeerEvent struct {
+	BotID  string `json:"bot_id"`
+	PeerID string `json:"peer_id"`
+	Title  string `json:"title,omitempty"`
+	Hint   string `json:"hint,omitempty"`
 }
 
 // StateSnapshot 是一次性把首屏需要的数据全给客户端，省掉三个来回。
