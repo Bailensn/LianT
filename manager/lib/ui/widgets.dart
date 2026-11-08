@@ -648,11 +648,12 @@ class _GlassBottomNavState extends State<GlassBottomNav>
       SpringDescription.withDampingRatio(mass: 1, stiffness: 1024, ratio: 0.9);
   static final SpringDescription _pressSpring =
       SpringDescription.withDampingRatio(mass: 1, stiffness: 311, ratio: 0.593);
+  // 松手回位只留很轻的余量；ratio 越低回弹越大，0.85 已接近临界阻尼。
   static final SpringDescription _travelSpring =
       SpringDescription.withDampingRatio(
     mass: 1,
     stiffness: 300,
-    ratio: 0.15,
+    ratio: 0.85,
   );
 
   late final _NavSpring _lens = _NavSpring(this, widget.index.toDouble());
