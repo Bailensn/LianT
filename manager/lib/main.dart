@@ -2,6 +2,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/app_state.dart';
@@ -12,6 +13,7 @@ import 'pages/pair_page.dart';
 import 'pages/settings_page.dart';
 import 'ui/tokens.dart';
 import 'ui/widgets.dart';
+import 'l10n/ltext.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,13 +37,29 @@ class LiantApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppScope(
       state: state,
-      child: MaterialApp(
-        title: 'LianT',
-        debugShowCheckedModeBanner: false,
-        theme: LiantTheme.light(),
-        darkTheme: LiantTheme.dark(),
-        themeMode: ThemeMode.system,
-        home: const _Root(),
+      child: AnimatedBuilder(
+        animation: state,
+        builder: (context, _) => MaterialApp(
+          title: 'LianT',
+          debugShowCheckedModeBanner: false,
+          theme: LiantTheme.light(),
+          darkTheme: LiantTheme.dark(),
+          themeMode: ThemeMode.system,
+          locale: state.locale,
+          supportedLocales: const <Locale>[
+            Locale('zh'),
+            Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
+            Locale('en'),
+            Locale('ja'),
+            Locale('ko'),
+          ],
+          localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: const _Root(),
+        ),
       ),
     );
   }
@@ -162,7 +180,7 @@ class _DesktopSidebar extends StatelessWidget {
                     color: colors.accent,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Text(
+                  child: const LText(
                     'L',
                     style: TextStyle(
                       fontSize: 17,
@@ -172,7 +190,7 @@ class _DesktopSidebar extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                Text(
+                LText(
                   'LianT',
                   style: TextStyle(
                     fontSize: 18,
@@ -211,7 +229,7 @@ class _DesktopSidebar extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
+                  child: LText(
                     switch (state.conn) {
                       ConnState.online => '已连接',
                       ConnState.connecting => '连接中',
@@ -263,7 +281,7 @@ class _SideItem extends StatelessWidget {
               const SizedBox(width: 12),
               Icon(icon, size: 20, color: color),
               const SizedBox(width: 10),
-              Text(
+              LText(
                 label,
                 style: TextStyle(
                   fontSize: 14,

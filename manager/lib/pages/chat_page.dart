@@ -12,6 +12,7 @@ import '../core/protocol.dart';
 import '../ui/format.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
+import '../l10n/ltext.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key, required this.botId, required this.peerId});
@@ -262,7 +263,7 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
         ));
-        widgets.add(Text(
+        widgets.add(LText(
           '正在加载历史…',
           textAlign: TextAlign.center,
           style: context.texts.bodySmall?.copyWith(color: colors.text3),
@@ -277,7 +278,7 @@ class _ChatPageState extends State<ChatPage> {
       } else if (!state.online) {
         widgets.add(Padding(
           padding: const EdgeInsets.only(top: 56),
-          child: Text(
+          child: LText(
             '连接恢复后会自动加载历史',
             textAlign: TextAlign.center,
             style: context.texts.bodySmall?.copyWith(color: colors.text3),
@@ -316,7 +317,7 @@ class _ChatPageState extends State<ChatPage> {
       if (gap) {
         widgets.add(Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Text(
+          child: LText(
             formatMessageTime(msg.ts),
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 11, color: colors.text3),
@@ -344,7 +345,7 @@ class _ChatPageState extends State<ChatPage> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  Text(
+                  LText(
                     sender,
                     style: TextStyle(
                       fontSize: 11,
@@ -360,7 +361,7 @@ class _ChatPageState extends State<ChatPage> {
                         color: roleColor.withOpacity(0.14),
                         borderRadius: BorderRadius.circular(5),
                       ),
-                      child: Text(
+                      child: LText(
                         roleLabel,
                         style: TextStyle(
                           fontSize: 9,
@@ -416,23 +417,23 @@ class _ChatPageState extends State<ChatPage> {
       );
     } else if (msg.isMedia && msg.msgType == 'file') {
       final name = msg.body.plain.trim();
-      content = Text(
+      content = LText(
         name.isEmpty ? '[文件]' : '[文件] $name',
         style: TextStyle(fontSize: 15, color: outgoing ? Colors.white : colors.text),
       );
     } else if (msg.isMedia && msg.msgType == 'video') {
-      content = Text(
+      content = LText(
         '[视频]',
         style: TextStyle(fontSize: 15, color: outgoing ? Colors.white : colors.text),
       );
     } else if (msg.isMedia && msg.msgType == 'audio') {
-      content = Text(
+      content = LText(
         '[语音]',
         style: TextStyle(fontSize: 15, color: outgoing ? Colors.white : colors.text),
       );
     } else if (msg.isMedia) {
       if (media == null || media.loading) {
-        content = Text(
+        content = LText(
           '正在加载媒体…',
           style: TextStyle(fontSize: 15, color: (outgoing ? Colors.white : colors.text).withOpacity(0.8)),
         );
@@ -442,14 +443,14 @@ class _ChatPageState extends State<ChatPage> {
           child: Image.network(
             media.url!,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Text(
+            errorBuilder: (_, __, ___) => LText(
               '媒体加载失败',
               style: TextStyle(fontSize: 14, color: outgoing ? Colors.white : colors.text2),
             ),
           ),
         );
       } else {
-        content = Text(
+        content = LText(
           media.error ?? msg.body.plain,
           style: TextStyle(fontSize: 14, color: (outgoing ? Colors.white : colors.text2)),
         );
@@ -494,7 +495,7 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                 ),
               ),
-              child: Text(
+              child: LText(
                 quoted == null
                     ? '引用了一条消息'
                     : '${quoted.outgoing ? '我' : (quoted.senderName.isEmpty ? '对方' : quoted.senderName)}：'
@@ -510,7 +511,7 @@ class _ChatPageState extends State<ChatPage> {
           if (msg.failed)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
-              child: Text(
+              child: LText(
                 '发送失败 · 点击重试',
                 style: TextStyle(fontSize: 12, color: outgoing ? Colors.white : colors.danger),
               ),
@@ -597,7 +598,7 @@ class _ChatPageState extends State<ChatPage> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
                           Icon(Icons.chevron_left_rounded, size: 24, color: colors.accent),
-                          Text(
+                          LText(
                             '返回',
                             style: TextStyle(fontSize: 15, color: colors.accent),
                           ),
@@ -609,7 +610,7 @@ class _ChatPageState extends State<ChatPage> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: <Widget>[
-                        Text(
+                        LText(
                           title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -621,13 +622,13 @@ class _ChatPageState extends State<ChatPage> {
                         ),
                         if (!_collapsed) ...<Widget>[
                           const SizedBox(height: 1),
-                          Text(
+                          LText(
                             subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(fontSize: 11, color: colors.text3),
                           ),
-                          Text(
+                          LText(
                             botLine,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -691,7 +692,7 @@ class _ChatPageState extends State<ChatPage> {
                       padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
                       child: Align(
                         alignment: Alignment.centerLeft,
-                        child: Text(
+                        child: LText(
                           _sendError,
                           style: TextStyle(fontSize: 12, color: colors.danger),
                         ),
@@ -780,7 +781,7 @@ class _ChatPageState extends State<ChatPage> {
                   Row(
                     children: <Widget>[
                       Expanded(
-                        child: Text(
+                        child: LText(
                           modeLabel,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -788,7 +789,7 @@ class _ChatPageState extends State<ChatPage> {
                         ),
                       ),
                       if (!canInitiate)
-                        Text(
+                        LText(
                           '仅被动回复',
                           style: TextStyle(fontSize: 11, color: colors.text3),
                         ),
@@ -928,7 +929,7 @@ class _ChatPageState extends State<ChatPage> {
             child: Icon(action.icon, size: 22, color: colors.accent),
           ),
           const SizedBox(height: 4),
-          Text(
+          LText(
             action.label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -1031,13 +1032,13 @@ class _ChatPageState extends State<ChatPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
+                LText(
                   _pendingName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 12, color: colors.text),
                 ),
-                Text(
+                LText(
                   '$label · ${_formatBytes(_pendingBytes?.length ?? 0)}',
                   style: TextStyle(fontSize: 11, color: colors.text3),
                 ),
@@ -1087,11 +1088,11 @@ class _ChatPageState extends State<ChatPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
+                LText(
                   '回复 $who',
                   style: TextStyle(fontSize: 11, color: colors.text2),
                 ),
-                Text(
+                LText(
                   msg.body.plain.isEmpty ? '媒体消息' : msg.body.plain,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1121,7 +1122,7 @@ class _ChatPageState extends State<ChatPage> {
       ),
       child: Row(
         children: <Widget>[
-          Text(
+          LText(
             '@$_mentionName',
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colors.accent),
           ),
@@ -1260,7 +1261,7 @@ class _ChatPageState extends State<ChatPage> {
                   CircleAvatar(
                     radius: 20,
                     backgroundColor: colors.accent.withOpacity(0.12),
-                    child: Text(
+                    child: LText(
                       initial,
                       style: TextStyle(
                         fontSize: 16,
@@ -1274,7 +1275,7 @@ class _ChatPageState extends State<ChatPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Text(
+                        LText(
                           name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -1286,7 +1287,7 @@ class _ChatPageState extends State<ChatPage> {
                         ),
                         if (id.isNotEmpty) ...<Widget>[
                           const SizedBox(height: 2),
-                          Text(
+                          LText(
                             id,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1364,7 +1365,7 @@ class _ChatPageState extends State<ChatPage> {
                 color: colors.bg,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(
+              child: LText(
                 msg.body.plain.isEmpty ? '媒体消息' : msg.body.plain,
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
@@ -1460,7 +1461,7 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                   child: Row(
                     children: <Widget>[
-                      Text(
+                      LText(
                         '备注名',
                         style: context.texts.bodyLarge?.copyWith(
                           fontSize: 16,
@@ -1503,12 +1504,12 @@ class _ChatPageState extends State<ChatPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
-                              Text(
+                              LText(
                                 '消息免打扰',
                                 style: context.texts.titleSmall?.copyWith(color: colors.text),
                               ),
                               const SizedBox(height: 2),
-                              Text(
+                              LText(
                                 isGroup
                                     ? '群消息不再提醒，仍会正常接收。'
                                     : '这个人的消息不再提醒，仍会正常接收。',

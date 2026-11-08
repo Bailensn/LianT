@@ -6,7 +6,10 @@ import '../core/protocol.dart';
 import '../ui/format.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
+import '../l10n/l10n.dart';
+import 'language_page.dart';
 import 'update_page.dart';
+import '../l10n/ltext.dart';
 
 const Map<String, String> _auditKindText = <String, String>{
   'auth.ok': '登录成功',
@@ -103,7 +106,7 @@ class SettingsPage extends StatelessWidget {
                             } on ProtocolException catch (err) {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context)
-                                    .showSnackBar(SnackBar(content: Text(err.friendly)));
+                                    .showSnackBar(SnackBar(content: LText(err.friendly)));
                               }
                             }
                           },
@@ -112,7 +115,7 @@ class SettingsPage extends StatelessWidget {
                             minimumSize: const Size(44, 36),
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                           ),
-                          child: const Text('吊销', style: TextStyle(fontSize: 13)),
+                          child: const LText('吊销', style: TextStyle(fontSize: 13)),
                         ),
                       ),
               ),
@@ -147,7 +150,7 @@ class SettingsPage extends StatelessWidget {
                   if (state.audit[i].reason.isNotEmpty) state.audit[i].reason,
                   if (state.audit[i].ip.isNotEmpty) state.audit[i].ip,
                 ].join(' · '),
-                trailing: Text(
+                trailing: LText(
                   formatDateTime(state.audit[i].ts),
                   style: TextStyle(fontSize: 12, color: colors.text3),
                 ),
@@ -176,6 +179,20 @@ class SettingsPage extends StatelessWidget {
               );
               if (ok) await state.unpair();
             },
+          ),
+        ],
+      ),
+      GroupCard(
+        title: '通用',
+        children: <Widget>[
+          _SettingsRow(
+            title: '语言',
+            subtitle: state.languageSetting == 'system'
+                ? L10n.label(L10n.code)
+                : L10n.label(state.languageSetting),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const LanguagePage()),
+            ),
           ),
         ],
       ),
@@ -219,7 +236,7 @@ class SettingsPage extends StatelessWidget {
           } on ProtocolException catch (err) {
             if (context.mounted) {
               ScaffoldMessenger.of(context)
-                  .showSnackBar(SnackBar(content: Text(err.friendly)));
+                  .showSnackBar(SnackBar(content: LText(err.friendly)));
             }
           }
         },
@@ -261,7 +278,7 @@ class _SettingsRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
+                LText(
                   title,
                   style: context.texts.bodyLarge?.copyWith(
                     fontSize: 16,
@@ -280,7 +297,7 @@ class _SettingsRow extends StatelessWidget {
                             fontFamily: monospace ? 'monospace' : null,
                           ),
                         )
-                      : Text(
+                      : LText(
                           subtitleText,
                           style: TextStyle(
                             fontSize: 12,

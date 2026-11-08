@@ -9,6 +9,7 @@ import '../core/identity.dart';
 import '../core/protocol.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
+import '../l10n/ltext.dart';
 
 class PairPage extends StatefulWidget {
   const PairPage({super.key});
@@ -136,7 +137,7 @@ class _PairPageState extends State<PairPage> {
                   ],
                 ),
                 const SizedBox(height: 20),
-                Text(
+                LText(
                   '连接 LianT',
                   style: TextStyle(
                     fontSize: 32,
@@ -147,7 +148,7 @@ class _PairPageState extends State<PairPage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
+                LText(
                   '填服务地址直接登记，或在服务器上执行 LianT pair，把终端里的配对信息粘贴到下面。',
                   style: context.texts.bodyMedium?.copyWith(
                     color: colors.text2,
@@ -163,7 +164,7 @@ class _PairPageState extends State<PairPage> {
                   onTap: _autoBusy ? null : _runAuto,
                 ),
                 const SizedBox(height: 8),
-                Text(
+                LText(
                   '服务端开启登录认证时不用配对码：这台设备会直接登记。没有开启时请用下面的配对码。',
                   style: context.texts.labelSmall?.copyWith(
                     color: colors.text3,
@@ -176,7 +177,7 @@ class _PairPageState extends State<PairPage> {
                     Expanded(child: Container(height: 0.5, color: colors.sep)),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text(
+                      child: LText(
                         '或者用配对码',
                         style: context.texts.labelSmall?.copyWith(color: colors.text3),
                       ),
@@ -216,7 +217,7 @@ class _PairPageState extends State<PairPage> {
                         child: Row(
                           children: <Widget>[
                             Expanded(
-                              child: Text(
+                              child: LText(
                                 _parsed == null
                                     ? '等待配对信息'
                                     : '服务地址 ${_parsed!.host}:${_parsed!.port}',
@@ -230,7 +231,7 @@ class _PairPageState extends State<PairPage> {
                                 foregroundColor: colors.accent,
                                 padding: const EdgeInsets.symmetric(horizontal: 8),
                               ),
-                              child: const Text('粘贴'),
+                              child: const LText('粘贴'),
                             ),
                           ],
                         ),
@@ -254,7 +255,7 @@ class _PairPageState extends State<PairPage> {
                   onTap: _parsed == null || _codeBusy ? null : _runCode,
                 ),
                 const SizedBox(height: 16),
-                Text(
+                LText(
                   '配对码 60 秒内有效，服务端终端会要求本地确认。设备私钥只在本机生成，不会上传。',
                   style: context.texts.labelSmall?.copyWith(
                     color: colors.text3,
@@ -324,7 +325,7 @@ class _DeviceNameField extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          Text(
+          LText(
             '设备名称',
             style: context.texts.bodyLarge?.copyWith(fontSize: 16, color: colors.text),
           ),

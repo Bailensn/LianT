@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../core/protocol.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
+import '../l10n/ltext.dart';
 
 class BotsPage extends StatefulWidget {
   const BotsPage({super.key});
@@ -88,7 +89,7 @@ class _BotsPageState extends State<BotsPage> {
                         color: colors.accent.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Text(
+                      child: LText(
                         'QQ 机器人',
                         style: TextStyle(
                           fontSize: 13,
@@ -104,7 +105,7 @@ class _BotsPageState extends State<BotsPage> {
                         color: colors.sunken,
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Text(
+                      child: LText(
                         'Telegram · 即将支持',
                         style: TextStyle(fontSize: 13, color: colors.text3),
                       ),
@@ -150,7 +151,7 @@ class _BotsPageState extends State<BotsPage> {
               if (_error.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: Text(
+                  child: LText(
                     _error,
                     style: TextStyle(fontSize: 13, color: colors.danger, height: 1.5),
                   ),
@@ -165,7 +166,7 @@ class _BotsPageState extends State<BotsPage> {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                child: Text(
+                child: LText(
                   '凭据在 QQ 开放平台「机器人 → 开发设置」里；保存时会实时校验并读取昵称。AppSecret 只存在服务端，加密入库，客户端不会再读出来。',
                   style: context.texts.labelSmall?.copyWith(
                     color: colors.text3,
@@ -256,7 +257,7 @@ class _BotsPageState extends State<BotsPage> {
       if (running > 0)
         Padding(
           padding: const EdgeInsets.only(left: 16),
-          child: Text(
+          child: LText(
             '$running 个机器人正在运行',
             style: context.texts.labelSmall?.copyWith(color: colors.text3),
           ),
@@ -295,7 +296,7 @@ class _AddChip extends StatelessWidget {
               children: <Widget>[
                 Icon(Icons.add_rounded, size: 17, color: colors.accent),
                 const SizedBox(width: 2),
-                Text(
+                LText(
                   '添加',
                   style: TextStyle(
                     fontSize: 14,
@@ -351,7 +352,7 @@ class _BotRow extends StatelessWidget {
                     Row(
                       children: <Widget>[
                         Flexible(
-                          child: Text(
+                          child: LText(
                             bot.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -373,7 +374,7 @@ class _BotRow extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 2),
-                    Text(
+                    LText(
                       bot.botId,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -414,7 +415,7 @@ class _BotRow extends StatelessWidget {
                         borderRadius: BorderRadius.circular(20),
                       ),
                     ),
-                    child: Text(
+                    child: LText(
                       bot.running ? '停止' : '启动',
                       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                     ),
@@ -436,13 +437,13 @@ class _BotRow extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       minimumSize: const Size(44, 40),
                     ),
-                    child: const Text('移除', style: TextStyle(fontSize: 12)),
+                    child: const LText('移除', style: TextStyle(fontSize: 12)),
                   ),
                 ),
                 const SizedBox(width: 8),
                 if (bot.caps.isNotEmpty)
                   Expanded(
-                    child: Text(
+                    child: LText(
                       '支持 ${bot.caps.take(3).join(' · ')}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

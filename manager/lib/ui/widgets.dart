@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../core/app_state.dart';
 import '../core/protocol.dart';
 import 'tokens.dart';
+import '../l10n/ltext.dart';
 
 /// 把 AppState 挂到树上；`AppScope.of(context)` 拿状态并自动重建。
 class AppScope extends InheritedNotifier<AppState> {
@@ -69,7 +70,7 @@ class GroupCard extends StatelessWidget {
           if (title != null)
             Padding(
               padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
-              child: Text(
+              child: LText(
                 title!,
                 style: context.texts.bodySmall?.copyWith(
                   color: colors.text2,
@@ -88,7 +89,7 @@ class GroupCard extends StatelessWidget {
           if (footer != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Text(
+              child: LText(
                 footer!,
                 style: context.texts.labelSmall?.copyWith(
                   color: colors.text3,
@@ -125,7 +126,7 @@ class ToneBadge extends StatelessWidget {
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(
+      child: LText(
         label,
         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
       ),
@@ -169,7 +170,7 @@ class PrimaryButton extends StatelessWidget {
                       color: enabled ? Colors.white : colors.text3,
                     ),
                   )
-                : Text(
+                : LText(
                     label,
                     style: TextStyle(
                       fontSize: 16,
@@ -211,7 +212,7 @@ class SecondaryButton extends StatelessWidget {
           height: height,
           width: double.infinity,
           child: Center(
-            child: Text(
+            child: LText(
               label,
               style: TextStyle(
                 fontSize: 15,
@@ -297,13 +298,13 @@ class EmptyState extends StatelessWidget {
             child: Icon(icon, color: colors.text3, size: 26),
           ),
           const SizedBox(height: 16),
-          Text(
+          LText(
             title,
             textAlign: TextAlign.center,
             style: context.texts.titleMedium?.copyWith(color: colors.text),
           ),
           const SizedBox(height: 6),
-          Text(
+          LText(
             hint,
             textAlign: TextAlign.center,
             style: context.texts.bodySmall?.copyWith(color: colors.text3, height: 1.6),
@@ -451,7 +452,7 @@ class _LargeTitleDelegate extends SliverPersistentHeaderDelegate {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
                 Expanded(
-                  child: Text(
+                  child: LText(
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -594,7 +595,7 @@ class _NavItem extends StatelessWidget {
             children: <Widget>[
               Icon(selected ? selectedIcon : icon, size: 21, color: color),
               const SizedBox(height: 2),
-              Text(
+              LText(
                 label,
                 style: TextStyle(
                   fontSize: 11,
@@ -642,7 +643,7 @@ class NoticeCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
+          LText(
             title,
             style: context.texts.titleSmall?.copyWith(
               color: danger ? colors.danger : colors.text,
@@ -650,7 +651,7 @@ class NoticeCard extends StatelessWidget {
           ),
           if (message.isNotEmpty) ...<Widget>[
             const SizedBox(height: 4),
-            Text(
+            LText(
               message,
               style: context.texts.bodySmall?.copyWith(
                 color: danger ? colors.danger : colors.text2,
@@ -671,7 +672,7 @@ class NoticeCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                child: Text(actionLabel!),
+                child: LText(actionLabel!),
               ),
             ),
           ],
@@ -711,7 +712,7 @@ class FieldRow extends StatelessWidget {
         height: 52,
         child: Row(
           children: <Widget>[
-            Text(
+            LText(
               label,
               style: context.texts.bodyLarge?.copyWith(
                 fontSize: 16,
@@ -771,7 +772,7 @@ class InitialAvatar extends StatelessWidget {
         color: accent ? colors.accent.withOpacity(0.12) : colors.sunken,
         borderRadius: BorderRadius.circular(size / 2.6),
       ),
-      child: Text(
+      child: LText(
         initial,
         style: TextStyle(
           fontSize: size * 0.38,
@@ -829,7 +830,7 @@ Future<T?> showLiantSheet<T>({
                 child: Row(
                   children: <Widget>[
                     Expanded(
-                      child: Text(
+                      child: LText(
                         title,
                         style: context.texts.titleMedium?.copyWith(
                           fontSize: 17,
@@ -885,13 +886,13 @@ Future<bool> confirmAction(
       backgroundColor: colors.elevated,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Text(
+      title: LText(
         title,
         style: context.texts.titleMedium?.copyWith(fontSize: 17, color: colors.text),
       ),
       content: message.isEmpty
           ? null
-          : Text(
+          : LText(
               message,
               style: context.texts.bodySmall?.copyWith(color: colors.text2, height: 1.55),
             ),
@@ -899,11 +900,11 @@ Future<bool> confirmAction(
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(false),
-          child: Text('取消', style: TextStyle(color: colors.text2)),
+          child: LText('取消', style: TextStyle(color: colors.text2)),
         ),
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(true),
-          child: Text(
+          child: LText(
             confirmLabel,
             style: TextStyle(
               color: danger ? colors.danger : colors.accent,
@@ -935,7 +936,7 @@ class RichBody extends StatelessWidget {
     final doc = body.doc;
     final blocks = doc?['blocks'];
     if (blocks is! List || blocks.isEmpty) {
-      return Text(
+      return LText(
         body.plain.isEmpty ? '空消息' : body.plain,
         style: TextStyle(fontSize: 15, height: 1.45, color: color),
       );
@@ -987,7 +988,7 @@ class RichBody extends StatelessWidget {
       }
     }
     if (rendered.isEmpty) {
-      return Text(
+      return LText(
         body.plain.isEmpty ? '空消息' : body.plain,
         style: TextStyle(fontSize: 15, height: 1.45, color: color),
       );

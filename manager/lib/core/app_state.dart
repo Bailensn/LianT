@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../l10n/l10n.dart';
 import 'background_service.dart';
 import 'client.dart';
 import 'identity.dart';
@@ -65,6 +66,7 @@ class AppState extends ChangeNotifier {
   static const String _kRead = 'liant.read';
   static const String _kMuted = 'liant.muted';
   static const String _kAcceptBeta = 'liant.acceptBeta';
+  static const String _kLanguage = 'liant.language';
   static const String _kMessages = 'liant.messages';
 
   LiantClient? _client;
@@ -92,11 +94,33 @@ class AppState extends ChangeNotifier {
   Retention retention = const Retention();
   String? openConversation;
   String serviceVersion = '';
+  String languageSetting = 'system';
   bool appInForeground = true;
   bool acceptBeta = false;
 
   bool get booted => _booted;
   bool get online => conn == ConnState.online;
+
+  Locale? get locale {
+    switch (languageSetting) {
+      case 'zh_Hant':
+        return const Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant');
+      case 'zh':
+      case 'en':
+      case 'ja':
+      case 'ko':
+        return Locale(languageSetting);
+      default:
+        return null;
+    }
+  }
+
+  void setLanguage(String setting) {
+    languageSetting = setting;
+    L10n.setSetting(setting);
+    unawaited(_prefs.setString(_kLanguage, setting));
+    notifyListeners();
+  }
 
   // -------------------------------------------------------------------------
   // 启动与配对

@@ -7,6 +7,7 @@ import '../ui/format.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
 import 'chat_page.dart';
+import '../l10n/ltext.dart';
 
 class ChatsPage extends StatefulWidget {
   const ChatsPage({super.key, required this.onOpenBots});
@@ -109,7 +110,7 @@ class _ChatsPageState extends State<ChatsPage> {
         for (final entry in groups.entries) ...<Widget>[
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text(
+            child: LText(
               entry.key,
               style: context.texts.bodySmall?.copyWith(
                 color: colors.text2,
@@ -196,7 +197,7 @@ class _ConversationTile extends StatelessWidget {
                       Row(
                         children: <Widget>[
                           Expanded(
-                            child: Text(
+                            child: LText(
                               conversation.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -207,7 +208,7 @@ class _ConversationTile extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Text(
+                          LText(
                             last == null ? '' : formatListTime(last.ts),
                             style: context.texts.labelSmall?.copyWith(color: colors.text3),
                           ),
@@ -217,7 +218,7 @@ class _ConversationTile extends StatelessWidget {
                       Row(
                         children: <Widget>[
                           Expanded(
-                            child: Text(
+                            child: LText(
                               preview,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -235,7 +236,7 @@ class _ConversationTile extends StatelessWidget {
                                 color: colors.accent,
                                 borderRadius: BorderRadius.circular(9),
                               ),
-                              child: Text(
+                              child: LText(
                                 conversation.unread > 99 ? '99+' : '${conversation.unread}',
                                 style: const TextStyle(
                                   fontSize: 11,
@@ -250,7 +251,7 @@ class _ConversationTile extends StatelessWidget {
                       if (botName != null && (botName?.isNotEmpty ?? false))
                         Padding(
                           padding: const EdgeInsets.only(top: 2),
-                          child: Text(
+                          child: LText(
                             botName!,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,

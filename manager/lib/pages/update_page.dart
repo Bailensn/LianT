@@ -5,6 +5,7 @@ import '../core/update_service.dart';
 import '../core/version.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
+import '../l10n/ltext.dart';
 
 class UpdatePage extends StatefulWidget {
   const UpdatePage({super.key});
@@ -75,7 +76,7 @@ class _UpdatePageState extends State<UpdatePage> {
     } catch (err) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('检查更新失败：$err')),
+          SnackBar(content: LText('检查更新失败：$err')),
         );
       }
     } finally {
@@ -97,12 +98,12 @@ class _UpdatePageState extends State<UpdatePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Text(
+            LText(
               isNew ? '发现新版本：${latest?.tag ?? ''}' : '当前已是最新版',
               style: context.texts.titleMedium,
             ),
             const SizedBox(height: 6),
-            Text(
+            LText(
               '当前版本：$current',
               style: context.texts.bodySmall?.copyWith(color: context.colors.text2),
             ),
@@ -160,12 +161,12 @@ class _UpdatePageState extends State<UpdatePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Text(
+                        LText(
                           '是否接收测试版更新',
                           style: context.texts.titleSmall,
                         ),
                         const SizedBox(height: 2),
-                        Text(
+                        LText(
                           '默认关闭；开启后会检查 pre-release。',
                           style: context.texts.labelSmall?.copyWith(
                             color: context.colors.text3,
@@ -237,9 +238,9 @@ class _UpdateRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(title, style: context.texts.bodyLarge),
+                  LText(title, style: context.texts.bodyLarge),
                   const SizedBox(height: 2),
-                  Text(
+                  LText(
                     subtitle,
                     style: context.texts.labelSmall?.copyWith(color: colors.text3),
                   ),

@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   cupertino_icons: ^1.0.8
   # 协议层的 SHA-256；签名/验签用的 P-256 在 lib/core/p256.dart 里自己实现，
   # 这样 Web 与 Android 两边的行为完全一致，也不会被插件版本拖累。
