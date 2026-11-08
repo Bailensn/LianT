@@ -93,11 +93,19 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - name: Cache Flutter SDK
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.tool_cache }}/flutter-3.24.5
+          key: flutter-3.24.5-${{ runner.os }}-${{ runner.arch }}
+          restore-keys: |
+            flutter-3.24.5-${{ runner.os }}-
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.5'
           channel: stable
-          cache: true
+          cache: false
+          cache-path: ${{ runner.tool_cache }}/flutter-3.24.5
       - name: Cache pub
         uses: actions/cache@v6
         with:
@@ -165,11 +173,19 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - name: Cache Flutter SDK
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.tool_cache }}/flutter-3.24.5
+          key: flutter-3.24.5-${{ runner.os }}-${{ runner.arch }}
+          restore-keys: |
+            flutter-3.24.5-${{ runner.os }}-
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.5'
           channel: stable
-          cache: true
+          cache: false
+          cache-path: ${{ runner.tool_cache }}/flutter-3.24.5
       - name: Cache pub
         uses: actions/cache@v6
         with:
