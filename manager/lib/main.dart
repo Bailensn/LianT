@@ -119,10 +119,12 @@ class _ShellState extends State<Shell> {
     super.dispose();
   }
 
-  void _select(int index) {
+  void _select(int index, {bool animate = true}) {
     if (index == _index) return;
     setState(() => _index = index);
-    if (_pageController.hasClients) {
+    if (!_pageController.hasClients) {
+      _pageController.jumpToPage(index);
+    } else if (animate) {
       _pageController.animateToPage(
         index,
         duration: const Duration(milliseconds: 300),
@@ -202,6 +204,7 @@ class _ShellState extends State<Shell> {
                 child: GlassBottomNav(
                   index: _index,
                   onTap: _select,
+                  onDragSelect: (index) => _select(index, animate: false),
                 ),
               ),
             ],

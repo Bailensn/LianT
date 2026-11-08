@@ -2,6 +2,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/app_state.dart';
 import '../core/protocol.dart';
@@ -546,21 +547,70 @@ class _LargeTitleDelegate extends SliverPersistentHeaderDelegate {
 }
 
 /// 悬浮玻璃底栏：底下必须有滚动内容，玻璃才有意义。
-class GlassBottomNav extends StatelessWidget {
+class GlassBottomNav extends StatefulWidget {
   const GlassBottomNav({
     super.key,
     required this.index,
     required this.onTap,
+    this.onDragSelect,
   });
 
   final int index;
   final ValueChanged<int> onTap;
+  final ValueChanged<int>? onDragSelect;
 
   static const List<(IconData, IconData, String)> _items = <(IconData, IconData, String)>[
     (Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded, '会话'),
     (Icons.smart_toy_outlined, Icons.smart_toy_rounded, '机器人'),
     (Icons.settings_outlined, Icons.settings_rounded, '设置'),
   ];
+
+  @override
+  State<GlassBottomNav> createState() => _GlassBottomNavState();
+}
+
+class _GlassBottomNavState extends State<GlassBottomNav> {
+  double? _dragPosition;
+  double _itemWidth = 0;
+  int? _dragIndex;
+  bool get _dragging => _dragPosition != null;
+
+  int _indexAt(double dx) {
+    if (_itemWidth <= 0) return widget.index;
+    final value = (dx / _itemWidth).floor();
+    return value.clamp(0, GlassBottomNav._items.length - 1);
+  }
+
+  void _startDrag(double dx) {
+    final index = _indexAt(dx);
+    setState(() {
+      _dragPosition = index.toDouble();
+      _dragIndex = index;
+    });
+    HapticFeedback.selectionClick();
+  }
+
+  void _moveDrag(double dx) {
+    if (_itemWidth <= 0) return;
+    final position = (dx / _itemWidth)
+        .clamp(0.0, (GlassBottomNav._items.length - 1).toDouble());
+    final index = position.round();
+    setState(() => _dragPosition = position);
+    if (index != _dragIndex) {
+      _dragIndex = index;
+      HapticFeedback.selectionClick();
+      widget.onDragSelect?.call(index);
+    }
+  }
+
+  void _endDrag() {
+    final target = (_dragPosition ?? widget.index.toDouble()).round();
+    setState(() {
+      _dragPosition = null;
+      _dragIndex = null;
+    });
+    widget.onTap(target);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -591,38 +641,53 @@ class GlassBottomNav extends StatelessWidget {
               height: 52,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final itemWidth = constraints.maxWidth / _items.length;
-                  return Stack(
-                    children: <Widget>[
-                      AnimatedPositioned(
-                        duration: const Duration(milliseconds: 240),
-                        curve: Curves.easeOutCubic,
-                        left: index.clamp(0, _items.length - 1) * itemWidth,
-                        top: 0,
-                        width: itemWidth,
-                        height: 52,
-                        child: Container(
-                          decoration: SquircleBoxDecoration(
-                            color: colors.accent.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(22),
+                  _itemWidth = constraints.maxWidth / GlassBottomNav._items.length;
+                  final selected = _dragIndex ?? widget.index;
+                  final position = _dragPosition ?? widget.index.toDouble();
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onLongPressStart: (details) =>
+                        _startDrag(details.localPosition.dx),
+                    onLongPressMoveUpdate: (details) =>
+                        _moveDrag(details.localPosition.dx),
+                    onLongPressEnd: (_) => _endDrag(),
+                    onLongPressCancel: _endDrag,
+                    child: Stack(
+                      children: <Widget>[
+                        AnimatedPositioned(
+                          duration: _dragging
+                              ? Duration.zero
+                              : const Duration(milliseconds: 240),
+                          curve: Curves.easeOutCubic,
+                          left: position * _itemWidth,
+                          top: 0,
+                          width: _itemWidth,
+                          height: 52,
+                          child: Container(
+                            decoration: SquircleBoxDecoration(
+                              color: colors.accent.withOpacity(
+                                _dragging ? 0.18 : 0.12,
+                              ),
+                              borderRadius: BorderRadius.circular(22),
+                            ),
                           ),
                         ),
-                      ),
-                      Row(
-                        children: <Widget>[
-                          for (var i = 0; i < _items.length; i++)
-                            Expanded(
-                              child: _NavItem(
-                                icon: _items[i].$1,
-                                selectedIcon: _items[i].$2,
-                                label: _items[i].$3,
-                                selected: i == index,
-                                onTap: () => onTap(i),
+                        Row(
+                          children: <Widget>[
+                            for (var i = 0; i < GlassBottomNav._items.length; i++)
+                              Expanded(
+                                child: _NavItem(
+                                  icon: GlassBottomNav._items[i].$1,
+                                  selectedIcon: GlassBottomNav._items[i].$2,
+                                  label: GlassBottomNav._items[i].$3,
+                                  selected: i == selected,
+                                  onTap: () => widget.onTap(i),
+                                ),
                               ),
-                            ),
-                        ],
-                      ),
-                    ],
+                          ],
+                        ),
+                      ],
+                    ),
                   );
                 },
               ),
