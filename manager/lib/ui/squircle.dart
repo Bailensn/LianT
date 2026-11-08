@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 /// iOS 连续曲率圆角装饰：用 ContinuousRectangleBorder 画 squircle，
 /// 非均匀边框（例如只有底边）回退到普通 BoxDecoration。
 /// 连续曲率在同样数值下看起来比圆角更“紧”，统一放大一档。
-const double _radiusScale = 1.18;
+const double _radiusScale = 1.25;
 
 BorderRadiusGeometry squircleRadius(BorderRadiusGeometry? value) {
   if (value is BorderRadius) {
