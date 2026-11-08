@@ -122,7 +122,7 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 
 ### CI
 
-- `CI`：单个工作流。`changes` 用 paths-filter 判定变更：
+- `CI`：单个工作流。`changes` 用 git diff 判定变更（不依赖 Node action）：
   - `service/**` → `service-check`，push 后 `service-release` 发 pre-release；
   - `manager/**` → `client-check`，push 后 `android` 出三个 release APK；
   - `scripts/**` 只跑 Go 检查；`docs/**` 跳过；

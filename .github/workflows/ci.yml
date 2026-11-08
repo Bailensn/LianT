@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       service: ${{ steps.filter.outputs.service }}
       manager: ${{ steps.filter.outputs.manager }}
@@ -30,23 +30,47 @@ jobs:
       workflow: ${{ steps.filter.outputs.workflow }}
     steps:
       - uses: actions/checkout@v7
-      - uses: dorny/paths-filter@v3
-        id: filter
         with:
-          filters: |
-            service:
-              - 'service/**'
-            manager:
-              - 'manager/**'
-            scripts:
-              - 'scripts/**'
-            workflow:
-              - '.github/workflows/**'
+          fetch-depth: 0
+      - name: Detect changed paths
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            changed="service/ manager/ scripts/ .github/workflows/"
+          else
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              base="$PR_BASE"
+            else
+              base="$BEFORE"
+            fi
+            if [ -n "$base" ] && [ "$base" != "0000000000000000000000000000000000000000" ] \
+              && git cat-file -e "$base^{commit}" 2>/dev/null; then
+              changed="$(git diff --name-only "$base" HEAD)"
+            else
+              # 首次推送/重写历史时没有 before，退回只看最后一个提交。
+              changed="$(git show --pretty=format: --name-only HEAD)"
+            fi
+          fi
+          has() { printf '%s\n' "$changed" | grep -qE "$1" && echo true || echo false; }
+          service="$(has '^service/')"
+          manager="$(has '^manager/')"
+          scripts="$(has '^scripts/')"
+          workflow="$(has '^\.github/workflows/')"
+          echo "service=$service" >> "$GITHUB_OUTPUT"
+          echo "manager=$manager" >> "$GITHUB_OUTPUT"
+          echo "scripts=$scripts" >> "$GITHUB_OUTPUT"
+          echo "workflow=$workflow" >> "$GITHUB_OUTPUT"
+          echo "service=$service manager=$manager scripts=$scripts workflow=$workflow"
 
   service-check:
     needs: changes
     if: needs.changes.outputs.service == 'true' || needs.changes.outputs.scripts == 'true' || needs.changes.outputs.workflow == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -66,7 +90,7 @@ jobs:
   client-check:
     needs: changes
     if: needs.changes.outputs.manager == 'true' || needs.changes.outputs.workflow == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
@@ -87,7 +111,7 @@ jobs:
   service-release:
     needs: [changes, service-check]
     if: github.event_name != 'pull_request' && (needs.changes.outputs.service == 'true' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
@@ -130,7 +154,7 @@ jobs:
   android:
     needs: [changes, client-check]
     if: github.event_name != 'pull_request' && (needs.changes.outputs.manager == 'true' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
