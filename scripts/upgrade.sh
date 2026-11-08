@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# LianT Service 升级脚本：停服务、备份旧二进制、下载并校验最新 pre-release、替换、重启。
-#
-# 一键升级（在服务器上执行）：
-#   curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/upgrade.sh | sudo bash
-#
-# 也可以指定二进制或地址：
-#   sudo bash upgrade.sh /path/to/LianT-linux-amd64
-#   sudo LIANT_URL=https://example.com/LianT-linux-amd64 bash upgrade.sh
 set -euo pipefail
 
 DIR="${LIANT_DIR:-}"

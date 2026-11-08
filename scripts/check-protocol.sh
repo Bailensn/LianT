@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# 协议漂移检查：Go 里声明的每个消息类型，Flutter 客户端都必须提到过。
-#
-# 不是类型级生成，但能挡住「服务端加了方法、客户端完全不知道」这类漂移，
-# 成本很低，CI 里跑几百毫秒。
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)

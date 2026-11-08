@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# LianT Service 卸载脚本：停止并移除 systemd 单元，删除二进制与数据。
-# 默认连 config.enc、data/（消息、设备、密钥）一起删；要保留数据用 --keep-data。
-#
-#   sudo bash uninstall.sh
-#   sudo bash uninstall.sh --dir /srv/liant
-#   sudo bash uninstall.sh --keep-data
 set -euo pipefail
 
 DIR="${LIANT_DIR:-}"

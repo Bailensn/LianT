@@ -1,15 +1,4 @@
 #!/usr/bin/env bash
-# LianT Service 安装脚本：二进制放进安装目录，用 systemd 常驻。
-#
-# 交互安装（会询问目录、端口、运行用户，回车用默认值）：
-#   sudo bash install.sh
-#
-# 一键安装（使用默认值，不询问）：
-#   curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh | sudo bash -s -- -y
-#
-# 也可以装本地二进制或指定地址：
-#   sudo bash install.sh /path/to/LianT-linux-amd64
-#   sudo LIANT_URL=https://example.com/LianT-linux-amd64 bash install.sh
 set -euo pipefail
 
 DIR="${LIANT_DIR:-/opt/liant}"
