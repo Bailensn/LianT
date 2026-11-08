@@ -241,7 +241,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   async send(bot, peerId, peerKind, text, inReplyTo) {
     if (!client) throw new Error('尚未连接')
     // 先乐观上屏，服务端确认后再换成真实 msg_id。
-    const active = get().activeMode[convKey(bot.bot_id, peerId)] === true
+    // 默认走主动消息：不受 5 分钟窗口限制，也不会带 @ 和引用。
+    const active = get().activeMode[convKey(bot.bot_id, peerId)] !== false
     const localId = `local-${uuid()}`
     const optimistic: Msg = {
       msg_id: localId,

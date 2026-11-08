@@ -113,11 +113,11 @@ export default function Chat() {
         <label className="mx-4 mb-3 flex items-center justify-between rounded-2xl bg-[var(--bg-elevated)] px-4 py-3">
           <span className="text-[14px]">
             主动消息
-            <span className="ml-2 text-[12px] text-[var(--text-3)]">不绑定原消息，也就没有 @ 和引用</span>
+            <span className="ml-2 text-[12px] text-[var(--text-3)]">默认开启，不受回复窗口限制；关掉则按被动回复，带 @ 与引用</span>
           </span>
           <input
             type="checkbox"
-            checked={activeMode[key] === true}
+            checked={activeMode[key] !== false}
             onChange={(e) => setActiveMode(key, e.target.checked)}
             className="h-5 w-5 accent-[var(--accent)]"
           />
