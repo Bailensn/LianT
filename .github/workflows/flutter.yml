@@ -1,7 +1,7 @@
 name: Flutter (Android)
 
-# 只交付 Android：构建 debug APK 并上传 artifact。
-# Web 仅用于本地预览，这里只做一次编译校验，不发布。
+# 只交付 Android：构建 release APK（arm64 / x86_64 / universal）并上传 artifact。
+# Web 预览只在本地跑，不进 CI。
 on:
   push:
     paths:
@@ -26,10 +26,6 @@ jobs:
 
       - working-directory: manager
         run: flutter pub get
-
-      - name: Compile web preview (not published)
-        working-directory: manager
-        run: flutter build web --release
 
       - name: Build Android APKs
         working-directory: manager

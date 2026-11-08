@@ -120,7 +120,7 @@ cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/
 
 - `CI`：`scripts/check-protocol.sh`（检查 Flutter 是否提到服务端所有消息类型）+ `go vet` + `go test -race`
 - `Service binaries`：构建 linux amd64/arm64 并发布 pre-release（`install.sh` 从这取）
-- `Flutter (Android)`：官方 Flutter 3.24.5 出 release APK（arm64 / x86_64 / universal），Web 只做编译校验（不发布），路径 `manager/**`
+- `Flutter (Android)`：官方 Flutter 3.24.5 出 release APK（arm64 / x86_64 / universal），路径 `manager/**`；Web 预览不进 CI
 - 推送：`git push https://x-access-token:$TOKEN@github.com/Bailensn/LianT.git HEAD:main`
   TOKEN 在 `$HOME/newtoken.txt`；这条网络链路时好时坏，用循环重试 5 次。
 

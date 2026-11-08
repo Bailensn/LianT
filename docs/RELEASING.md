@@ -23,7 +23,7 @@ v1.0.0-RC1-eeeeeee
 | Workflow | 触发 | 产物 |
 | --- | --- | --- |
 | `Service binaries` | `service/**` 变更或手动 | GitHub pre-release：`LianT-linux-amd64`、`LianT-linux-arm64`、`SHA256SUMS.txt` |
-| `Flutter (Android)` | `manager/**` 变更或手动 | Android release APK（arm64 / x86_64 / universal 三个）；Web 只做编译校验，不发布 |
+| `Flutter (Android)` | `manager/**` 变更或手动 | Android release APK（arm64 / x86_64 / universal 三个） |
 | `CI` | 所有 push / PR | 协议漂移检查、`go vet`、`go test -race`（不产物） |
 
 - 服务端二进制用 `CGO_ENABLED=0` 构建，直接拷到 `/opt/liant` 就能跑；`install.sh`
