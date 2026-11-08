@@ -169,9 +169,10 @@ sudo bash scripts/upgrade.sh --dir /srv/liant
 ## 9. 卸载
 
 ```bash
-sudo bash scripts/uninstall.sh                 # 保留 config.enc 与 data/
-sudo bash scripts/uninstall.sh --purge -y      # 连配置、消息、媒体一起删
+sudo bash scripts/uninstall.sh                 # 连配置、消息、媒体一起删
+sudo bash scripts/uninstall.sh --keep-data     # 只删服务与二进制，保留数据
 ```
 
-卸载会停止并移除 systemd 单元、删除二进制；默认保留数据，需要时加 `--purge`。
-安装时用了自定义目录的话，用 `--dir /srv/liant` 指定，或让脚本从 systemd 单元读取。
+卸载会停止并移除 systemd 单元，默认删除整个安装目录（含 `config.enc` 与 `data/`）。
+脚本会拒绝 `/`、`/opt`、`/home/<user>` 这类危险路径；安装时用了自定义目录的话，
+用 `--dir /srv/liant` 指定，或让脚本从 systemd 单元读取。

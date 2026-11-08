@@ -37,13 +37,13 @@ Upgrade in place (stops the service, verifies SHA256, backs up the old binary, r
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/upgrade.sh | sudo bash
 ```
 
-Uninstall (removes the unit and binary; keeps config and messages by default):
+Uninstall (removes the unit, binary, config and messages by default):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/uninstall.sh | sudo bash
 ```
 
-Add `--purge -y` to delete config and data as well.
+Add `--keep-data` to preserve `config.enc` and `data/`.
 
 ## Documents
 

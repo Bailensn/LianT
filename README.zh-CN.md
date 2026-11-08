@@ -37,13 +37,13 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/upgrade.sh | sudo bash
 ```
 
-卸载（移除 systemd 单元和二进制，默认保留配置与消息数据）：
+卸载（移除 systemd 单元、二进制，默认连配置和消息数据一起删）：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/uninstall.sh | sudo bash
 ```
 
-要连配置和数据一起删，加 `--purge -y`。
+要保留 `config.enc` 和 `data/`，加 `--keep-data`。
 
 ## 文档
 
