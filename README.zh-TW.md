@@ -11,7 +11,7 @@
 
 需求：Linux + systemd、root、`curl`，以及 `python3` 或 `jq`（用於選擇 release，`--url` 可略過）。PostgreSQL 為選用。
 
-設定部署變數；指令僅引用變數：
+依部署環境設定以下變數；所有指令均透過變數引用：
 
 ```bash
 INSTALL_DIR=/opt/liant

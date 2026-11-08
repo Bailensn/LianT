@@ -12,7 +12,7 @@ Se incluye un cliente Flutter para la operación diaria.
 
 Requisitos: Linux con systemd, root, `curl` y `python3` o `jq` (selección de release; `--url` lo omite). PostgreSQL es opcional.
 
-Defina las variables de despliegue; los comandos solo las referencian:
+Defina las siguientes variables según su entorno de despliegue; todos los comandos las referencian:
 
 ```bash
 INSTALL_DIR=/opt/liant

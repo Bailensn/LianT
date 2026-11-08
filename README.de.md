@@ -12,7 +12,7 @@ Ein Flutter-Client steht für den laufenden Betrieb bereit.
 
 Voraussetzungen: Linux mit systemd, root, `curl` und `python3` oder `jq` (Release-Auswahl; `--url` umgeht sie). PostgreSQL ist optional.
 
-Deployment-Variablen setzen; die Befehle referenzieren nur diese:
+Legen Sie die folgenden Variablen für Ihre Deployment-Umgebung fest; alle Befehle referenzieren sie:
 
 ```bash
 INSTALL_DIR=/opt/liant

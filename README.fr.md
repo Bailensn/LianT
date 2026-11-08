@@ -12,7 +12,7 @@ Un client Flutter est fourni pour l'exploitation quotidienne.
 
 Prérequis : Linux avec systemd, root, `curl` et `python3` ou `jq` (sélection de release ; `--url` l'évite). PostgreSQL est facultatif.
 
-Définissez les variables de déploiement ; les commandes ne référencent que celles-ci :
+Définissez les variables suivantes selon votre environnement de déploiement ; toutes les commandes y font référence :
 
 ```bash
 INSTALL_DIR=/opt/liant

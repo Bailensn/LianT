@@ -11,7 +11,7 @@
 
 요구 사항: Linux + systemd, root, `curl`, `python3` 또는 `jq`(release 선택용, `--url`로 생략 가능). PostgreSQL은 선택 사항입니다.
 
-배포 변수를 설정합니다. 아래 명령은 변수만 참조합니다:
+배포 환경에 맞게 다음 변수를 설정하세요. 모든 명령은 이 변수를 참조합니다:
 
 ```bash
 INSTALL_DIR=/opt/liant

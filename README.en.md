@@ -15,7 +15,7 @@ A Flutter client is provided for day-to-day operation.
 Requirements: Linux with systemd, root access, `curl`, and `python3` or `jq` (release selection;
 `--url` bypasses it). PostgreSQL is optional.
 
-Set deployment values; commands reference variables only:
+Set the following variables for your deployment environment; all commands reference them:
 
 ```bash
 INSTALL_DIR=/opt/liant

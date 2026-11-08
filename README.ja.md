@@ -11,7 +11,7 @@
 
 要件：Linux + systemd、root、`curl`、`python3` または `jq`（release 選択用。`--url` で省略可）。PostgreSQL は任意です。
 
-デプロイ用の変数を設定します。以下のコマンドは変数のみを参照します：
+デプロイ環境に合わせて以下の変数を設定してください。コマンドはすべてこれらの変数を参照します：
 
 ```bash
 INSTALL_DIR=/opt/liant
