@@ -68,7 +68,7 @@ class MessageService : Service() {
                     }
                 }
             engine.dartExecutor.executeDartEntrypoint(
-                DartExecutor.DartEntrypoint("backgroundMain"),
+                DartExecutor.DartEntrypoint("lib/background_main.dart", "backgroundMain"),
             )
             flutterEngine = engine
         } catch (e: Exception) {
