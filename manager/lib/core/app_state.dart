@@ -153,10 +153,10 @@ class AppState extends ChangeNotifier {
     _lifecycle = AppLifecycleListener(
       onStateChange: (state) {
         if (state == AppLifecycleState.resumed) {
-          appInForeground = true;
+          _setForeground(true);
           return;
         }
-        appInForeground = false;
+        _setForeground(false);
         if (state == AppLifecycleState.detached) {
           unawaited(stopMessageService());
         } else if (identity != null) {
@@ -596,10 +596,16 @@ class AppState extends ChangeNotifier {
       ..sort((a, b) => (b.last?.ts ?? 0) - (a.last?.ts ?? 0));
   }
 
+  void _setForeground(bool value) {
+    appInForeground = value;
+    unawaited(_prefs.setBool('liant.foreground', value));
+  }
+
   void _notifyInbound(ChatMessage msg) {
+    if (!appInForeground) return;
     final key = convKey(msg.botId, msg.peerId);
     if (mutedFor(key)) return;
-    if (appInForeground && openConversation == key) return;
+    if (openConversation == key) return;
     final list = messagesFor(msg.botId, msg.peerId);
     final convTitle = conversationTitle(msg.botId, msg.peerId, list);
     final sender = msg.senderName.isEmpty ? shortPeer(msg.senderId) : msg.senderName;

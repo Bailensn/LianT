@@ -8,6 +8,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
@@ -88,13 +90,24 @@ class MainActivity : FlutterActivity() {
         } else {
             getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         }
+        val sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         if (Build.VERSION.SDK_INT >= 26) {
             manager.createNotificationChannel(
                 NotificationChannel(
                     MESSAGE_CHANNEL,
                     "消息通知",
                     NotificationManager.IMPORTANCE_HIGH,
-                ).apply { description = "LianT 新消息" },
+                ).apply {
+                    description = "LianT 新消息"
+                    setSound(
+                        sound,
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build(),
+                    )
+                    enableVibration(true)
+                },
             )
         }
         val flags = if (Build.VERSION.SDK_INT >= 23) {
@@ -119,12 +132,14 @@ class MainActivity : FlutterActivity() {
             .setStyle(Notification.BigTextStyle().bigText(body))
             .setSmallIcon(R.mipmap.ic_launcher_foreground)
             .setContentIntent(pending)
+            .setSound(sound)
+            .setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
             .setAutoCancel(true)
             .build()
         manager.notify(id, notification)
     }
 
     companion object {
-        private const val MESSAGE_CHANNEL = "liant.notifications"
+        private const val MESSAGE_CHANNEL = "liant.notifications.v2"
     }
 }
