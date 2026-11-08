@@ -1438,13 +1438,6 @@ class _ChatPageState extends State<ChatPage> {
     await showLiantSheet<void>(
       context: context,
       title: '会话设置',
-      footer: PrimaryButton(
-        label: '保存备注',
-        onTap: () {
-          state.setRemark(key, controller.text);
-          Navigator.of(context).pop();
-        },
-      ),
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheet) {
           final colors = context.colors;
@@ -1474,6 +1467,7 @@ class _ChatPageState extends State<ChatPage> {
                         child: TextField(
                           controller: controller,
                           textAlign: TextAlign.right,
+                          onChanged: (value) => state.setRemark(key, value),
                           style: TextStyle(fontSize: 16, color: colors.text),
                           decoration: InputDecoration(
                             hintText: state.conversationTitle(
