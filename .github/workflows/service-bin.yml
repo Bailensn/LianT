@@ -8,6 +8,9 @@ on:
       - '.github/workflows/service-bin.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,3 +39,12 @@ jobs:
         with:
           name: LianT-service
           path: dist/*
+
+      - name: Publish pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0-Alpha-${{ github.sha }}
+          name: LianT ${{ github.sha }}
+          prerelease: true
+          files: dist/*
+          fail_on_unmatched_files: true

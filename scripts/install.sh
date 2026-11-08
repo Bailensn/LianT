@@ -17,12 +17,25 @@ die() { printf '\033[1;31m错误:\033[0m %s\n' "$*" >&2; exit 1; }
 [ "$(id -u)" = "0" ] || die "需要 root 运行：sudo bash $0"
 
 SRC="${1:-}"
-if [ -z "$SRC" ] && [ -n "${LIANT_URL:-}" ]; then
+REPO="${LIANT_REPO:-Bailensn/LianT}"
+if [ -z "$SRC" ] && [ -z "${LIANT_URL:-}" ]; then
+  case "$(uname -m)" in
+    x86_64|amd64) asset="LianT-linux-amd64" ;;
+    aarch64|arm64) asset="LianT-linux-arm64" ;;
+    *) die "不支持的架构：$(uname -m)" ;;
+  esac
+  say "从 GitHub 取最新构建：$asset"
+  SRC=$(mktemp)
+  url=$(curl -fsSL --retry 3 "https://api.github.com/repos/${REPO}/releases/latest" \
+    | grep -o "https://[^\"]*/${asset}" | head -1) || true
+  [ -n "$url" ] || die "没有可用的 release，请检查网络或手动指定 LIANT_URL"
+  curl -fSL --retry 3 -o "$SRC" "$url" || die "下载失败"
+elif [ -z "$SRC" ]; then
   say "下载二进制"
   SRC=$(mktemp)
   curl -fSL --retry 3 -o "$SRC" "$LIANT_URL" || die "下载失败"
 fi
-[ -n "$SRC" ] && [ -f "$SRC" ] || die "用法：install.sh <LianT 二进制路径>，或设置 LIANT_URL"
+[ -n "$SRC" ] && [ -f "$SRC" ] || die "用法：install.sh 直接运行即可，或 <二进制路径>/LIANT_URL 覆盖"
 
 ARCH=$(uname -m)
 case "$ARCH" in
