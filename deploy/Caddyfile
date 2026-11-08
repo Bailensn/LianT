@@ -1,4 +1,0 @@
-{$LIANT_DOMAIN} {
-	encode zstd gzip
-	reverse_proxy liant:8443
-}

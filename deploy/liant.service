@@ -1,0 +1,18 @@
+[Unit]
+Description=LianT Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/liant
+ExecStart=/opt/liant/LianT serve
+Restart=always
+RestartSec=3
+# 建议用独立用户；没有的话先 useradd -r -s /sbin/nologin liant
+User=root
+Environment=LIANT_CONFIRM=auto
+Environment=TZ=Asia/Shanghai
+
+[Install]
+WantedBy=multi-user.target
