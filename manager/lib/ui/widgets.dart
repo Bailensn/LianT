@@ -1,6 +1,7 @@
 // 共用组件：大标题页、分组卡片、玻璃底栏、气泡、抽屉、按钮。
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -552,12 +553,10 @@ class GlassBottomNav extends StatefulWidget {
     super.key,
     required this.index,
     required this.onTap,
-    this.onDragSelect,
   });
 
   final int index;
   final ValueChanged<int> onTap;
-  final ValueChanged<int>? onDragSelect;
 
   static const List<(IconData, IconData, String)> _items = <(IconData, IconData, String)>[
     (Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded, '会话'),
@@ -570,126 +569,180 @@ class GlassBottomNav extends StatefulWidget {
 }
 
 class _GlassBottomNavState extends State<GlassBottomNav> {
-  double? _dragPosition;
+  int? _pointer;
+  VelocityTracker? _tracker;
+  double _downX = 0;
   double _itemWidth = 0;
-  int? _dragIndex;
-  bool get _dragging => _dragPosition != null;
+  double? _dragPosition;
+  int? _previewIndex;
+  bool _dragging = false;
+
+  int get _lastIndex => GlassBottomNav._items.length - 1;
 
   int _indexAt(double dx) {
     if (_itemWidth <= 0) return widget.index;
-    final value = (dx / _itemWidth).floor();
-    return value.clamp(0, GlassBottomNav._items.length - 1);
+    return (dx / _itemWidth - 0.5).round().clamp(0, _lastIndex);
   }
 
-  void _startDrag(double dx) {
-    final index = _indexAt(dx);
+  double _positionAt(double dx) {
+    if (_itemWidth <= 0) return widget.index.toDouble();
+    final raw = dx / _itemWidth - 0.5;
+    if (raw < 0) return raw * 0.35;
+    if (raw > _lastIndex) return _lastIndex + (raw - _lastIndex) * 0.35;
+    return raw;
+  }
+
+  void _onDown(PointerDownEvent event) {
+    if (_pointer != null) return;
+    _pointer = event.pointer;
+    _tracker = VelocityTracker.withKind(event.kind)
+      ..addPosition(event.timeStamp, event.localPosition);
+    _downX = event.localPosition.dx;
+    _dragging = false;
+    final position = _positionAt(_downX);
     setState(() {
-      _dragPosition = index.toDouble();
-      _dragIndex = index;
+      _dragPosition = position;
+      _previewIndex = _indexAt(_downX);
     });
-    HapticFeedback.selectionClick();
   }
 
-  void _moveDrag(double dx) {
-    if (_itemWidth <= 0) return;
-    final position = (dx / _itemWidth)
-        .clamp(0.0, (GlassBottomNav._items.length - 1).toDouble());
-    final index = position.round();
-    setState(() => _dragPosition = position);
-    if (index != _dragIndex) {
-      _dragIndex = index;
+  void _onMove(PointerMoveEvent event) {
+    if (event.pointer != _pointer) return;
+    _tracker?.addPosition(event.timeStamp, event.localPosition);
+    if (!_dragging && (event.localPosition.dx - _downX).abs() < kTouchSlop) {
+      return;
+    }
+    _dragging = true;
+    final position = _positionAt(event.localPosition.dx);
+    final index = position.round().clamp(0, _lastIndex);
+    if (index != _previewIndex) {
       HapticFeedback.selectionClick();
-      widget.onDragSelect?.call(index);
+    }
+    setState(() {
+      _dragPosition = position;
+      _previewIndex = index;
+    });
+  }
+
+  void _onUp(PointerUpEvent event) {
+    if (event.pointer != _pointer) return;
+    final tracker = _tracker;
+    final position = _dragPosition ?? widget.index.toDouble();
+    var target = _dragging
+        ? position.round().clamp(0, _lastIndex)
+        : (_previewIndex ?? widget.index);
+    if (_dragging && tracker != null) {
+      final velocity = tracker.getVelocity().pixelsPerSecond.dx;
+      if (velocity.abs() > 500) {
+        target = (target + (velocity > 0 ? 1 : -1)).clamp(0, _lastIndex);
+      }
+    }
+    _clearPointer();
+    if (target != widget.index) {
+      HapticFeedback.selectionClick();
+      widget.onTap(target);
     }
   }
 
-  void _endDrag() {
-    final target = (_dragPosition ?? widget.index.toDouble()).round();
+  void _onCancel(PointerCancelEvent event) {
+    if (event.pointer != _pointer) return;
+    _clearPointer();
+  }
+
+  void _clearPointer() {
+    _pointer = null;
+    _tracker = null;
+    _dragging = false;
     setState(() {
       _dragPosition = null;
-      _dragIndex = null;
+      _previewIndex = null;
     });
-    widget.onTap(target);
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Container(
-      decoration: SquircleBoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: Colors.black.withOpacity(0.14),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: SquircleClip(
-        borderRadius: BorderRadius.circular(28),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: SquircleBoxDecoration(
-              color: colors.elevated.withOpacity(0.72),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: colors.sep, width: 0.5),
+    final selected = _previewIndex ?? widget.index;
+    final position = _dragPosition ?? widget.index.toDouble();
+    return AnimatedScale(
+      scale: _pointer == null ? 1 : 1.012,
+      duration: const Duration(milliseconds: 140),
+      curve: Curves.easeOutCubic,
+      child: Container(
+        decoration: SquircleBoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withOpacity(0.14),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
             ),
-            child: SizedBox(
-              height: 52,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  _itemWidth = constraints.maxWidth / GlassBottomNav._items.length;
-                  final selected = _dragIndex ?? widget.index;
-                  final position = _dragPosition ?? widget.index.toDouble();
-                  return GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onLongPressStart: (details) =>
-                        _startDrag(details.localPosition.dx),
-                    onLongPressMoveUpdate: (details) =>
-                        _moveDrag(details.localPosition.dx),
-                    onLongPressEnd: (_) => _endDrag(),
-                    onLongPressCancel: _endDrag,
-                    child: Stack(
-                      children: <Widget>[
-                        AnimatedPositioned(
-                          duration: _dragging
-                              ? Duration.zero
-                              : const Duration(milliseconds: 240),
-                          curve: Curves.easeOutCubic,
-                          left: position * _itemWidth,
-                          top: 0,
-                          width: _itemWidth,
-                          height: 52,
-                          child: Container(
-                            decoration: SquircleBoxDecoration(
-                              color: colors.accent.withOpacity(
-                                _dragging ? 0.18 : 0.12,
+          ],
+        ),
+        child: SquircleClip(
+          borderRadius: BorderRadius.circular(28),
+          child: BackdropFilter(
+            filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: SquircleBoxDecoration(
+                color: colors.elevated.withOpacity(0.72),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: colors.sep, width: 0.5),
+              ),
+              child: SizedBox(
+                height: 52,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    _itemWidth =
+                        constraints.maxWidth / GlassBottomNav._items.length;
+                    return Listener(
+                      behavior: HitTestBehavior.opaque,
+                      onPointerDown: _onDown,
+                      onPointerMove: _onMove,
+                      onPointerUp: _onUp,
+                      onPointerCancel: _onCancel,
+                      child: Stack(
+                        children: <Widget>[
+                          AnimatedPositioned(
+                            duration: _pointer == null
+                                ? const Duration(milliseconds: 240)
+                                : Duration.zero,
+                            curve: Curves.easeOutCubic,
+                            left: position * _itemWidth,
+                            top: 0,
+                            width: _itemWidth,
+                            height: 52,
+                            child: Container(
+                              decoration: SquircleBoxDecoration(
+                                color: colors.accent.withOpacity(
+                                  _pointer == null ? 0.12 : 0.18,
+                                ),
+                                borderRadius: BorderRadius.circular(22),
                               ),
-                              borderRadius: BorderRadius.circular(22),
                             ),
                           ),
-                        ),
-                        Row(
-                          children: <Widget>[
-                            for (var i = 0; i < GlassBottomNav._items.length; i++)
-                              Expanded(
-                                child: _NavItem(
-                                  icon: GlassBottomNav._items[i].$1,
-                                  selectedIcon: GlassBottomNav._items[i].$2,
-                                  label: GlassBottomNav._items[i].$3,
-                                  selected: i == selected,
-                                  onTap: () => widget.onTap(i),
+                          Row(
+                            children: <Widget>[
+                              for (var i = 0;
+                                  i < GlassBottomNav._items.length;
+                                  i++)
+                                Expanded(
+                                  child: _NavItem(
+                                    icon: GlassBottomNav._items[i].$1,
+                                    selectedIcon: GlassBottomNav._items[i].$2,
+                                    label: GlassBottomNav._items[i].$3,
+                                    selected: i == selected,
+                                    onTap: () => widget.onTap(i),
+                                  ),
                                 ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -944,11 +997,15 @@ Future<T?> showLiantSheet<T>({
       reverseDuration: const Duration(milliseconds: 200),
     ),
     builder: (sheetContext) {
-      return Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
-        ),
-        child: Container(
+      return TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0, end: 1),
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        child: Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+          ),
+          child: Container(
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.85,
           ),
@@ -1008,7 +1065,19 @@ Future<T?> showLiantSheet<T>({
                 ),
             ],
           ),
+          ),
         ),
+        builder: (context, value, child) {
+          final t = Curves.easeOutCubic.transform(value);
+          return Opacity(
+            opacity: 0.72 + 0.28 * t,
+            child: Transform.scale(
+              scale: 0.96 + 0.04 * t,
+              alignment: Alignment.bottomCenter,
+              child: child,
+            ),
+          );
+        },
       );
     },
   );
@@ -1023,9 +1092,27 @@ Future<bool> confirmAction(
   bool danger = false,
 }) async {
   final colors = context.colors;
-  final result = await showDialog<bool>(
+  final result = await showGeneralDialog<bool>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
+    barrierDismissible: true,
+    barrierLabel: title,
+    barrierColor: Colors.black.withOpacity(0.45),
+    transitionDuration: const Duration(milliseconds: 180),
+    transitionBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
+          child: child,
+        ),
+      );
+    },
+    pageBuilder: (dialogContext, animation, secondaryAnimation) => AlertDialog(
       backgroundColor: colors.elevated,
       surfaceTintColor: Colors.transparent,
       shape: ContinuousRectangleBorder(borderRadius: BorderRadius.circular(20)),

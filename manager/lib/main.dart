@@ -204,7 +204,6 @@ class _ShellState extends State<Shell> {
                 child: GlassBottomNav(
                   index: _index,
                   onTap: _select,
-                  onDragSelect: (index) => _select(index, animate: false),
                 ),
               ),
             ],
