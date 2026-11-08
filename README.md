@@ -15,7 +15,7 @@ Service 为单个 Linux 二进制，由 systemd 托管。环境要求：
 - `python3` 或 `jq`（用于选择最新 release；也可直接传入 `--url`）
 - PostgreSQL 可选；也可直接使用 SQLite
 
-按部署环境设置以下变量；命令均通过变量引用，不预设数据库名或账号：
+按部署环境设置以下变量；命令均通过变量引用：
 
 ```bash
 INSTALL_DIR=/opt/liant

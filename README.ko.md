@@ -2,17 +2,16 @@
 
 [简体中文](README.md) | [繁體中文](README.zh-TW.md) | [English](README.en.md) | [日本語](README.ja.md) | 한국어 | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md)
 
-LianT는 셀프 호스팅 **Bot Engine**입니다. QQ를 먼저 지원하고 Telegram이 뒤따르며,
-Flutter 클라이언트로 운영합니다.
+셀프 호스팅 **Bot Engine**입니다. 현재 QQ를 지원하며 Telegram은 계획 중입니다. 일상 운영에는 Flutter 클라이언트를 사용합니다.
 
 - **Service**(`service/`): Go, WSS 프로토콜 v1, SQLite 또는 PostgreSQL, 메시지 7일 보관. `/v1/ws`와 서명된 미디어 링크만 제공하며 웹 관리 화면은 없습니다.
-- **Manager**(`manager/`): Flutter. **Android만 배포**하며 Web은 로컬 미리보기용이고 데스크톱은 없습니다.
+- **Manager**(`manager/`): Flutter. **Android만 배포 대상**입니다. Web은 로컬 미리보기용이며 데스크톱 버전은 없습니다.
 
-## 빠른 시작
+## 설치
 
-필요 환경: Linux + systemd, root, `curl`, 최신 release 선택용 `python3` 또는 `jq`(또는 `--url`). PostgreSQL은 선택 사항입니다.
+요구 사항: Linux + systemd, root, `curl`, `python3` 또는 `jq`(release 선택용, `--url`로 생략 가능). PostgreSQL은 선택 사항입니다.
 
-먼저 값을 자신의 환경에 맞게 바꾸세요. 아래 명령은 변수만 참조하며 DB 이름이나 계정을 고정하지 않습니다:
+배포 변수를 설정합니다. 아래 명령은 변수만 참조합니다:
 
 ```bash
 INSTALL_DIR=/opt/liant
@@ -32,9 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
   | sudo bash -s -- --beta
 ```
 
-설치 경로, 포트, 실행 사용자, DB 종류를 묻습니다. 기본은 PostgreSQL이며 `sqlite`를 선택하면 필요 없습니다.
-
-비대화형 SQLite:
+설치 경로, 포트, 실행 사용자, 데이터베이스 종류를 순서대로 묻습니다. 기본값은 PostgreSQL이며 `sqlite`를 선택하면 SQLite를 사용합니다. 비대화형 SQLite:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
@@ -44,14 +41,14 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
 
 ### PostgreSQL
 
-설치 스크립트는 role과 database를 만들지 않으며 슈퍼유저 권한도 필요로 하지 않습니다. 먼저 원하는 이름으로 만드세요:
+설치 스크립트는 role과 database를 생성하지 않으며 슈퍼유저 권한도 요구하지 않습니다. 먼저 생성하세요:
 
 ```sql
 CREATE ROLE your_db_user LOGIN PASSWORD 'your_db_password';
 CREATE DATABASE your_db_name OWNER your_db_user;
 ```
 
-따옴표 없는 SQL 식별자는 소문자로 변환됩니다. `--db-user`는 실제 role과 대소문자가 같아야 합니다. 대소문자를 섞어야 하면 SQL에서 큰따옴표로 감싸고 설치할 때도 같은 표기를 넘기세요.
+따옴표 없는 SQL 식별자는 소문자로 변환됩니다. `--db-user`는 실제 role과 정확히 일치해야 합니다. 대소문자를 혼용하려면 SQL에서 큰따옴표를 사용하고 동일한 표기를 설치 스크립트에 전달하세요.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
@@ -60,30 +57,38 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
       --db-name "$DB_NAME" --db-user "$DB_USER" --db-pass "$DB_PASSWORD"
 ```
 
-기본은 안정 버전만 사용합니다. 현재는 pre-release(Alpha)만 있으므로 `--beta`를 붙입니다. `LIANT_DB_*`를 export하고 `sudo -E`를 써도 됩니다.
+`LIANT_DB_HOST`, `LIANT_DB_PORT`, `LIANT_DB_NAME`, `LIANT_DB_USER`, `LIANT_DB_PASSWORD`를 export하고 `sudo -E`를 사용할 수도 있습니다.
+
+기본적으로 안정 버전만 설치합니다. Service는 현재 pre-release(Alpha)만 배포하므로 `--beta`(또는 `LIANT_BETA=1`)를 추가하세요.
 
 옵션: `--dir`, `--port`, `--user`, `--url`, `--beta`, `--db postgres|sqlite`, `--db-host`, `--db-port`, `--db-name`, `--db-user`, `--db-pass`, `-y`.
 
-설치 후 Android Manager에서 `LianT pair` 정보를 입력하고 서버 터미널에서 확인합니다:
+## 페어링
+
+설치 후 Android Manager에 `LianT pair` 출력을 입력하고 서버 터미널에서 확인합니다:
 
 ```bash
 cd "$INSTALL_DIR" && sudo -u "$RUN_USER" ./LianT pair --host <휴대폰에서 접근 가능한 호스트>
 ```
 
-업그레이드:
+## 업그레이드 및 제거
+
+제자리 업그레이드(중지, SHA256 검증, 백업, 재시작):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/upgrade.sh | sudo bash
 ```
 
-테스트 버전은 `--beta`. 제거:
+pre-release는 `--beta`를 추가합니다. 기존 설치가 필요합니다.
+
+제거:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/uninstall.sh \
   | sudo bash -s -- -y
 ```
 
-기본으로 systemd 유닛, LianT 테이블, 설치 디렉터리, 서비스 사용자를 제거합니다. 불완전한 설치도 정리합니다. `--keep-data`는 설정/데이터, `--keep-user`는 사용자를 보존합니다. DB role과 database는 자동으로 DROP하지 않습니다.
+systemd 유닛, LianT 테이블(`LianT`와 `config.enc`가 있을 때), 설치 디렉터리, 서비스 사용자를 제거합니다. 불완전한 설치도 지원합니다. `--keep-data`는 설정과 데이터, `--keep-user`는 서비스 사용자를 유지합니다. 데이터베이스 role과 database는 자동으로 삭제하지 않습니다.
 
 ## 문서
 

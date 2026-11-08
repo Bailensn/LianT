@@ -2,17 +2,17 @@
 
 [简体中文](README.md) | [繁體中文](README.zh-TW.md) | [English](README.en.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | Español | [Français](README.fr.md) | [Deutsch](README.de.md)
 
-LianT es un **Bot Engine** autoalojado para bots de plataformas de chat (QQ primero; Telegram después),
-con un cliente Flutter para operarlo.
+**Bot Engine** autoalojado para plataformas de chat. QQ está disponible; Telegram está previsto.
+Se incluye un cliente Flutter para la operación diaria.
 
-- **Service** (`service/`): Go, protocolo WSS v1, SQLite o PostgreSQL, retención de mensajes de 7 días. Solo sirve `/v1/ws` y enlaces de medios firmados; no tiene consola web.
-- **Manager** (`manager/`): Flutter. **Android es el único objetivo publicado**; la versión web es solo vista previa local. Sin versión de escritorio.
+- **Service** (`service/`): Go, protocolo WSS v1, SQLite o PostgreSQL, retención de mensajes de 7 días. Solo sirve `/v1/ws` y enlaces de medios firmados; sin consola web.
+- **Manager** (`manager/`): Flutter. **Android es el único objetivo publicado.** La versión web es una vista previa local; no hay versión de escritorio.
 
-## Inicio rápido
+## Instalación
 
-Requisitos: Linux con systemd, root, `curl`, y `python3` o `jq` para elegir la release más reciente (o usar `--url`). PostgreSQL es opcional.
+Requisitos: Linux con systemd, root, `curl` y `python3` o `jq` (selección de release; `--url` lo omite). PostgreSQL es opcional.
 
-Define tus propios valores; los comandos usan variables y no fijan nombres de base de datos ni de cuenta:
+Defina las variables de despliegue; los comandos solo las referencian:
 
 ```bash
 INSTALL_DIR=/opt/liant
@@ -32,9 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
   | sudo bash -s -- --beta
 ```
 
-Pregunta el directorio, el puerto, el usuario de ejecución y el tipo de base de datos. PostgreSQL es el valor predeterminado; elige `sqlite` para omitirlo.
-
-SQLite sin interacción:
+Solicita el directorio, el puerto, el usuario de ejecución y el tipo de base de datos. PostgreSQL es el valor predeterminado; seleccione `sqlite` para usar SQLite. SQLite sin interacción:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
@@ -44,14 +42,14 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
 
 ### PostgreSQL
 
-El instalador **no** crea el rol ni la base de datos y no necesita superusuario. Créalos antes con tus propios nombres:
+El instalador no crea roles ni bases de datos y no requiere superusuario. Créelos primero:
 
 ```sql
 CREATE ROLE your_db_user LOGIN PASSWORD 'your_db_password';
 CREATE DATABASE your_db_name OWNER your_db_user;
 ```
 
-Los identificadores SQL sin comillas se convierten a minúsculas. Usa el mismo nombre exacto en `--db-user` (por ejemplo, `your_db_user`, no `Your_Db_User`). Si necesitas mayúsculas, cita el nombre en SQL y pasa exactamente el mismo texto al instalador.
+Los identificadores SQL sin comillas se convierten a minúsculas. `--db-user` debe coincidir exactamente con el rol real. Para mayúsculas y minúsculas, cite el identificador en SQL y pase la misma grafía al instalador.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
@@ -60,32 +58,38 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
       --db-name "$DB_NAME" --db-user "$DB_USER" --db-pass "$DB_PASSWORD"
 ```
 
-También puedes exportar `LIANT_DB_HOST`, `LIANT_DB_PORT`, `LIANT_DB_NAME`, `LIANT_DB_USER` y `LIANT_DB_PASSWORD` y usar `sudo -E`.
+También puede exportar `LIANT_DB_HOST`, `LIANT_DB_PORT`, `LIANT_DB_NAME`, `LIANT_DB_USER` y `LIANT_DB_PASSWORD`, y usar `sudo -E`.
 
-Por defecto solo se instalan versiones estables. Actualmente solo hay pre-release (Alpha), así que añade `--beta` (o `LIANT_BETA=1`).
+Solo se instalan versiones estables de forma predeterminada. El Service solo publica pre-release (Alpha); añada `--beta` (o `LIANT_BETA=1`).
 
 Opciones: `--dir`, `--port`, `--user`, `--url`, `--beta`, `--db postgres|sqlite`, `--db-host`, `--db-port`, `--db-name`, `--db-user`, `--db-pass`, `-y`.
 
-Tras instalar, abre el Manager de Android, introduce la información de `LianT pair` y confirma en la terminal del servidor:
+## Emparejamiento
+
+Tras instalar, introduzca la salida de `LianT pair` en Android Manager y confirme en la terminal del servidor:
 
 ```bash
 cd "$INSTALL_DIR" && sudo -u "$RUN_USER" ./LianT pair --host <host accesible desde el móvil>
 ```
 
-Actualizar:
+## Actualización y desinstalación
+
+Actualización in situ (detener, verificar SHA256, respaldar, reiniciar):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/upgrade.sh | sudo bash
 ```
 
-Usa `--beta` para pre-release. Desinstalar:
+Añada `--beta` para pre-release. Requiere una instalación existente.
+
+Desinstalación:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/uninstall.sh \
   | sudo bash -s -- -y
 ```
 
-Por defecto elimina la unidad systemd, las tablas de LianT, el directorio y el usuario del servicio; también limpia instalaciones incompletas. `--keep-data` conserva configuración y datos; `--keep-user` conserva el usuario. Los roles y bases de datos no se eliminan automáticamente.
+Elimina la unidad, las tablas de LianT (si `LianT` y `config.enc` existen), el directorio y el usuario del servicio. Admite instalaciones incompletas. `--keep-data` conserva configuración y datos; `--keep-user` conserva el usuario. Los roles y bases de datos no se eliminan automáticamente.
 
 ## Documentación
 
@@ -98,4 +102,4 @@ Por defecto elimina la unidad systemd, las tablas de LianT, el directorio y el u
 
 ## Licencia
 
-AGPL-3.0; consulta [LICENSE](LICENSE).
+AGPL-3.0. Consulte [LICENSE](LICENSE).

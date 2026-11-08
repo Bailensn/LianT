@@ -2,17 +2,16 @@
 
 [简体中文](README.md) | 繁體中文 | [English](README.en.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md)
 
-LianT 是自託管的 **Bot Engine**（聊天機器人引擎），首發 QQ、Telegram 隨後，
-並附帶一個 Flutter 用戶端。
+自託管 **Bot Engine**，目前支援 QQ，Telegram 在規劃中；附 Flutter 用戶端供日常操作。
 
-- **Service**（`service/`）：Go、WSS 協議 v1、SQLite 或 PostgreSQL、訊息保留 7 天。只提供 `/v1/ws` 與簽名媒體連結，沒有網頁管理端。
-- **Manager**（`manager/`）：Flutter。**Android 是唯一交付目標**；Web 僅供本機預覽，不發布；不做桌面端。
+- **Service**（`service/`）：Go、WSS 協議 v1、SQLite 或 PostgreSQL、訊息保留 7 天；僅提供 `/v1/ws` 與簽名媒體連結，無內嵌網頁主控台。
+- **Manager**（`manager/`）：Flutter。**Android 為唯一交付目標**；Web 僅供本機預覽，無桌面端。
 
-## 快速開始
+## 安裝
 
-需求：Linux + systemd、root、`curl`；`python3` 或 `jq`（選擇最新 release，或改用 `--url`）；PostgreSQL 可選。
+需求：Linux + systemd、root、`curl`，以及 `python3` 或 `jq`（用於選擇 release，`--url` 可略過）。PostgreSQL 為選用。
 
-先改成自己的值，以下指令都只引用變數，不寫死資料庫名稱或帳號：
+設定部署變數；指令僅引用變數：
 
 ```bash
 INSTALL_DIR=/opt/liant
@@ -32,9 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
   | sudo bash -s -- --beta
 ```
 
-腳本會詢問安裝目錄、連接埠、執行使用者與資料庫類型。預設 PostgreSQL，選 `sqlite` 可跳過。
-
-非互動 SQLite：
+依序詢問安裝目錄、連接埠、執行使用者與資料庫類型。預設 PostgreSQL；選擇 `sqlite` 使用 SQLite。非互動 SQLite：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
@@ -44,14 +41,14 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
 
 ### PostgreSQL
 
-安裝器不會建立角色或資料庫，也不需要超級使用者權限。先用自己的名稱建立：
+安裝器不建立角色或資料庫，也不需要超級使用者權限。請先建立：
 
 ```sql
 CREATE ROLE your_db_user LOGIN PASSWORD 'your_db_password';
 CREATE DATABASE your_db_name OWNER your_db_user;
 ```
 
-未加引號的 SQL 識別字會轉小寫；`--db-user` 必須與實際角色大小寫一致。需要混合大小寫時，在 SQL 中用雙引號，安裝時傳完全相同的大小寫。
+未加引號的 SQL 識別字會轉為小寫。`--db-user` 必須與實際角色完全一致；混合大小寫時，SQL 使用雙引號，安裝時傳入相同大小寫。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
@@ -60,30 +57,38 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
       --db-name "$DB_NAME" --db-user "$DB_USER" --db-pass "$DB_PASSWORD"
 ```
 
-預設只裝穩定版；目前只有 pre-release（Alpha），所以加 `--beta`。也可 export `LIANT_DB_HOST`、`LIANT_DB_PORT`、`LIANT_DB_NAME`、`LIANT_DB_USER`、`LIANT_DB_PASSWORD`，再用 `sudo -E`。
+亦可匯出 `LIANT_DB_HOST`、`LIANT_DB_PORT`、`LIANT_DB_NAME`、`LIANT_DB_USER`、`LIANT_DB_PASSWORD`，搭配 `sudo -E` 使用。
 
-參數：`--dir PATH`、`--port PORT`、`--user USER`、`--url URL`、`--beta`、`--db postgres|sqlite`、`--db-host`、`--db-port`、`--db-name`、`--db-user`、`--db-pass`、`-y`。
+預設僅安裝穩定版。Service 目前僅發布 pre-release（Alpha），需加上 `--beta`（或 `LIANT_BETA=1`）。
 
-安裝後在 Android Manager 輸入 `LianT pair` 印出的配對資訊，並在伺服器終端確認：
+參數：`--dir`、`--port`、`--user`、`--url`、`--beta`、`--db postgres|sqlite`、`--db-host`、`--db-port`、`--db-name`、`--db-user`、`--db-pass`、`-y`。
+
+## 配對
+
+安裝完成後，在 Android Manager 輸入 `LianT pair` 輸出，並於伺服器終端確認：
 
 ```bash
 cd "$INSTALL_DIR" && sudo -u "$RUN_USER" ./LianT pair --host <手機可達位址>
 ```
 
-升級：
+## 升級與卸載
+
+原地升級（停止、驗證 SHA256、備份、重啟）：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/upgrade.sh | sudo bash
 ```
 
-測試版加 `--beta`。卸載：
+測試版加上 `--beta`。需已有安裝。
+
+卸載：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/uninstall.sh \
   | sudo bash -s -- -y
 ```
 
-預設會刪 systemd 單元、LianT 表、安裝目錄與服務使用者；不完整的安裝也能清。`--keep-data` 保留設定與資料，`--keep-user` 保留使用者。資料庫角色與 database 不會自動 DROP。
+卸載器會移除 systemd 單元、LianT 表（`LianT` 與 `config.enc` 存在時）、安裝目錄與服務使用者；支援不完整安裝。`--keep-data` 保留設定與資料，`--keep-user` 保留服務使用者。資料庫角色與資料庫不會自動刪除。
 
 ## 文件
 
