@@ -197,7 +197,7 @@ class _ChatPageState extends State<ChatPage> {
       windowLeft = ((deadline - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
     }
     final topInset = MediaQuery.paddingOf(context).top;
-    final headerHeight = _collapsed ? 58.0 : 96.0;
+    final headerHeight = _collapsed ? 56.0 : 76.0;
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -634,7 +634,7 @@ class _ChatPageState extends State<ChatPage> {
       bottom: false,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        height: _collapsed ? 58 : 96,
+        height: _collapsed ? 56 : 76,
         child: ClipRect(
           child: BackdropFilter(
             filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
