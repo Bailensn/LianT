@@ -93,6 +93,7 @@ type Inbound struct {
 	Text       string
 	Doc        *format.Doc
 	Media      []Attachment
+	QuoteRef   string
 	At         time.Time
 }
 
@@ -153,6 +154,7 @@ type MediaRequest struct {
 	Peer      Peer
 	Media     Media
 	InReplyTo string
+	QuoteRef  string
 }
 
 // MediaSender 是可选能力；不实现的适配器只能发文本。
