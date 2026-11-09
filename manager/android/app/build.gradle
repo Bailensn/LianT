@@ -7,6 +7,12 @@ plugins {
 
 def liantVersionCode = 98
 
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.bailensn.liant"
     compileSdk = flutter.compileSdkVersion
@@ -31,11 +37,24 @@ android {
         versionName "1.0.0"
     }
 
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            release {
+                storeFile = file(keystoreProperties["storeFile"])
+                storePassword = keystoreProperties["storePassword"]
+                keyAlias = keystoreProperties["keyAlias"]
+                keyPassword = keystoreProperties["keyPassword"]
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // v1 还没有正式分发的签名配置，CI 只出 debug APK；
-            // 要出 release 包时在这里接入自己的 signingConfig。
-            signingConfig = signingConfigs.debug
+            // 有 key.properties 就用正式签名；没有时保留 debug 回退，便于本地测试。
+            // v1.0.0 正式发布必须在 CI 注入 key.properties。
+            signingConfig = keystorePropertiesFile.exists()
+                ? signingConfigs.release
+                : signingConfigs.debug
         }
     }
 }

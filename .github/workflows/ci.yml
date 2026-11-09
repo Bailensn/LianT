@@ -209,6 +209,23 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
+      - name: Configure release signing
+        working-directory: manager/android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_BASE64:-}" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > app/upload-keystore.jks
+            printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+              "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > key.properties
+            echo "release signing configured"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 未配置，使用 debug 签名（仅测试包）"
+          fi
       - name: Build APKs
         working-directory: manager
         run: |
