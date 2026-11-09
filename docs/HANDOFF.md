@@ -1,165 +1,157 @@
 # 交接说明（给下一个会话）
 
-先把这份文件读完再动手。仓库在 `/storage/emulated/0/LianT`，分支 `main`。
-文档索引在 `docs/README.md`。
+仓库：`/storage/emulated/0/LianT`，分支 `main`。
+当前最新代码提交：`7d118fc`（只修 CI dispatch 路径检测）。
+Manager 版本：`1.0.0+98`，versionCode `98`。
+稳定版已发布：Service `v1.0.0`、Manager `manager-v1.0.0`（正式签名、仅 arm64）。
 
-## 任务
+先看 `git status`。工作区可能有一处未提交的
+`manager/android/gradle.properties`，是 Flutter migrator 自动加的
+`android.builtInKotlin=false`、`android.newDsl=false`，不要盲目提交。
 
-把 Flutter 客户端做完：**接协议**和**重排视觉**同时进行。视觉目标见 `docs/UI-DESIGN.md`。
-本轮完成了协议接入、视觉重排、删除旧网页端，并把 Android 平台脚手架加入仓库；
-下一步是通知与媒体缓存（Web 预览的宽屏布局可选，不是交付目标）。
+---
 
-## 当前状态
+## 一、当前任务：真正的后台常驻进程
 
-### 服务端（`service/`，Go 1.27）
+用户明确要求：**独立进程**，不是 UI 进程里的线程，也不是只挂一个通知。
 
-- 协议 v1：WSS 信封 `{v,id,type,ts,reply_to,payload}`，`/v1/ws`
-- 双向签名握手：`auth.challenge` 带 `service_pub`/`service_sig`/`auto_pair`，客户端比对指纹并验签；
-  `auth.response` 用 `nonce\nfp\nts` 签名
-- 方法：`state.snapshot`、`bot.list|add|remove|start|stop|status`、`msg.list|send|ack`、`media.fetch`、
-  `device.list|revoke`、`audit.list`；事件：`msg.inbound`/`event.msg`、`event.bot`、`event.audit`、`event.peer`
-- 配对码落库（`pairing.Store`），容器/多进程下 `pair` 只生成码、由 `serve` 兑付
-- 免码登记：`AutoPair` 只在配置了 Basic 认证时打开；`pair.request.ticket` 为空时不再要求
-  nonce 签名、也不消费配对码。注意当前 Flutter 原生端不会在 WebSocket 握手时带 `Authorization`，
-  所以实际上仍以配对码为主（见 SECURITY.md）
-- **不再内嵌网页管理端**：`internal/webui` 与 `web/` 已删除。根路径只返回一行纯文本说明，
-  作用一是健康检查，二是让浏览器在这一层信任自签证书；`/v1/ws` 与 `/v1/media/` 保持
-- `LianT pair` 打印**配对信息 JSON** 并把 JSON 本身渲染成二维码（`data/pair-qr.png`），
-  不再生成 `https://…/#pair=` 管理页链接；`--host` / `--port` 可覆盖对外地址，
-  公网 IPv4 会依次问 ipify / icanhazip / ifconfig.me，拿不到才退回内网地址
-- 配对请求现在会在服务端日志里打出「收到 / 拒绝 / 成功」，用 `journalctl -u liant -f` 能看到
-- QQ 适配器同时接 `GROUP_AT_MESSAGE_CREATE` 与 `GROUP_MESSAGE_CREATE`；`can_initiate=true`；
-  `msg.send.active=true` 表示主动消息（不带 `msg_id`，因此没有 @ 和引用）
-- 群资料 `GET /v2/groups/{openid}/info`，403/404 → `event.peer {hint:"whitelist"}`
+目标行为：
 
-部署：二进制 + systemd，装在 `/opt/liant`，`scripts/install.sh` 从最新 pre-release 下载安装
-（GitHub 的 `/releases/latest` 会跳过 pre-release，脚本改用 `/releases?per_page=5`）。
-Docker 已全部移除，不要加回来。
+- App 退到后台，UI 进程被系统杀掉后，仍能独立保持 WebSocket、收消息、发通知
+- 不是依赖 Activity 或 UI isolate
+- 前台服务通知保留；Android 不允许无通知的永久后台进程
 
-### Flutter（`manager/`）
+建议实现：
 
-协议与界面都已接真数据，不再有假数据占位。
+1. `AndroidManifest.xml` 里 `MessageService` 增加
+   `android:process=":background"`、`android:stopWithTask="false"`、
+   `android:exported="false"`。
+2. `MessageService` 独立进程里：
+   - `startForeground` + 常驻通知
+   - 初始化 `FlutterLoader`
+   - 创建自己的 `FlutterEngine`
+   - `GeneratedPluginRegistrant` / 插件注册
+   - `MethodChannel("liant/background_notify")` 接收 Dart 通知请求
+   - `DartExecutor.DartEntrypoint("lib/background_main.dart", "backgroundMain")`
+3. `lib/background_main.dart` 独立连接 `LiantClient`：
+   - 读设备身份
+   - 监听 `msg.inbound`
+   - 判断免打扰/前台状态
+   - 调 MethodChannel 发系统通知
+4. 生命周期：
+   - `START_STICKY`
+   - `onTaskRemoved` 里用 AlarmManager 定时尝试拉起
+   - `BOOT_COMPLETED` receiver 开机恢复
+   - Android 14 注意 FGS 类型与启动限制
+5. 进程间状态（**关键坑**）：
+   - `shared_preferences` 默认按进程缓存，独立进程读不到 UI 进程刚写的值
+   - 不要在独立进程里直接依赖 `SharedPreferences.getInstance()` 的缓存
+   - 方案 A：通过原生 `SharedPreferences("FlutterSharedPreferences", MODE_MULTI_PROCESS)`
+     读取 `flutter.liant.identity` / `flutter.liant.foreground` / `flutter.liant.muted`
+   - 方案 B：把身份、免打扰、前台标志改成原生可读的文件/DataStore，Dart 走 MethodChannel
+   - 先确认 `shared_preferences` 实际写入文件名和 key 前缀，不要猜
+6. 去重：
+   - UI 和后台进程都收到同一条消息时，用同一个通知 ID
+   - 通知加 `setOnlyAlertOnce(true)`，避免响两次
+7. 通知权限：
+   - `POST_NOTIFICATIONS` 需要用户授权
+   - 通知渠道：`liant.notifications.v2`，系统默认通知音
+8. OEM：
+   - 只能引导电池优化白名单/自启动，不能承诺永不杀
+   - 真机要测：划掉任务、锁屏、息屏、重启、强停
 
-- `lib/core/p256.dart`：自己实现的 P-256（ECDSA/SHA-256、PKIX DER、base32 指纹）。
-  用 `package:crypto` 做 SHA-256，没有引 pointycastle；与 openssl 双向交叉验证过
-  （`tool/p256_check.dart`）。
-- `lib/core/identity.dart`：设备身份、`host:port`/`ws://` 地址解析、配对信息解析（裸 JSON、
-  base64url、`#pair=` 链接）。
-- `lib/core/client.dart`：WSS 客户端。挑战自证校验（指纹不符/验签失败直接断开）、30s 心跳、
-  1→30s 指数退避 + ±20% 抖动、15s 请求超时、4001/4002 不重连。
-- `lib/core/app_state.dart`：`state.snapshot`（老服务端回退逐个拉取）、四类事件、乐观发送与
-  失败重试、`msg.list` 历史、`media.fetch`、设备/审计、备注/已读/免打扰持久化；
-  消息最多留 2000 条，备注与已读不设上限。
-- `lib/core/browser_env*.dart`：条件导入，Web 读地址栏参数，其它平台返回 null。
-- `lib/core/socket*.dart`：条件导入；Android/桌面端接受自签证书（身份仍由 auth.challenge
-  的节点指纹校验），Web 端交给浏览器。
-- `MessageService`：Android 前台服务，App 退到后台时保活现有 WSS 连接；通知“正在后台接收消息”。
-- `android/` 已入库：应用 ID `com.bailensn.liant`，主清单带 `INTERNET` 权限，
-  Gradle 工具链按 CI 的 Flutter 3.24.5 对齐（Gradle 8.3 / AGP 8.1.0 / Kotlin 1.8.22）。
-  图标源文件是 `assets/icon.svg`（iOS squircle 蓝底 + 圆头 L）与 `assets/icon_foreground.svg`，
-  各尺寸 PNG 由浏览器原生 SVG 渲染生成；含 Android 8+ 自适应图标与网页 favicon。
-  **Android 是唯一交付目标**；Web 只在本地预览，不对外发布；不做桌面端。
+需要改的文件：
 
-**视觉**（`lib/ui/tokens.dart` + `widgets.dart` + 各页面）：
+- `manager/android/app/src/main/kotlin/com/bailensn/liant/MessageService.kt`
+- `manager/android/app/src/main/kotlin/com/bailensn/liant/MainActivity.kt`
+- `manager/android/app/src/main/AndroidManifest.xml`
+- `manager/lib/background_main.dart`
+- `manager/lib/core/app_state.dart`
+- `manager/lib/core/client.dart`
+- 可能新增 `BootReceiver.kt`、`NotificationHelper.kt`
 
-- 34px 大标题随滚动收缩成 20px 并吸顶，分隔线 0.5px 半透明；
-- 会话按 今天/昨天/本周/更早 分组，组内一张圆角卡片；
-- 悬浮玻璃底栏（`BackdropFilter` 24px 模糊），选中态品牌色 12% 底；
-- 聊天页玻璃头部随滚动折叠；群聊显示发送者；聊天输入框按内容自适应
-  （单行 44，多行最多 132；不要再套 `Center`，会把 `maxHeight` 吃满）；
-- 备注与主动/被动开关在会话设置抽屉里，本地存储；
-- 宽屏（≥768）改成左侧 228px 导航 + 限宽 780 内容；
-- 每个列表都有空态、断线说明条与「立即重试」。
-
-**本地构建**：
+验证：
 
 ```bash
-export PATH=$PREFIX/bin:$PREFIX/opt/flutter/bin:/system/bin
-cd /storage/emulated/0/LianT/manager
+# 构建
+cd manager
 flutter analyze
-flutter build web --release               # 预览用，约 70 秒
-flutter build apk --release               # Android 交付物；需要 Android SDK/JDK
-flutter build apk --release --split-per-abi  # 拆出 arm64 / x86_64
+flutter build apk --release --target-platform android-arm64
+
+# 安装后检查进程
+adb shell ps -A | grep bailensn
+adb shell dumpsys activity services com.bailensn.liant
+adb shell dumpsys notification --noredact | grep -A5 liant
 ```
 
-`dart` 不在 `$PREFIX/bin`，要把 `$PREFIX/opt/flutter/bin` 加进 PATH。
+---
 
-**预览**（用完记得把后台进程关掉）：
+## 二、已经完成的功能
 
-```bash
-# 1) 假服务端（协议 v1 握手/快照/历史/发送，数据只在内存）
-dart run tool/mock_service.dart 8099
-# 2) 静态服务
-cd build/web && setsid nohup python3 -m http.server 8081 --bind 127.0.0.1 >/dev/null 2>&1 &
-# 3) 浏览器打开：
-#    http://127.0.0.1:8081/?host=ws%3A%2F%2F127.0.0.1%3A8099
-```
+- 协议 v1：WSS 握手、P-256 自证、消息、媒体、设备、审计
+- 引用消息 `quote_ref` 全链路：
+  QQ `message_scene.ext.msg_idx` → `quote_ref` → store schema v4 → 协议 →
+  Manager → QQ `message_reference.message_id`
+- 群成员禁言/解除/踢人（QQ 群管理接口）：
+  - `/v2/groups/{group_openid}/restrict_chat_setting`
+  - `/v2/groups/{group_openid}/batch_remove_members`
+- 扫码配对：`mobile_scanner 5.2.3`，相机权限，扫码/粘贴自动解析
+- 假 @ 已删除（QQ 群发送接口没有 mention 字段，不再发纯文本冒充 @）
+- 发送队列：文本 + 多图/多文件逐条发送；输入框立即清空，失败不回填
+- 图片消息不套蓝气泡；文件消息显示为文件卡片
+- 群聊/私聊标识
+- 通知：UI 与后台同 ID 兜底；系统默认通知音
+- 性能：去掉实时模糊、MaterialApp 全局重建、会话列表懒构建、tab 隔离重绘
+- 保留策略：不主动限制消息时间/媒体总量（默认 100 年 / 1<<62 字节）
+- JKS 正式签名 + `Release` 稳定版 workflow
 
-- Web 构建只用于本地预览，**不发布到 gh-pages 或任何公开地址**。
-- 地址栏 `?host=…` 只预填服务地址；自动连接需要预览构建
-  `flutter build web --dart-define=LIANT_PREVIEW=true` 再加 `&auto=1`。
-  正式构建不带这个 define，链接参数不会触发静默配对。
-- AI 浏览器的 WebView 没有 WebGL：加 `&cpu=1` 走 CanvasKit CPU 渲染
-  （`manager/web/index.html` 里设置 `flutterConfiguration`）；但侧栏收起时
-  `browser_screenshot` 只会拿到空白，截图前确认预览是可见的。
-- 预览必须用 Chrome：AI 浏览器 WebView 没有 WebGL，Flutter web 默认白屏。
-- Flutter SDK 在 `$PREFIX/opt/flutter`（`flutter-for-termux` 3.47.9 / Dart 3.13.7）。
-- `pubspec.yaml` 把 `shared_preferences_foundation` 钉在 2.5.4：2.6 起依赖 `objective_c`
-  的 build hook，Termux 上 hook 进程会被拒绝；2.5.4 在 CI 的 Flutter 3.24.5 上也能用。
+---
 
-**自检情况**：
+## 三、发布与签名
 
-- `flutter analyze` 0 issue；`flutter build web --release` 通过；
-- 一个 `CI` 工作流按变更路径分 job：`service-check`（协议对照 + vet + race）、
-  `client-check`（analyze + test），push 时再分别跑 `service-release` 与 `android`；
-- `dart run tool/p256_check.dart` 与 `openssl` 双向验证签名/DER/指纹；
-- `dart run tool/mock_smoke.dart` 跑通「挑战自证 → pair.ok → auth.ok → snapshot →
-  msg.list → msg.send → 事件」；
-- AI 浏览器里用地址栏预填实际走了一遍：配对 → 会话列表 → 群聊（历史/发送者）→
-  机器人 → 设置；
-- 截图自检：Chrome 渲染正常；`flutter test` 在本机跑不起来——Termux 版
-  `flutter_tester` 缺 `libvk_swiftshader.so`/`libfontconfig`，补齐后仍段错误，
-  与项目代码无关。要出 golden 请在桌面 Linux/macOS 或 CI 跑。
+GitHub Secrets：
 
-### CI
+- `ANDROID_KEYSTORE_BASE64`（JKS 的 base64）
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
 
-- `CI`：单个工作流。`changes` 用 git diff 判定变更（不依赖 Node action）：
-  - `service/**` → `service-check`，push 后 `service-release` 发 pre-release；
-  - `manager/**` → `client-check`，push 后 `android` 出三个 release APK；
-  - `scripts/**` 只跑 Go 检查；`docs/**` 跳过；
-  - PR 只跑 check，不发版、不出包。
-- 卸载：`scripts/uninstall.sh`（默认连配置与数据一起删，`--keep-data` 保留）
-- 推送：`git push https://x-access-token:$TOKEN@github.com/Bailensn/LianT.git HEAD:main`
-  TOKEN 在 `$HOME/newtoken.txt`；这条网络链路时好时坏，用循环重试 5 次。
+稳定版：手动运行 `.github/workflows/release.yml`，输入 `1.0.0`。
+会发：
 
-## 待办
+- `v1.0.0`：Service linux amd64 / arm64
+- `manager-v1.0.0`：正式签名 arm64 APK
 
-1. ~~协议客户端（Dart）~~：已完成
-2. ~~视觉重排~~：已完成
-3. ~~删 `web/` 与 `internal/webui`~~：已完成（含 `scripts/build-web.sh`、安装脚本与文档同步）
-4. Web 预览的宽屏双栏（可选，不是交付目标）
-5. 后台通知（Android 前台服务/厂商推送）与媒体离线缓存
-6. 用真服务端 + 真 QQ 凭据走一遍配对码流程（本机只有 mock，`AutoPair` 修复也没上真机）
-7. 本地消息换成数据库（现在 2000 条上限是为了避开 localStorage 容量）
+日常 CI：`.github/workflows/ci.yml`，只发 pre-release。
+`workflow_dispatch` 会跑全部 job；路径检测已修成多行。
 
-## 已知缺口
+**本地不要直接在 `/storage/emulated/0` 跑 `flutter build apk`**：
+`android/gradlew` 没有执行权限，Flutter 会报
+`lacked sufficient permissions to execute`。要本地编就把仓库复制到
+`$HOME/LianT` 之类的可执行分区，或直接用 CI。
 
-- QQ 不给 openid 昵称/头像，只能本地备注；群名需要白名单授权（`event.peer.hint=whitelist`）
-- @ 某人只能通过「回复某条消息」实现
-- 后台通知 Flutter 侧未做
-- 媒体只做按需拉取 + 图片渲染，未落盘缓存；失败文案区分「已过期」与「空间不足被清理」
-- 本地消息留存上限 2000 条（约 2.5 MB），不是协议里的「本地不设上限」
-- 客户端私钥存本地 KV，未接 Keystore/WebCrypto 不可导出密钥
-- Android 还没有正式签名配置（release 包临时用 debug key 签名），正式上架需要接 signingConfig
-- Android 真机还没跑过配对与收发（本机只有 Web 预览与 mock 服务）
-- Basic 认证启用后，Flutter 原生端无法在 WebSocket 握手提供凭据；用反代侧访问控制或暂不开启
-- Web 端连接自签证书仍会失败；需要先信任证书或反代换正式证书
-- 通知、真机截图仍是缺口
-- DSH 的 Linux 环境装不上（loader 资产校验写死在 APK 里），与项目无关，不要浪费时间
+---
 
-## 约定
+## 四、还没验证/待办
 
-- 中文交流；代码注释中文；提交信息中文
-- 不留 `TODO` 占位、不留假数据上屏（mock 只在 `tool/`，不在 App 内）
-- 改完必须 `flutter analyze` + `flutter build web` 通过再提交；截图自检用 Chrome 或桌面环境
-- 长时间预览/构建结束后关掉后台进程，别占着端口和内存
+1. 真机引用是否显示；`quote_ref` 需要 Service v1.0.0+ 和 Manager v1.0.0
+2. 扫码相机权限、配对
+3. 禁言/踢人权限：踢人接口需要白名单/内邀；失败提示是否正确
+4. 后台通知、声音、划掉任务、重启、OEM 省电
+5. 多图、文字+图片、文件发送
+6. SQLite v3→v4、PostgreSQL v3→v4 升级测试
+7. 安全日志分页：目前仍只加载最近 20 条，`audit.list` 已加 cursor 字段但
+   Manager/SecurityLogPage 还没接完
+8. x86_64 已不支持，只发 arm64，发布说明要写清楚
+9. 本地构建只用 CI 或内部存储，不要用 sdcard 路径
+
+---
+
+## 五、重要约束
+
+- 中文交流，中文注释，中文提交信息
+- 不留假数据/假按钮；平台不支持就明确写不支持
+- 改完至少 `flutter analyze`；涉及 Service 要跑 `go vet ./...`、`go test -race ./...`
+- 不要重新引入 Spring/Java 后端，Service 是 Go
+- 不要提交 `key.properties`、`*.jks`、token、keystore
+- 发布前确认 CI 全绿；不要用 debug 签名发稳定版
