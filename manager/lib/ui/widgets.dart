@@ -646,7 +646,6 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final selected = _previewIndex ?? widget.index;
     final position = _dragPosition ?? widget.index.toDouble();
     return Container(
       decoration: SquircleBoxDecoration(
@@ -676,6 +675,25 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
                 builder: (context, constraints) {
                   _itemWidth =
                       constraints.maxWidth / GlassBottomNav._items.length;
+                  final activeIndex =
+                      position.round().clamp(0, _lastIndex);
+                  Widget navRow(Color color) => Row(
+                        children: <Widget>[
+                          for (var i = 0;
+                              i < GlassBottomNav._items.length;
+                              i++)
+                            Expanded(
+                              child: _NavItem(
+                                icon: GlassBottomNav._items[i].$1,
+                                selectedIcon: GlassBottomNav._items[i].$2,
+                                label: GlassBottomNav._items[i].$3,
+                                selected: i == activeIndex,
+                                color: color,
+                                onTap: () => widget.onTap(i),
+                              ),
+                            ),
+                        ],
+                      );
                   return Listener(
                     behavior: HitTestBehavior.opaque,
                     onPointerDown: _onDown,
@@ -700,21 +718,19 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
                             ),
                           ),
                         ),
-                        Row(
-                          children: <Widget>[
-                            for (var i = 0;
-                                i < GlassBottomNav._items.length;
-                                i++)
-                              Expanded(
-                                child: _NavItem(
-                                  icon: GlassBottomNav._items[i].$1,
-                                  selectedIcon: GlassBottomNav._items[i].$2,
-                                  label: GlassBottomNav._items[i].$3,
-                                  selected: i == selected,
-                                  onTap: () => widget.onTap(i),
+                        navRow(colors.text2),
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: ExcludeSemantics(
+                              child: ClipPath(
+                                clipper: _SelectionLensClipper(
+                                  left: position * _itemWidth,
+                                  width: _itemWidth,
                                 ),
+                                child: navRow(colors.accent),
                               ),
-                          ],
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -729,12 +745,31 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
   }
 }
 
+class _SelectionLensClipper extends CustomClipper<Path> {
+  const _SelectionLensClipper({required this.left, required this.width});
+
+  final double left;
+  final double width;
+
+  @override
+  Path getClip(Size size) {
+    final rect = Rect.fromLTWH(left, 0, width, size.height);
+    return Path()
+      ..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(26)));
+  }
+
+  @override
+  bool shouldReclip(covariant _SelectionLensClipper oldClipper) =>
+      oldClipper.left != left || oldClipper.width != width;
+}
+
 class _NavItem extends StatelessWidget {
   const _NavItem({
     required this.icon,
     required this.selectedIcon,
     required this.label,
     required this.selected,
+    required this.color,
     required this.onTap,
   });
 
@@ -742,12 +777,11 @@ class _NavItem extends StatelessWidget {
   final IconData selectedIcon;
   final String label;
   final bool selected;
+  final Color color;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
-    final color = selected ? colors.accent : colors.text2;
     return Semantics(
       button: true,
       selected: selected,
