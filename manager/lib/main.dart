@@ -16,7 +16,6 @@ import 'ui/tokens.dart';
 import 'ui/widgets.dart';
 import 'l10n/ltext.dart';
 import 'ui/squircle.dart';
-import 'ui/motion.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,9 +48,6 @@ class LiantApp extends StatelessWidget {
           theme: LiantTheme.light(),
           darkTheme: LiantTheme.dark(),
           themeMode: ThemeMode.system,
-          scrollBehavior: const MaterialScrollBehavior().copyWith(
-            physics: const SpringScrollPhysics(),
-          ),
           locale: state.locale,
           supportedLocales: const <Locale>[
             Locale('zh'),
@@ -111,6 +107,7 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   int _index = 0;
+  bool _switching = false;
   late final PageController _pageController = PageController();
 
   @override
@@ -119,20 +116,31 @@ class _ShellState extends State<Shell> {
     super.dispose();
   }
 
-  void _select(int index, {bool animate = true}) {
-    if (index == _index) return;
+  Future<void> _select(int index, {bool animate = true}) async {
+    if (index == _index || _switching) return;
+    final current = _pageController.hasClients
+        ? (_pageController.page?.round() ?? _index)
+        : _index;
     setState(() => _index = index);
     if (!_pageController.hasClients) {
       _pageController.jumpToPage(index);
-    } else if (animate) {
-      _pageController.animateToPage(
-        index,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
-    } else {
-      _pageController.jumpToPage(index);
+      return;
     }
+    if (!animate) {
+      _pageController.jumpToPage(index);
+      return;
+    }
+    _switching = true;
+    // 跨多个 tab 时先跳到相邻页，避免 PageView 一路扫过中间页后撞到边界。
+    if ((index - current).abs() > 1) {
+      _pageController.jumpToPage(index > current ? index - 1 : index + 1);
+    }
+    await _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
+    _switching = false;
   }
 
   Widget _pageView(List<Widget> pages) {
@@ -141,7 +149,9 @@ class _ShellState extends State<Shell> {
       physics: const NeverScrollableScrollPhysics(),
       itemCount: pages.length,
       onPageChanged: (index) {
-        if (index != _index) setState(() => _index = index);
+        if (!_switching && index != _index) {
+          setState(() => _index = index);
+        }
       },
       itemBuilder: (context, index) {
         return _KeepAlivePage(
