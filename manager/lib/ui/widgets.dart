@@ -562,10 +562,11 @@ class GlassBottomNav extends StatefulWidget {
   final int index;
   final ValueChanged<int> onTap;
 
-  static const List<(IconData, String)> _items = <(IconData, String)>[
-    (Icons.chat_bubble_outline_rounded, '会话'),
-    (Icons.smart_toy_outlined, '机器人'),
-    (Icons.settings_outlined, '设置'),
+  static const List<(IconData, IconData, String)> _items =
+      <(IconData, IconData, String)>[
+    (Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded, '会话'),
+    (Icons.smart_toy_outlined, Icons.smart_toy_rounded, '机器人'),
+    (Icons.settings_outlined, Icons.settings_rounded, '设置'),
   ];
 
   @override
@@ -677,7 +678,7 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
                       constraints.maxWidth / GlassBottomNav._items.length;
                   final activeIndex =
                       position.round().clamp(0, _lastIndex);
-                  Widget navRow(Color color) => Row(
+                  Widget navRow(Color color, {required bool filled}) => Row(
                         children: <Widget>[
                           for (var i = 0;
                               i < GlassBottomNav._items.length;
@@ -685,8 +686,9 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
                             Expanded(
                               child: _NavItem(
                                 icon: GlassBottomNav._items[i].$1,
-                                label: GlassBottomNav._items[i].$2,
-                                selected: i == activeIndex,
+                                selectedIcon: GlassBottomNav._items[i].$2,
+                                label: GlassBottomNav._items[i].$3,
+                                selected: filled && i == activeIndex,
                                 color: color,
                                 onTap: () => widget.onTap(i),
                               ),
@@ -717,7 +719,7 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
                             ),
                           ),
                         ),
-                        navRow(colors.text2),
+                        navRow(colors.text2, filled: false),
                         Positioned.fill(
                           child: IgnorePointer(
                             child: ExcludeSemantics(
@@ -726,7 +728,7 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
                                   left: position * _itemWidth,
                                   width: _itemWidth,
                                 ),
-                                child: navRow(colors.accent),
+                                child: navRow(colors.accent, filled: true),
                               ),
                             ),
                           ),
@@ -765,6 +767,7 @@ class _SelectionLensClipper extends CustomClipper<Path> {
 class _NavItem extends StatelessWidget {
   const _NavItem({
     required this.icon,
+    required this.selectedIcon,
     required this.label,
     required this.selected,
     required this.color,
@@ -772,6 +775,7 @@ class _NavItem extends StatelessWidget {
   });
 
   final IconData icon;
+  final IconData selectedIcon;
   final String label;
   final bool selected;
   final Color color;
@@ -791,7 +795,7 @@ class _NavItem extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(icon, size: 21, color: color),
+              Icon(selected ? selectedIcon : icon, size: 21, color: color),
               const SizedBox(height: 2),
               LText(
                 label,
