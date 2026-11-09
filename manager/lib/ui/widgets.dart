@@ -572,6 +572,7 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
   int? _pointer;
   double _itemWidth = 0;
   double _downX = 0;
+  int _downIndex = 0;
   double? _dragPosition;
   int? _previewIndex;
   bool _dragging = false;
@@ -592,12 +593,9 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
     if (_pointer != null) return;
     _pointer = event.pointer;
     _downX = event.localPosition.dx;
+    _downIndex = _indexAt(_downX);
     _dragging = false;
-    final index = _indexAt(_downX);
-    setState(() {
-      _previewIndex = index;
-      _dragPosition = index.toDouble();
-    });
+    // 按下时不动指示器；只有真正拖动或松手后才切换/滑动。
   }
 
   void _onMove(PointerMoveEvent event) {
@@ -619,7 +617,7 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
 
   void _onUp(PointerUpEvent event) {
     if (event.pointer != _pointer) return;
-    final target = _previewIndex ?? widget.index;
+    final target = _dragging ? (_previewIndex ?? _downIndex) : _downIndex;
     _clearPointer();
     if (target != widget.index) {
       HapticFeedback.selectionClick();
