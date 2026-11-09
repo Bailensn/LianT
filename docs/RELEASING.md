@@ -2,66 +2,63 @@
 
 ## 版本号
 
-格式：`v<主>.<次>.<修>-<通道>-<7 位哈希>`，通道取 `Alpha` / `Beta` / `RCn`：
+Service 正式版：`v<主>.<次>.<修>`，例如 `v1.0.0`。
+CI 日常测试版：`v1.0.0-Alpha-<7 位提交哈希>`。
 
-```
-v1.0.0-Alpha-eeeeeee
-v1.0.0-Beta-eeeeeee
-v1.0.0-RC1-eeeeeee
-```
+Manager 展示版本固定 `1.0.0`，构建号（versionCode）从 82 起每次发布 +1：
 
-- **基线默认 `v1.0.0`**，通道默认 `Alpha`；只在有意义的里程碑才抬主/次/修或换通道，
-  日常构建沿用同一基线、只换哈希（7 位短 SHA）。
-- 哈希取当前提交的短 SHA：`git rev-parse --short=7 HEAD`。
-- 版本号只体现在构建产物与 `LianT version` 输出里；仓库不打 tag、不改 `pubspec.yaml`
-  的版本（客户端的展示版本由构建时写入）。
+- `pubspec.yaml`：`version: 1.0.0+<code>`
+- `android/app/build.gradle`：`def liantVersionCode = <code>`
 
-## 产物
+两个数字必须同步。当前为 `98`。
 
-不再打包 Docker，也不推镜像。所有 CI 都在一个 `CI` 工作流里，按变更路径决定 job：
+## 稳定版发布
 
-| 变更 | 跑的 job | 产物 |
-| --- | --- | --- |
-| `service/**` | `service-check` → `service-release` | GitHub pre-release：`LianT-linux-amd64`、`LianT-linux-arm64`、`SHA256SUMS.txt` |
-| `manager/**` | `client-check` → `android` | Android release APK（arm64 / x86_64 / universal 三个） |
-| `scripts/`、workflow 本身 | 只跑对应的 check | 无 |
-| `docs/`、`*.md` | 整个工作流跳过 | 无 |
+手动运行 `.github/workflows/release.yml`，输入 `1.0.0`：
 
-- PR 只跑 `service-check` / `client-check`，不会发版、不会出 APK。
-- 手动 `workflow_dispatch` 会跑全部 job，适合补发。
-- 服务端二进制用 `CGO_ENABLED=0` 构建，直接拷到安装目录就能跑；`install.sh`
-  从最新的 pre-release 取资产（注意 GitHub 的 `/releases/latest` 会跳过 pre-release，
-  脚本用的是 `/releases?per_page=5`）。
-- 服务端二进制不再内嵌网页管理端，只提供 `/v1/ws`、`/v1/media/` 与根路径说明。
-- Flutter 的 APK 拆成 arm64、x86_64、universal 三个 artifact 上传，不建 Release；
-  **Web 构建仅供本地预览，不发布到 gh-pages 或任何公开地址**。
-- 不做桌面端构建（没有 Linux/Windows/macOS 产物）。
+- Service：发布 `v1.0.0`，资产 `LianT-linux-amd64`、`LianT-linux-arm64`、`SHA256SUMS.txt`
+- Manager：发布 `manager-v1.0.0`，资产 `LianT-arm64.apk`（正式签名）
 
-## 本地构建
+安装/升级脚本只选 `prerelease=false` 的 Service release；没有稳定版时会提示加 `--beta`。
 
-服务端：
+## Android 签名（JKS）
+
+GitHub Actions 不能直接上传二进制 JKS，所以用 base64 放进 secrets：
 
 ```bash
-cd service
-VERSION="v1.0.0-Alpha-$(git rev-parse --short=7 HEAD)"
-CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$VERSION" \
-  -o ../dist/LianT-linux-amd64 ./cmd/liant
+# Linux
+base64 -w0 release.jks
+# macOS
+base64 -i release.jks
 ```
 
-客户端（Flutter SDK 版本见 `manager/pubspec.yaml` 与 `HANDOFF.md`）：
+仓库 Secrets：
 
-```bash
-cd manager
-flutter build web --release          # 仅预览
-flutter build apk --release          # universal
-flutter build apk --release --split-per-abi   # arm64 / x86_64 / armeabi
+- `ANDROID_KEYSTORE_BASE64`：上面输出的 base64
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+Release workflow 会把 JKS 解码到 `manager/android/app/upload-keystore.jks`，生成
+`manager/android/key.properties`，再用正式签名构建。缺少任一 keystore secret 时稳定版直接失败。
+
+本地构建时把 JKS 放到 `manager/android/app/`，新建 `manager/android/key.properties`：
+
+```properties
+storeFile=release.jks
+storePassword=你的密码
+keyAlias=你的别名
+keyPassword=你的密码
 ```
 
-## 不做什么
+`key.properties` 和 `*.jks` 已被 `.gitignore` 忽略，不要提交。
 
-- 不发正式版，只有带哈希的 pre-release 标签。
-- 不恢复 Docker/Compose/GHCR 流程；部署以 systemd + 二进制为准。
-- 不单独发布客户端安装包；APK 只作为 CI artifact。
-- 不发布 Web 构建（gh-pages 已停用）。
-- 不做桌面端（Linux/Windows/macOS）构建。
-- 不保留历史产物；需要旧版本时从对应提交重新构建。
+## 日常 CI
+
+| 变更 | 产物 |
+| --- | --- |
+| `service/**` | pre-release：linux amd64 / arm64 |
+| `manager/**` | arm64 APK（有签名 secrets 时正式签名，否则 debug） |
+| `docs/**`、`*.md` | 跳过 |
+
+Manager 只发 arm64；x86_64 设备不在支持范围。
