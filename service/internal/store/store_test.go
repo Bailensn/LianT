@@ -348,7 +348,11 @@ func TestPurgeExpiredMessages(t *testing.T) {
 		t.Fatalf("写入新消息: %v", err)
 	}
 
-	res, err := s.Purge(ctx, DefaultRetention(), now)
+	res, err := s.Purge(ctx, Retention{
+		Text:       7 * 24 * time.Hour,
+		Media:      7 * 24 * time.Hour,
+		MediaBytes: DefaultMediaBytes,
+	}, now)
 	if err != nil {
 		t.Fatalf("清理: %v", err)
 	}
