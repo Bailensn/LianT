@@ -31,56 +31,91 @@ Future<void> main() async {
   runApp(LiantApp(state: state));
 }
 
-class LiantApp extends StatelessWidget {
+class LiantApp extends StatefulWidget {
   const LiantApp({super.key, required this.state});
 
   final AppState state;
 
   @override
+  State<LiantApp> createState() => _LiantAppState();
+}
+
+class _LiantAppState extends State<LiantApp> {
+  late Locale? _locale = widget.state.locale;
+  final ThemeData _light = LiantTheme.light();
+  final ThemeData _dark = LiantTheme.dark();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.state.addListener(_onState);
+  }
+
+  @override
+  void didUpdateWidget(covariant LiantApp oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.state != widget.state) {
+      oldWidget.state.removeListener(_onState);
+      widget.state.addListener(_onState);
+      _locale = widget.state.locale;
+    }
+  }
+
+  void _onState() {
+    // 只有语言变化需要重建 MaterialApp；消息、在线状态等由 AppScope 局部刷新。
+    if (widget.state.locale != _locale) {
+      setState(() => _locale = widget.state.locale);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.state.removeListener(_onState);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AppScope(
-      state: state,
-      child: AnimatedBuilder(
-        animation: state,
-        builder: (context, _) => MaterialApp(
-          title: 'LianT',
-          debugShowCheckedModeBanner: false,
-          theme: LiantTheme.light(),
-          darkTheme: LiantTheme.dark(),
-          themeMode: ThemeMode.system,
-          locale: state.locale,
-          supportedLocales: const <Locale>[
-            Locale('zh'),
-            Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
-            Locale('en'),
-            Locale('ja'),
-            Locale('ko'),
-          ],
-          localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          builder: (context, child) {
-            final dark = Theme.of(context).brightness == Brightness.dark;
-            return AnnotatedRegion<SystemUiOverlayStyle>(
-              value: (dark
-                      ? SystemUiOverlayStyle.light
-                      : SystemUiOverlayStyle.dark)
-                  .copyWith(
-                statusBarColor: Colors.transparent,
-                systemNavigationBarColor: Colors.transparent,
-                systemNavigationBarDividerColor: Colors.transparent,
-                statusBarIconBrightness:
-                    dark ? Brightness.light : Brightness.dark,
-                systemNavigationBarIconBrightness:
-                    dark ? Brightness.light : Brightness.dark,
-              ),
-              child: child ?? const SizedBox.shrink(),
-            );
-          },
-          home: const _Root(),
-        ),
+      state: widget.state,
+      child: MaterialApp(
+        title: 'LianT',
+        debugShowCheckedModeBanner: false,
+        theme: _light,
+        darkTheme: _dark,
+        themeMode: ThemeMode.system,
+        locale: _locale,
+        supportedLocales: const <Locale>[
+          Locale('zh'),
+          Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
+          Locale('en'),
+          Locale('ja'),
+          Locale('ko'),
+        ],
+        localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        builder: (context, child) {
+          final dark = Theme.of(context).brightness == Brightness.dark;
+          return AnnotatedRegion<SystemUiOverlayStyle>(
+            value: (dark
+                    ? SystemUiOverlayStyle.light
+                    : SystemUiOverlayStyle.dark)
+                .copyWith(
+              statusBarColor: Colors.transparent,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarDividerColor: Colors.transparent,
+              statusBarIconBrightness:
+                  dark ? Brightness.light : Brightness.dark,
+              systemNavigationBarIconBrightness:
+                  dark ? Brightness.light : Brightness.dark,
+            ),
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
+        home: const _Root(),
       ),
     );
   }

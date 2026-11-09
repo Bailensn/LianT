@@ -1,6 +1,5 @@
 // 聊天页：玻璃头部随滚动折叠，群聊显示发送者，支持被动回复与本地备注。
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
@@ -236,7 +235,7 @@ class _ChatPageState extends State<ChatPage> {
             top: 0,
             left: 0,
             right: 0,
-            child: _header(context, state, title),
+            child: RepaintBoundary(child: _header(context, state, title)),
           ),
           Positioned(
             top: 0,
@@ -680,15 +679,11 @@ class _ChatPageState extends State<ChatPage> {
       ),
       builder: (context, value, child) {
         if (value >= 0.999) return child ?? const SizedBox.shrink();
-        final blur = (1 - value) * 3;
         return Opacity(
           opacity: value,
-          child: ImageFiltered(
-            imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-            child: Transform.translate(
-              offset: Offset(0, (1 - value) * 4),
-              child: child,
-            ),
+          child: Transform.translate(
+            offset: Offset(0, (1 - value) * 4),
+            child: child,
           ),
         );
       },
@@ -711,12 +706,9 @@ class _ChatPageState extends State<ChatPage> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
         height: 56,
-        child: ClipRect(
-          child: BackdropFilter(
-            filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-            child: Container(
+        child: Container(
               decoration: SquircleBoxDecoration(
-                color: colors.elevated.withOpacity(0.72),
+                color: colors.elevated,
                 border: Border(
                   bottom: BorderSide(
                     color: _collapsed ? colors.sep : Colors.transparent,
@@ -777,8 +769,6 @@ class _ChatPageState extends State<ChatPage> {
                 ],
               ),
             ),
-          ),
-          ),
         ),
       ),
     );
@@ -787,11 +777,8 @@ class _ChatPageState extends State<ChatPage> {
   Widget _composer(BuildContext context, AppState state, Bot? bot) {
     final colors = context.colors;
     final enabled = state.online && bot != null;
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          color: colors.elevated.withOpacity(0.82),
+    return Container(
+          color: colors.elevated,
           child: SafeArea(
             top: false,
             child: Padding(
@@ -901,8 +888,6 @@ class _ChatPageState extends State<ChatPage> {
               ),
             ),
           ),
-        ),
-      ),
     );
   }
 

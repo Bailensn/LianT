@@ -1,5 +1,4 @@
 // 共用组件：大标题页、分组卡片、玻璃底栏、气泡、抽屉、按钮。
-import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -659,14 +658,10 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
           ),
         ],
       ),
-      child: SquircleClip(
-        borderRadius: BorderRadius.circular(28),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Container(
+      child: Container(
             padding: const EdgeInsets.all(6),
             decoration: SquircleBoxDecoration(
-              color: colors.elevated.withOpacity(0.72),
+              color: colors.elevated,
               borderRadius: BorderRadius.circular(28),
               border: Border.all(color: colors.sep, width: 0.5),
             ),
@@ -748,8 +743,6 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
               ),
             ),
           ),
-        ),
-      ),
     );
   }
 }
