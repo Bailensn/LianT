@@ -413,7 +413,8 @@ class _BotRow extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       minimumSize: const Size(64, 40),
                       shape: ContinuousRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius:
+                            squircleRadius(BorderRadius.circular(20)),
                       ),
                     ),
                     child: LText(

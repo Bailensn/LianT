@@ -3,6 +3,7 @@
 // 与 docs/UI-DESIGN.md 对齐：背景分层表达层级、单一品牌蓝、34px 大标题、
 // 1px 半透明分隔线、深浅色跟随系统。
 import 'package:flutter/material.dart';
+import 'squircle.dart';
 
 /// 一套颜色。用 ThemeExtension 挂到 ThemeData 上，页面里直接 `context.colors`。
 @immutable
@@ -216,7 +217,7 @@ class LiantTheme {
         backgroundColor: colors.text,
         contentTextStyle: TextStyle(fontSize: 14, color: colors.bg),
         shape: ContinuousRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: squircleRadius(BorderRadius.circular(16)),
         ),
       ),
     );

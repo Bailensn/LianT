@@ -195,11 +195,15 @@ class PrimaryButton extends StatelessWidget {
       child: Material(
       color: enabled ? colors.accent : colors.sunken,
       shape: ContinuousRectangleBorder(
-        borderRadius: BorderRadius.circular(LTokens.controlRadius),
+        borderRadius: squircleRadius(
+          BorderRadius.circular(LTokens.controlRadius),
+        ),
       ),
       child: InkWell(
         customBorder: ContinuousRectangleBorder(
-          borderRadius: BorderRadius.circular(LTokens.controlRadius),
+          borderRadius: squircleRadius(
+            BorderRadius.circular(LTokens.controlRadius),
+          ),
         ),
         onTap: enabled ? onTap : null,
         child: SizedBox(
@@ -253,11 +257,11 @@ class SecondaryButton extends StatelessWidget {
       child: Material(
       color: colors.sunken,
       shape: ContinuousRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: squircleRadius(BorderRadius.circular(14)),
       ),
       child: InkWell(
         customBorder: ContinuousRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: squircleRadius(BorderRadius.circular(14)),
         ),
         onTap: enabled ? onTap : null,
         child: SizedBox(
@@ -1088,7 +1092,9 @@ Future<bool> confirmAction(
     pageBuilder: (dialogContext, animation, secondaryAnimation) => AlertDialog(
       backgroundColor: colors.elevated,
       surfaceTintColor: Colors.transparent,
-      shape: ContinuousRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: ContinuousRectangleBorder(
+        borderRadius: squircleRadius(BorderRadius.circular(20)),
+      ),
       title: LText(
         title,
         style: context.texts.titleMedium?.copyWith(fontSize: 17, color: colors.text),
