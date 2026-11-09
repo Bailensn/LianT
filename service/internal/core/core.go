@@ -106,6 +106,8 @@ func New(opt Options) (*Core, error) {
 func (c *Core) Register(s *server.Server) {
 	s.Register(protocol.TypeBotList, c.ListBots)
 	s.Register(protocol.TypeMsgSend, c.Send)
+	s.Register(protocol.TypeMemberMute, c.MuteMember)
+	s.Register(protocol.TypeMemberKick, c.KickMember)
 	s.Register(protocol.TypeMsgList, c.ListMessages)
 	s.Register(protocol.TypeMsgAck, c.Ack)
 	s.Register(protocol.TypeBotAdd, c.AddBot)
@@ -387,6 +389,128 @@ func (c *Core) broadcastPeer(ev protocol.PeerEvent) {
 	if c.opt.Broadcaster != nil {
 		c.opt.Broadcaster.Broadcast(protocol.TypeEventPeer, ev)
 	}
+}
+
+// MuteMember 设置或解除群成员禁言。
+func (c *Core) MuteMember(
+	ctx context.Context,
+	sess server.Session,
+	raw json.RawMessage,
+) (any, *protocol.Error) {
+	var req protocol.MemberMute
+	if err := json.Unmarshal(raw, &req); err != nil {
+		return nil, bad(protocol.CodeInvalidPayload, "member.mute 字段不合法")
+	}
+	if err := req.Validate(); err != nil {
+		return nil, bad(protocol.CodeInvalidPayload, err.Error())
+	}
+	bot, peer, creds, perr := c.memberTarget(ctx, req.BotID, req.PeerID)
+	if perr != nil {
+		return nil, perr
+	}
+	adapter, ok := c.opt.Adapter(bot.Platform)
+	if !ok {
+		return nil, bad(protocol.CodeUnsupportedCapability, "该平台没有注册适配器")
+	}
+	mod, ok := adapter.(platform.GroupModerator)
+	if !ok {
+		return nil, bad(protocol.CodeUnsupportedCapability, "该平台不支持群成员禁言")
+	}
+	err := mod.MuteMember(ctx, accountOf(bot), creds, platform.MemberModeration{
+		Peer:     platform.Peer{ID: peer.ID, Kind: peer.Kind},
+		MemberID: req.MemberID,
+		Seconds:  req.Seconds,
+	})
+	if err != nil {
+		return nil, &protocol.Error{
+			Code:      protocol.CodeUpstreamError,
+			Message:   "禁言失败",
+			Retryable: protocol.Retryable(protocol.CodeUpstreamError),
+			Details:   map[string]any{"reason": err.Error()},
+		}
+	}
+	_ = c.opt.Store.AddAudit(ctx, store.Audit{
+		Kind:     "member.mute",
+		DeviceID: sess.ManagerID,
+		Name:     req.MemberID,
+		Reason:   fmt.Sprintf("peer=%s seconds=%d", req.PeerID, req.Seconds),
+	})
+	return struct{}{}, nil
+}
+
+// KickMember 将群成员移出群聊。
+func (c *Core) KickMember(
+	ctx context.Context,
+	sess server.Session,
+	raw json.RawMessage,
+) (any, *protocol.Error) {
+	var req protocol.MemberKick
+	if err := json.Unmarshal(raw, &req); err != nil {
+		return nil, bad(protocol.CodeInvalidPayload, "member.kick 字段不合法")
+	}
+	if err := req.Validate(); err != nil {
+		return nil, bad(protocol.CodeInvalidPayload, err.Error())
+	}
+	bot, peer, creds, perr := c.memberTarget(ctx, req.BotID, req.PeerID)
+	if perr != nil {
+		return nil, perr
+	}
+	adapter, ok := c.opt.Adapter(bot.Platform)
+	if !ok {
+		return nil, bad(protocol.CodeUnsupportedCapability, "该平台没有注册适配器")
+	}
+	mod, ok := adapter.(platform.GroupModerator)
+	if !ok {
+		return nil, bad(protocol.CodeUnsupportedCapability, "该平台不支持移出群成员")
+	}
+	err := mod.KickMember(ctx, accountOf(bot), creds, platform.MemberModeration{
+		Peer:      platform.Peer{ID: peer.ID, Kind: peer.Kind},
+		MemberID:  req.MemberID,
+		Blacklist: req.Blacklist,
+	})
+	if err != nil {
+		return nil, &protocol.Error{
+			Code:      protocol.CodeUpstreamError,
+			Message:   "移出群成员失败",
+			Retryable: protocol.Retryable(protocol.CodeUpstreamError),
+			Details:   map[string]any{"reason": err.Error()},
+		}
+	}
+	_ = c.opt.Store.AddAudit(ctx, store.Audit{
+		Kind:     "member.kick",
+		DeviceID: sess.ManagerID,
+		Name:     req.MemberID,
+		Reason:   "peer=" + req.PeerID,
+	})
+	return struct{}{}, nil
+}
+
+func (c *Core) memberTarget(
+	ctx context.Context,
+	botID, peerID string,
+) (store.Bot, store.Peer, platform.Credentials, *protocol.Error) {
+	bot, err := c.opt.Store.Bot(ctx, botID)
+	if errors.Is(err, store.ErrNotFound) {
+		return store.Bot{}, store.Peer{}, nil, bad(protocol.CodeNotFound, "Bot 不存在")
+	}
+	if err != nil {
+		return store.Bot{}, store.Peer{}, nil, internal(err)
+	}
+	peer, err := c.opt.Store.Peer(ctx, botID, peerID)
+	if errors.Is(err, store.ErrNotFound) {
+		return store.Bot{}, store.Peer{}, nil, bad(protocol.CodeNotFound, "会话不存在")
+	}
+	if err != nil {
+		return store.Bot{}, store.Peer{}, nil, internal(err)
+	}
+	if peer.Kind != platform.PeerGroup {
+		return store.Bot{}, store.Peer{}, nil, bad(protocol.CodeInvalidPayload, "只有群聊支持成员管理")
+	}
+	creds, err := c.opt.DecodeCredentials(bot)
+	if err != nil {
+		return store.Bot{}, store.Peer{}, nil, internal(err)
+	}
+	return bot, peer, creds, nil
 }
 
 // Ack 记录客户端已落库；v1 服务端没有未读表，只做应答。

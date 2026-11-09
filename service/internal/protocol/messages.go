@@ -30,6 +30,8 @@ const (
 	TypeMsgInbound = "msg.inbound"
 	TypeMsgAck     = "msg.ack"
 	TypeMediaFetch = "media.fetch"
+	TypeMemberMute = "member.mute"
+	TypeMemberKick = "member.kick"
 
 	TypeStateSnapshot = "state.snapshot"
 
@@ -262,6 +264,45 @@ func (m OutMedia) Validate() error {
 
 func (m OutMedia) Bytes() ([]byte, error) {
 	return base64.StdEncoding.DecodeString(m.Data)
+}
+
+// MemberMute 是群成员禁言请求。Seconds 为 0 时表示解除禁言。
+type MemberMute struct {
+	BotID    string `json:"bot_id"`
+	PeerID   string `json:"peer_id"`
+	MemberID string `json:"member_id"`
+	Seconds  int    `json:"seconds"`
+}
+
+func (r MemberMute) Validate() error {
+	if !platform.IsValidID(r.BotID) || !platform.IsValidID(r.PeerID) {
+		return fmt.Errorf("%w: 非法 bot_id/peer_id", ErrInvalidEnvelope)
+	}
+	if r.MemberID == "" {
+		return fmt.Errorf("%w: member_id 为空", ErrInvalidEnvelope)
+	}
+	if r.Seconds < 0 || r.Seconds > 30*24*60*60 {
+		return fmt.Errorf("%w: 禁言时长必须在 0..30 天", ErrInvalidEnvelope)
+	}
+	return nil
+}
+
+// MemberKick 是群成员移出请求；Blacklist 表示同时拉黑。
+type MemberKick struct {
+	BotID     string `json:"bot_id"`
+	PeerID    string `json:"peer_id"`
+	MemberID  string `json:"member_id"`
+	Blacklist bool   `json:"blacklist,omitempty"`
+}
+
+func (r MemberKick) Validate() error {
+	if !platform.IsValidID(r.BotID) || !platform.IsValidID(r.PeerID) {
+		return fmt.Errorf("%w: 非法 bot_id/peer_id", ErrInvalidEnvelope)
+	}
+	if r.MemberID == "" {
+		return fmt.Errorf("%w: member_id 为空", ErrInvalidEnvelope)
+	}
+	return nil
 }
 
 // MsgSendOK 是 msg.send 的成功响应。

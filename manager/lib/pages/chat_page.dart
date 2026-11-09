@@ -1502,6 +1502,11 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _showUserActions(ChatMessage msg) async {
+    final state = AppScope.of(context);
+    final bot = state.botById(msg.botId);
+    final isGroup = msg.peerKind == 'group';
+    final canMute = isGroup && (bot?.caps.contains('member.mute') ?? false);
+    final canKick = isGroup && (bot?.caps.contains('member.kick') ?? false);
     final colors = context.colors;
     final name = msg.senderName.isEmpty ? shortPeer(msg.senderId) : msg.senderName;
     final initial = name.isEmpty ? '?' : name.substring(0, 1);
@@ -1603,6 +1608,83 @@ class _ChatPageState extends State<ChatPage> {
                 if (sheetContext.mounted) Navigator.of(sheetContext).pop();
               },
             ),
+            if (canMute || canKick) ...<Widget>[
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: LText(
+                  '群管理',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: colors.text3,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (canMute) ...<Widget>[
+                Row(
+                  children: <Widget>[
+                    for (final item in <(String, int)>[
+                      ('10 分钟', 600),
+                      ('1 小时', 3600),
+                      ('1 天', 86400),
+                    ]) ...<Widget>[
+                      Expanded(
+                        child: SecondaryButton(
+                          label: '禁言 ${item.$1}',
+                          height: 40,
+                          onTap: () {
+                            Navigator.of(sheetContext).pop();
+                            unawaited(_muteMember(state, msg, item.$2));
+                          },
+                        ),
+                      ),
+                      if (item.$2 != 86400) const SizedBox(width: 6),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 6),
+                SecondaryButton(
+                  label: '解除禁言',
+                  height: 40,
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    unawaited(_muteMember(state, msg, 0));
+                  },
+                ),
+              ],
+              if (canKick) ...<Widget>[
+                const SizedBox(height: 6),
+                SecondaryButton(
+                  label: '踢出群聊',
+                  height: 40,
+                  onTap: () async {
+                    Navigator.of(sheetContext).pop();
+                    final ok = await confirmAction(
+                      context,
+                      title: '踢出群聊',
+                      message: '确定将 $name 移出群聊？',
+                      confirmLabel: '踢出',
+                      danger: true,
+                    );
+                    if (!ok) return;
+                    try {
+                      await state.kickMember(
+                        botId: msg.botId,
+                        peerId: msg.peerId,
+                        memberId: msg.senderId,
+                      );
+                      _showModerationResult('已移出群聊');
+                    } on ProtocolException catch (err) {
+                      _showModerationResult('移出失败：${err.friendly}', danger: true);
+                    } catch (err) {
+                      _showModerationResult('移出失败：$err', danger: true);
+                    }
+                  },
+                ),
+              ],
+            ],
             const SizedBox(height: 12),
           ],
         ),
@@ -1616,6 +1698,34 @@ class _ChatPageState extends State<ChatPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(L10n.tr('已复制')),
+        duration: const Duration(milliseconds: 2500),
+      ),
+    );
+  }
+
+  Future<void> _muteMember(AppState state, ChatMessage msg, int seconds) async {
+    try {
+      await state.muteMember(
+        botId: msg.botId,
+        peerId: msg.peerId,
+        memberId: msg.senderId,
+        seconds: seconds,
+      );
+      _showModerationResult(seconds == 0 ? '已解除禁言' : '已禁言');
+    } on ProtocolException catch (err) {
+      _showModerationResult('禁言失败：${err.friendly}', danger: true);
+    } catch (err) {
+      _showModerationResult('禁言失败：$err', danger: true);
+    }
+  }
+
+  void _showModerationResult(String message, {bool danger = false}) {
+    if (!mounted) return;
+    final colors = context.colors;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: danger ? colors.danger : null,
         duration: const Duration(milliseconds: 2500),
       ),
     );

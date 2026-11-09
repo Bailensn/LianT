@@ -121,6 +121,8 @@ const (
 	CapVideoNote = "video_note"
 	CapSticker   = "sticker"
 	CapAnimation = "animation"
+	CapMemberMute = "member.mute"
+	CapMemberKick = "member.kick"
 	CapLocation  = "location"
 	CapContact   = "contact"
 )
@@ -155,6 +157,21 @@ type MediaRequest struct {
 // MediaSender 是可选能力；不实现的适配器只能发文本。
 type MediaSender interface {
 	SendMedia(ctx context.Context, acc Account, creds Credentials, req MediaRequest) (MessageID, error)
+}
+
+// MemberModeration 是群成员管理请求。
+type MemberModeration struct {
+	Peer      Peer
+	MemberID  string
+	Seconds   int
+	Blacklist bool
+}
+
+// GroupModerator 是可选能力：禁言、移出群成员。
+// 平台没有群管理权限时不要注册该能力。
+type GroupModerator interface {
+	MuteMember(ctx context.Context, acc Account, creds Credentials, req MemberModeration) error
+	KickMember(ctx context.Context, acc Account, creds Credentials, req MemberModeration) error
 }
 
 // Hooks 是适配器向核心回调的入口。

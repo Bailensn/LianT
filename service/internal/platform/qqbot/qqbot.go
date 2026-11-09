@@ -75,7 +75,7 @@ func (a *Adapter) Validate(ctx context.Context, creds platform.Credentials) (pla
 	acc := platform.Account{
 		ID:          c.appID,
 		DisplayName: "QQ Bot " + c.appID,
-		Caps:        []string{platform.CapText},
+		Caps:        []string{platform.CapText, platform.CapMemberMute, platform.CapMemberKick},
 		MaxTextLen:  2000,
 		Limits:      map[string]any{"max_text_len": 2000},
 		// 新一代机器人（19 开头的 appid）默认带全量群消息与主动消息权限，
@@ -263,6 +263,106 @@ func (a *Adapter) SendMedia(
 		return "", err
 	}
 	return platform.MessageID(id), nil
+}
+
+func (a *Adapter) MuteMember(
+	ctx context.Context,
+	acc platform.Account,
+	creds platform.Credentials,
+	req platform.MemberModeration,
+) error {
+	c, err := parseCredentials(creds)
+	if err != nil {
+		return err
+	}
+	_, group, err := platform.SplitID(req.Peer.ID)
+	if err != nil {
+		return err
+	}
+	if req.Peer.Kind != platform.PeerGroup {
+		return fmt.Errorf("qqbot: 只有群聊支持禁言")
+	}
+	member := map[string]any{
+		"member_openid": req.MemberID,
+	}
+	if req.Seconds > 0 {
+		member["op"] = "add"
+		member["mute_expire_at"] = time.Now().
+			Add(time.Duration(req.Seconds) * time.Second).
+			Format(time.RFC3339)
+	} else {
+		member["op"] = "del"
+	}
+	return a.postNoContent(
+		ctx,
+		c,
+		"/v2/groups/"+url.PathEscape(group)+"/restrict_chat_setting",
+		map[string]any{"members": []any{member}},
+	)
+}
+
+func (a *Adapter) KickMember(
+	ctx context.Context,
+	acc platform.Account,
+	creds platform.Credentials,
+	req platform.MemberModeration,
+) error {
+	c, err := parseCredentials(creds)
+	if err != nil {
+		return err
+	}
+	_, group, err := platform.SplitID(req.Peer.ID)
+	if err != nil {
+		return err
+	}
+	if req.Peer.Kind != platform.PeerGroup {
+		return fmt.Errorf("qqbot: 只有群聊支持移出成员")
+	}
+	return a.postNoContent(
+		ctx,
+		c,
+		"/v2/groups/"+url.PathEscape(group)+"/batch_remove_members",
+		map[string]any{
+			"member_openids":          []string{req.MemberID},
+			"add_to_member_blacklist": req.Blacklist,
+		},
+	)
+}
+
+func (a *Adapter) postNoContent(
+	ctx context.Context,
+	c credentials,
+	path string,
+	payload map[string]any,
+) error {
+	token, err := a.accessToken(ctx, c)
+	if err != nil {
+		return err
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		a.apiBaseFor(c)+path,
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "QQBot "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("qqbot: 群管理请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("qqbot: 群管理返回 %d: %s", resp.StatusCode, readSnippet(resp.Body))
+	}
+	return nil
 }
 
 func (a *Adapter) nextSeq() uint32 {

@@ -853,6 +853,38 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> muteMember({
+    required String botId,
+    required String peerId,
+    required String memberId,
+    required int seconds,
+  }) async {
+    final client = _client;
+    if (client == null) throw const ProtocolException('offline', '连接未就绪');
+    await client.request('member.mute', <String, dynamic>{
+      'bot_id': botId,
+      'peer_id': peerId,
+      'member_id': memberId,
+      'seconds': seconds,
+    });
+  }
+
+  Future<void> kickMember({
+    required String botId,
+    required String peerId,
+    required String memberId,
+    bool blacklist = false,
+  }) async {
+    final client = _client;
+    if (client == null) throw const ProtocolException('offline', '连接未就绪');
+    await client.request('member.kick', <String, dynamic>{
+      'bot_id': botId,
+      'peer_id': peerId,
+      'member_id': memberId,
+      'blacklist': blacklist,
+    });
+  }
+
   Future<void> retrySend(ChatMessage msg, Bot bot) async {
     messages = messages.where((m) => m.msgId != msg.msgId).toList();
     notifyListeners();
