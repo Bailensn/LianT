@@ -719,7 +719,15 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
                             ),
                           ),
                         ),
-                        navRow(colors.text2, filled: false),
+                        Positioned.fill(
+                          child: ClipPath(
+                            clipper: _SelectionCutoutClipper(
+                              left: position * _itemWidth,
+                              width: _itemWidth,
+                            ),
+                            child: navRow(colors.text2, filled: false),
+                          ),
+                        ),
                         Positioned.fill(
                           child: IgnorePointer(
                             child: ExcludeSemantics(
@@ -761,6 +769,30 @@ class _SelectionLensClipper extends CustomClipper<Path> {
 
   @override
   bool shouldReclip(covariant _SelectionLensClipper oldClipper) =>
+      oldClipper.left != left || oldClipper.width != width;
+}
+
+class _SelectionCutoutClipper extends CustomClipper<Path> {
+  const _SelectionCutoutClipper({required this.left, required this.width});
+
+  final double left;
+  final double width;
+
+  @override
+  Path getClip(Size size) {
+    final path = Path()..fillType = PathFillType.evenOdd;
+    path.addRect(Offset.zero & size);
+    path.addRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(left, 0, width, size.height),
+        const Radius.circular(26),
+      ),
+    );
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant _SelectionCutoutClipper oldClipper) =>
       oldClipper.left != left || oldClipper.width != width;
 }
 
