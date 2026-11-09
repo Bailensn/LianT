@@ -118,9 +118,6 @@ class _ShellState extends State<Shell> {
 
   Future<void> _select(int index, {bool animate = true}) async {
     if (index == _index || _switching) return;
-    final current = _pageController.hasClients
-        ? (_pageController.page?.round() ?? _index)
-        : _index;
     setState(() => _index = index);
     if (!_pageController.hasClients) {
       _pageController.jumpToPage(index);
@@ -131,14 +128,10 @@ class _ShellState extends State<Shell> {
       return;
     }
     _switching = true;
-    // 跨多个 tab 时先跳到相邻页，避免 PageView 一路扫过中间页后撞到边界。
-    if ((index - current).abs() > 1) {
-      _pageController.jumpToPage(index > current ? index - 1 : index + 1);
-    }
     await _pageController.animateToPage(
       index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeInOutCubic,
     );
     _switching = false;
   }

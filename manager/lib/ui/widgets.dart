@@ -684,9 +684,9 @@ class _GlassBottomNavState extends State<GlassBottomNav> {
                       children: <Widget>[
                         AnimatedPositioned(
                           duration: _pointer == null
-                              ? const Duration(milliseconds: 220)
+                              ? const Duration(milliseconds: 300)
                               : Duration.zero,
-                          curve: Curves.easeOutCubic,
+                          curve: Curves.easeInOutCubic,
                           left: position * _itemWidth,
                           top: 0,
                           width: _itemWidth,
