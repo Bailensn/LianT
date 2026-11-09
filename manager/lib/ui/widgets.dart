@@ -433,13 +433,17 @@ class LargeTitlePage extends StatelessWidget {
     super.key,
     required this.title,
     this.trailing,
-    required this.children,
+    this.children = const <Widget>[],
+    this.itemCount,
+    this.itemBuilder,
     this.padding = const EdgeInsets.fromLTRB(16, 0, 16, 130),
   });
 
   final String title;
   final Widget? trailing;
   final List<Widget> children;
+  final int? itemCount;
+  final IndexedWidgetBuilder? itemBuilder;
   final EdgeInsets padding;
 
   @override
@@ -459,9 +463,16 @@ class LargeTitlePage extends StatelessWidget {
         ),
         SliverPadding(
           padding: padding,
-          sliver: SliverList(
-            delegate: SliverChildListDelegate(children),
-          ),
+          sliver: itemBuilder != null
+              ? SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    itemBuilder!,
+                    childCount: itemCount ?? 0,
+                  ),
+                )
+              : SliverList(
+                  delegate: SliverChildListDelegate(children),
+                ),
         ),
       ],
     );

@@ -62,7 +62,7 @@ class _ChatsPageState extends State<ChatsPage> {
     final running = state.bots.where((b) => b.running).length;
     final status = _connectionStatus(state);
 
-    final children = <Widget>[
+    final items = <Object>[
       SearchField(controller: _search, hint: '搜索会话'),
       const SizedBox(height: 16),
       if (!online)
@@ -106,39 +106,51 @@ class _ChatsPageState extends State<ChatsPage> {
                   ),
                 )
               : null,
-        )
-      else
-        for (final entry in groups.entries) ...<Widget>[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        ),
+    ];
+
+    for (final entry in groups.entries) {
+      items.add(entry.key);
+      for (var i = 0; i < entry.value.length; i++) {
+        final conv = entry.value[i];
+        items.add(
+          _ConversationEntry(
+            conversation: conv,
+            botName: state.botById(conv.botId)?.title,
+            first: i == 0,
+            last: i == entry.value.length - 1,
+          ),
+        );
+      }
+    }
+    items.add(const SizedBox(height: 8));
+
+    return LargeTitlePage(
+      title: '会话',
+      trailing: ToneBadge(label: status.$1, tone: status.$2),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        if (item is Widget) return item;
+        if (item is String) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
             child: LText(
-              entry.key,
+              item,
               style: context.texts.bodySmall?.copyWith(
                 color: colors.text2,
                 fontWeight: FontWeight.w500,
                 letterSpacing: 0.2,
               ),
             ),
-          ),
-          GroupCard(
-            margin: const EdgeInsets.only(bottom: 24),
-            children: <Widget>[
-              for (final conv in entry.value)
-                _ConversationTile(
-                  conversation: conv,
-                  botName: state.botById(conv.botId)?.title,
-                  onTap: () => _openChat(conv),
-                ),
-            ],
-          ),
-        ],
-      const SizedBox(height: 8),
-    ];
-
-    return LargeTitlePage(
-      title: '会话',
-      trailing: ToneBadge(label: status.$1, tone: status.$2),
-      children: children,
+          );
+        }
+        final entry = item as _ConversationEntry;
+        return _GroupedConversationTile(
+          entry: entry,
+          onTap: () => _openChat(entry.conversation),
+        );
+      },
     );
   }
 
@@ -163,6 +175,59 @@ class _ChatsPageState extends State<ChatsPage> {
         .then((_) {
           FocusManager.instance.primaryFocus?.unfocus();
         });
+  }
+}
+
+class _ConversationEntry {
+  const _ConversationEntry({
+    required this.conversation,
+    required this.botName,
+    required this.first,
+    required this.last,
+  });
+
+  final Conversation conversation;
+  final String? botName;
+  final bool first;
+  final bool last;
+}
+
+class _GroupedConversationTile extends StatelessWidget {
+  const _GroupedConversationTile({required this.entry, required this.onTap});
+
+  final _ConversationEntry entry;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Padding(
+      padding: EdgeInsets.only(bottom: entry.last ? 24 : 0),
+      child: SquircleClip(
+        borderRadius: BorderRadius.vertical(
+          top: entry.first
+              ? const Radius.circular(LTokens.cardRadius)
+              : Radius.zero,
+          bottom: entry.last
+              ? const Radius.circular(LTokens.cardRadius)
+              : Radius.zero,
+        ),
+        child: ColoredBox(
+          color: colors.elevated,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (!entry.first) const Hairline(indent: 68),
+              _ConversationTile(
+                conversation: entry.conversation,
+                botName: entry.botName,
+                onTap: onTap,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

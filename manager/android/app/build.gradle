@@ -5,7 +5,7 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
-def liantVersionCode = 89
+def liantVersionCode = 90
 
 android {
     namespace = "com.bailensn.liant"
@@ -26,7 +26,7 @@ android {
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         // 显示版本固定 1.0.0；versionCode 从 82 起，每次发布 +1。
-        // 同时同步 pubspec.yaml 的 +build（当前 89）。
+        // 同时同步 pubspec.yaml 的 +build（当前 90）。
         versionCode liantVersionCode
         versionName "1.0.0"
     }
