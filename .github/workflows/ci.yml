@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            changed="service/ manager/ scripts/ .github/workflows/"
+            changed="$(printf 'service/\nmanager/\nscripts/\n.github/workflows/\n')"
           else
             if [ "$EVENT_NAME" = "pull_request" ]; then
               base="$PR_BASE"
