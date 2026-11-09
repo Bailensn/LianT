@@ -243,14 +243,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          version="$(awk '/^version:/{print $2; exit}' pubspec.yaml | cut -d+ -f1)"
-          tag="manager-v$version"
+          full="$(awk '/^version:/{print $2; exit}' pubspec.yaml)"
+          version="${full%%+*}"
+          code="${full##*+}"
+          tag="manager-v${version}-${code}"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "release $tag already exists"
             exit 0
           fi
           gh release create "$tag" \
-            --title "LianT Manager $version (test)" \
-            --notes "Manager $version（测试版）" \
+            --title "LianT Manager $version ($code) (test)" \
+            --notes "Manager $version，versionCode $code（测试版）" \
             --prerelease \
             /tmp/LianT-universal.apk /tmp/LianT-arm64.apk /tmp/LianT-x86_64.apk
