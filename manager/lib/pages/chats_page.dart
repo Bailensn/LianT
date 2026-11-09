@@ -6,6 +6,7 @@ import '../core/client.dart';
 import '../ui/format.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
+import '../l10n/l10n.dart';
 import 'chat_page.dart';
 import '../l10n/ltext.dart';
 import '../ui/squircle.dart';
@@ -278,6 +279,8 @@ class _ConversationTile extends StatelessWidget {
                               ),
                             ),
                           ),
+                          const SizedBox(width: 6),
+                          _ListKindBadge(isGroup: conversation.peerKind == 'group'),
                           const SizedBox(width: 8),
                           LText(
                             last == null ? '' : formatListTime(last.ts),
@@ -335,6 +338,34 @@ class _ConversationTile extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+
+class _ListKindBadge extends StatelessWidget {
+  const _ListKindBadge({required this.isGroup});
+
+  final bool isGroup;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final color = isGroup ? colors.accent : colors.text2;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: SquircleBoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: LText(
+        L10n.tr(isGroup ? '群' : '私'),
+        style: TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.w600,
+          color: color,
         ),
       ),
     );

@@ -134,6 +134,7 @@ class MainActivity : FlutterActivity() {
             .setContentIntent(pending)
             .setSound(sound)
             .setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
+            .setOnlyAlertOnce(true)
             .setAutoCancel(true)
             .build()
         manager.notify(id, notification)

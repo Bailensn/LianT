@@ -200,6 +200,7 @@ class _ChatPageState extends State<ChatPage> {
     final colors = context.colors;
     final bot = state.botById(widget.botId);
     final list = state.messagesFor(widget.botId, widget.peerId);
+    final isGroup = list.isNotEmpty && list.last.peerKind == 'group';
     final byId = <String, ChatMessage>{
       for (final m in list)
         if (m.msgId.isNotEmpty) m.msgId: m,
@@ -235,7 +236,7 @@ class _ChatPageState extends State<ChatPage> {
             top: 0,
             left: 0,
             right: 0,
-            child: RepaintBoundary(child: _header(context, state, title)),
+            child: RepaintBoundary(child: _header(context, state, title, isGroup)),
           ),
           Positioned(
             top: 0,
@@ -255,7 +256,7 @@ class _ChatPageState extends State<ChatPage> {
             left: 0,
             right: 0,
             bottom: 0,
-            child: _composer(context, state, bot),
+            child: _composer(context, state, bot, isGroup),
           ),
         ],
       ),
@@ -696,7 +697,12 @@ class _ChatPageState extends State<ChatPage> {
     Navigator.of(context).maybePop();
   }
 
-  Widget _header(BuildContext context, AppState state, String title) {
+  Widget _header(
+    BuildContext context,
+    AppState state,
+    String title,
+    bool isGroup,
+  ) {
     final colors = context.colors;
 
     return ColoredBox(
@@ -739,15 +745,24 @@ class _ChatPageState extends State<ChatPage> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: <Widget>[
-                        LText(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: _collapsed ? 15 : 17,
-                            fontWeight: FontWeight.w600,
-                            color: colors.text,
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            _KindBadge(isGroup: isGroup),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: LText(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: _collapsed ? 15 : 17,
+                                  fontWeight: FontWeight.w600,
+                                  color: colors.text,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -774,7 +789,12 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Widget _composer(BuildContext context, AppState state, Bot? bot) {
+  Widget _composer(
+    BuildContext context,
+    AppState state,
+    Bot? bot,
+    bool isGroup,
+  ) {
     final colors = context.colors;
     final enabled = state.online && bot != null;
     return Container(
@@ -853,7 +873,11 @@ class _ChatPageState extends State<ChatPage> {
                             textAlignVertical: TextAlignVertical.center,
                             style: TextStyle(fontSize: 16, height: 1.35, color: colors.text),
                             decoration: InputDecoration(
-                              hintText: L10n.tr(state.online ? '发消息…' : '连接中…'),
+                              hintText: L10n.tr(
+                                state.online
+                                    ? (isGroup ? '发消息到群聊…' : '发消息…')
+                                    : '连接中…',
+                              ),
                               contentPadding: const EdgeInsets.symmetric(vertical: 11),
                             ),
                           ),
@@ -864,7 +888,7 @@ class _ChatPageState extends State<ChatPage> {
                         button: true,
                         label: '发送',
                         child: GestureDetector(
-                          onTap: enabled && !_sending ? () => unawaited(_submit(state, bot)) : null,
+                          onTap: enabled ? () => unawaited(_submit(state, bot)) : null,
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 150),
                             width: 44,
@@ -1050,7 +1074,11 @@ class _ChatPageState extends State<ChatPage> {
       String name = '';
       String? mime;
       if (media) {
-        final picked = await ImagePicker().pickMedia();
+        // 媒体入口必须走系统相册/图片选择器，不能落到通用文件选择器。
+        final picked = await ImagePicker().pickImage(
+          source: ImageSource.gallery,
+          requestFullMetadata: false,
+        );
         if (picked == null) return;
         bytes = await picked.readAsBytes();
         name = picked.name;
@@ -1085,7 +1113,7 @@ class _ChatPageState extends State<ChatPage> {
       });
       _focusInput();
     } catch (err) {
-      if (mounted) setState(() => _sendError = '选择文件失败：$err');
+      if (mounted) setState(() => _sendError = media ? '选择媒体失败：$err' : '选择文件失败：$err');
     }
   }
 
@@ -1255,10 +1283,15 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  final List<_QueuedSend> _queue = <_QueuedSend>[];
+
   Future<void> _submit(AppState state, Bot? bot) async {
     final text = _input.text.trim();
-    final hasMedia = _pendingBytes != null;
-    if ((!hasMedia && text.isEmpty) || bot == null || _sending) return;
+    final bytes = _pendingBytes;
+    final name = _pendingName;
+    final kind = _pendingKind;
+    final hasMedia = bytes != null;
+    if ((!hasMedia && text.isEmpty) || bot == null) return;
     final list = state.messagesFor(widget.botId, widget.peerId);
     final lastIn = _lastInbound(list);
     final canInitiate = bot.constraints.canInitiate;
@@ -1279,72 +1312,74 @@ class _ChatPageState extends State<ChatPage> {
       _focusInput();
       return;
     }
+
+    final job = _QueuedSend(
+      bot: bot,
+      peerId: widget.peerId,
+      peerKind: lastIn?.peerKind ?? 'private',
+      text: text,
+      bytes: bytes,
+      name: name,
+      kind: kind,
+      inReplyTo: passive ? target : null,
+      active: active,
+    );
+
+    // 先清空输入框和待发送附件，再进入队列；失败也不把文本塞回输入框。
     setState(() {
-      _sending = true;
+      _input.clear();
+      _replyTo = null;
+      _mentioning = false;
+      _mentionName = '';
+      _pendingBytes = null;
+      _pendingName = '';
+      _pendingKind = '';
+      _panelOpen = false;
       _sendError = '';
     });
-    _input.clear();
-    try {
-      if (hasMedia) {
-        await state.sendMedia(
-          bot: bot,
-          peerId: widget.peerId,
-          peerKind: lastIn?.peerKind ?? 'private',
-          data: _pendingBytes!,
-          name: _pendingName,
-          kind: _pendingKind,
-          inReplyTo: passive ? target : null,
-          active: active,
-        );
-      } else {
-        await state.send(
-          bot: bot,
-          peerId: widget.peerId,
-          peerKind: lastIn?.peerKind ?? 'private',
-          text: text,
-          inReplyTo: passive ? target : null,
-          active: active,
-        );
+    _queue.add(job);
+    unawaited(_pumpQueue(state));
+    _focusInput();
+    _scrollToBottom();
+  }
+
+  Future<void> _pumpQueue(AppState state) async {
+    if (_sending) return;
+    if (!mounted) return;
+    setState(() => _sending = true);
+    while (mounted && _queue.isNotEmpty) {
+      final job = _queue.first;
+      try {
+        if (job.bytes != null) {
+          await state.sendMedia(
+            bot: job.bot,
+            peerId: job.peerId,
+            peerKind: job.peerKind,
+            data: job.bytes!,
+            name: job.name,
+            kind: job.kind,
+            inReplyTo: job.inReplyTo,
+            active: job.active,
+          );
+        } else {
+          await state.send(
+            bot: job.bot,
+            peerId: job.peerId,
+            peerKind: job.peerKind,
+            text: job.text,
+            inReplyTo: job.inReplyTo,
+            active: job.active,
+          );
+        }
+      } on ProtocolException catch (err) {
+        if (mounted) setState(() => _sendError = err.friendly);
+      } catch (err) {
+        if (mounted) setState(() => _sendError = '发送失败：$err');
+      } finally {
+        if (_queue.isNotEmpty) _queue.removeAt(0);
       }
-      if (mounted) {
-        setState(() {
-          _replyTo = null;
-          _mentioning = false;
-          _mentionName = '';
-          _pendingBytes = null;
-          _pendingName = '';
-          _pendingKind = '';
-          _panelOpen = false;
-          _sending = false;
-        });
-      }
-      _focusInput();
-      _scrollToBottom();
-    } on ProtocolException catch (err) {
-      if (mounted) {
-        setState(() {
-          if (!hasMedia) {
-            _input.text = text;
-            _input.selection = TextSelection.collapsed(offset: text.length);
-          }
-          _sendError = err.friendly;
-          _sending = false;
-        });
-      }
-      _focusInput();
-    } catch (err) {
-      if (mounted) {
-        setState(() {
-          if (!hasMedia) {
-            _input.text = text;
-            _input.selection = TextSelection.collapsed(offset: text.length);
-          }
-          _sendError = '发送失败：$err';
-          _sending = false;
-        });
-      }
-      _focusInput();
     }
+    if (mounted) setState(() => _sending = false);
   }
 
   void _focusInput() {
@@ -1726,6 +1761,59 @@ class _StaggerInState extends State<_StaggerIn>
           ),
         );
       },
+    );
+  }
+}
+
+
+class _QueuedSend {
+  const _QueuedSend({
+    required this.bot,
+    required this.peerId,
+    required this.peerKind,
+    required this.text,
+    required this.bytes,
+    required this.name,
+    required this.kind,
+    required this.inReplyTo,
+    required this.active,
+  });
+
+  final Bot bot;
+  final String peerId;
+  final String peerKind;
+  final String text;
+  final Uint8List? bytes;
+  final String name;
+  final String kind;
+  final String? inReplyTo;
+  final bool active;
+}
+
+
+class _KindBadge extends StatelessWidget {
+  const _KindBadge({required this.isGroup});
+
+  final bool isGroup;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final color = isGroup ? colors.accent : colors.text2;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: SquircleBoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: LText(
+        L10n.tr(isGroup ? '群' : '私'),
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
     );
   }
 }

@@ -125,6 +125,7 @@ class MessageService : Service() {
             .setSmallIcon(R.mipmap.ic_launcher_foreground)
             .setContentIntent(pending)
             .setSound(sound)
+            .setOnlyAlertOnce(true)
             .setAutoCancel(true)
             .build()
         manager.notify(id, notification)

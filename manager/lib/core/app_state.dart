@@ -602,7 +602,8 @@ class AppState extends ChangeNotifier {
   }
 
   void _notifyInbound(ChatMessage msg) {
-    if (!appInForeground) return;
+    // 前台/后台都先由 UI isolate 尝试通知；后台 engine 用同一个通知 ID
+    // 覆盖同一条消息，避免后台通知依赖 engine 是否成功启动。
     final key = convKey(msg.botId, msg.peerId);
     if (mutedFor(key)) return;
     if (openConversation == key) return;
