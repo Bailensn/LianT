@@ -107,6 +107,7 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   int _index = 0;
+  int _switchId = 0;
   bool _switching = false;
   late final PageController _pageController = PageController();
 
@@ -117,23 +118,26 @@ class _ShellState extends State<Shell> {
   }
 
   Future<void> _select(int index, {bool animate = true}) async {
-    if (index == _index || _switching) return;
+    if (index == _index) return;
+    final id = ++_switchId;
     setState(() => _index = index);
     if (!_pageController.hasClients) {
       _pageController.jumpToPage(index);
       return;
     }
     if (!animate) {
+      _switching = false;
       _pageController.jumpToPage(index);
       return;
     }
+    // 新选择直接打断旧动画，从当前滚动位置重新起步。
     _switching = true;
     await _pageController.animateToPage(
       index,
       duration: const Duration(milliseconds: 420),
       curve: Curves.easeInOutCubic,
     );
-    _switching = false;
+    if (id == _switchId) _switching = false;
   }
 
   Widget _pageView(List<Widget> pages) {
