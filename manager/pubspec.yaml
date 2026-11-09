@@ -1,7 +1,7 @@
 name: liant
 description: LianT Manager（Bot Engine 客户端）
 publish_to: none
-version: 1.0.0+93
+version: 1.0.0+94
 
 environment:
   sdk: '>=3.4.0 <4.0.0'

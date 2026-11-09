@@ -49,9 +49,7 @@ class _ChatPageState extends State<ChatPage> {
   String _mentionName = '';
   bool _panelOpen = false;
   int _panelPage = 0;
-  Uint8List? _pendingBytes;
-  String _pendingName = '';
-  String _pendingKind = '';
+  final List<_PendingMedia> _pendingMedia = <_PendingMedia>[];
   final PageController _panelController = PageController();
   int _lastCount = 0;
 
@@ -588,23 +586,10 @@ class _ChatPageState extends State<ChatPage> {
       );
     }
 
-    final bubble = Container(
-      constraints: BoxConstraints(maxWidth: maxWidth),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: SquircleBoxDecoration(
-        color: outgoing ? colors.accent : colors.elevated,
-        borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(18),
-          topRight: const Radius.circular(18),
-          bottomLeft: Radius.circular(outgoing ? 18 : 6),
-          bottomRight: Radius.circular(outgoing ? 6 : 18),
-        ),
-        border: msg.failed ? Border.all(color: colors.danger, width: 1) : null,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
+    final bubbleBody = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
           if (msg.inReplyTo != null && msg.inReplyTo!.isNotEmpty)
             Container(
               constraints: const BoxConstraints(maxWidth: 260),
@@ -660,8 +645,31 @@ class _ChatPageState extends State<ChatPage> {
             ],
           ),
         ],
-      ),
     );
+
+    // 图片消息不再套聊天气泡底色，避免图片外面出现一整个蓝框；
+    // 引用块、失败提示和 pending 指示仍在图片上方/旁边。
+    final bubble = imageLike
+        ? Container(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: bubbleBody,
+          )
+        : Container(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: SquircleBoxDecoration(
+              color: outgoing ? colors.accent : colors.elevated,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(18),
+                topRight: const Radius.circular(18),
+                bottomLeft: Radius.circular(outgoing ? 18 : 6),
+                bottomRight: Radius.circular(outgoing ? 6 : 18),
+              ),
+              border:
+                  msg.failed ? Border.all(color: colors.danger, width: 1) : null,
+            ),
+            child: bubbleBody,
+          );
 
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0, end: 1),
@@ -806,7 +814,7 @@ class _ChatPageState extends State<ChatPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  if (_pendingBytes != null) _pendingPreview(context),
+                  if (_pendingMedia.isNotEmpty) _pendingPreview(context),
                   if (_replyTo != null) _replyPreview(context),
                   if (_mentioning) _mentionPreview(context),
                   if (_sendError.isNotEmpty)
@@ -1070,50 +1078,57 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _pickAttachment({required bool media}) async {
     try {
-      Uint8List? bytes;
-      String name = '';
-      String? mime;
+      final picked = <_PendingMedia>[];
       if (media) {
-        // 媒体入口必须走系统相册/图片选择器，不能落到通用文件选择器。
-        final picked = await ImagePicker().pickImage(
-          source: ImageSource.gallery,
+        // 媒体入口走系统媒体选择器，支持一次选择多张图片/视频。
+        final files = await ImagePicker().pickMultipleMedia(
           requestFullMetadata: false,
         );
-        if (picked == null) return;
-        bytes = await picked.readAsBytes();
-        name = picked.name;
-        mime = picked.mimeType;
+        for (final file in files) {
+          final bytes = await file.readAsBytes();
+          picked.add(
+            _PendingMedia(
+              bytes: bytes,
+              name: file.name,
+              kind: _kindOf(file.name, file.mimeType),
+            ),
+          );
+        }
       } else {
         final result = await FilePicker.platform.pickFiles(
           type: FileType.any,
           withData: true,
-          allowMultiple: false,
+          allowMultiple: true,
         );
-        final files = result?.files ?? const <PlatformFile>[];
-        if (files.isEmpty) return;
-        final file = files.first;
-        bytes = file.bytes;
-        name = file.name;
+        for (final file in result?.files ?? const <PlatformFile>[]) {
+          final bytes = file.bytes;
+          if (bytes == null) continue;
+          picked.add(
+            _PendingMedia(
+              bytes: bytes,
+              name: file.name,
+              kind: _kindOf(file.name, null),
+            ),
+          );
+        }
       }
-      if (bytes == null) {
-        if (mounted) setState(() => _sendError = '读取文件失败');
+      if (picked.isEmpty) return;
+      if (picked.any((item) => item.bytes.length > 5 << 20)) {
+        if (mounted) setState(() => _sendError = '单个媒体不能超过 5 MiB');
         return;
       }
-      if (bytes.length > 5 << 20) {
-        if (mounted) setState(() => _sendError = '文件超过 5 MiB，暂时不能发');
-        return;
-      }
-      final kind = _kindOf(name, mime);
       if (!mounted) return;
       setState(() {
-        _pendingBytes = bytes;
-        _pendingName = name;
-        _pendingKind = kind;
+        _pendingMedia.addAll(picked);
         _sendError = '';
       });
       _focusInput();
     } catch (err) {
-      if (mounted) setState(() => _sendError = media ? '选择媒体失败：$err' : '选择文件失败：$err');
+      if (mounted) {
+        setState(
+          () => _sendError = media ? '选择媒体失败：$err' : '选择文件失败：$err',
+        );
+      }
     }
   }
 
@@ -1137,19 +1152,6 @@ class _ChatPageState extends State<ChatPage> {
 
   Widget _pendingPreview(BuildContext context) {
     final colors = context.colors;
-    final isImage = _pendingKind == 'image';
-    final label = switch (_pendingKind) {
-      'image' => '图片',
-      'video' => '视频',
-      'audio' => '语音',
-      _ => '文件',
-    };
-    final icon = switch (_pendingKind) {
-      'image' => Icons.image_outlined,
-      'video' => Icons.videocam_outlined,
-      'audio' => Icons.mic_none_rounded,
-      _ => Icons.insert_drive_file_outlined,
-    };
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.all(6),
@@ -1157,47 +1159,83 @@ class _ChatPageState extends State<ChatPage> {
         color: colors.bg,
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Row(
-        children: <Widget>[
-          SquircleClip(
-            borderRadius: BorderRadius.circular(8),
-            child: isImage && _pendingBytes != null
-                ? Image.memory(_pendingBytes!, width: 42, height: 42, fit: BoxFit.cover)
-                : Container(
-                    width: 42,
-                    height: 42,
-                    color: colors.elevated,
-                    child: Icon(icon, size: 20, color: colors.accent),
+      child: SizedBox(
+        height: 56,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: _pendingMedia.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 6),
+          itemBuilder: (context, index) {
+            final item = _pendingMedia[index];
+            final isImage = item.kind == 'image';
+            final label = switch (item.kind) {
+              'image' => '图片',
+              'video' => '视频',
+              'audio' => '语音',
+              _ => '文件',
+            };
+            final icon = switch (item.kind) {
+              'image' => Icons.image_outlined,
+              'video' => Icons.videocam_outlined,
+              'audio' => Icons.mic_none_rounded,
+              _ => Icons.insert_drive_file_outlined,
+            };
+            return Container(
+              width: 172,
+              padding: const EdgeInsets.all(5),
+              decoration: SquircleBoxDecoration(
+                color: colors.elevated,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: <Widget>[
+                  SquircleClip(
+                    borderRadius: BorderRadius.circular(7),
+                    child: isImage
+                        ? Image.memory(
+                            item.bytes,
+                            width: 44,
+                            height: 44,
+                            fit: BoxFit.cover,
+                          )
+                        : Container(
+                            width: 44,
+                            height: 44,
+                            color: colors.sunken,
+                            child: Icon(icon, size: 20, color: colors.accent),
+                          ),
                   ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                LText(
-                  _pendingName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: colors.text),
-                ),
-                LText(
-                  '$label · ${_formatBytes(_pendingBytes?.length ?? 0)}',
-                  style: TextStyle(fontSize: 11, color: colors.text3),
-                ),
-              ],
-            ),
-          ),
-          IconAction(
-            icon: Icons.close_rounded,
-            size: 18,
-            onTap: () => setState(() {
-              _pendingBytes = null;
-              _pendingName = '';
-              _pendingKind = '';
-            }),
-          ),
-        ],
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        LText(
+                          item.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 11, color: colors.text),
+                        ),
+                        LText(
+                          '$label · ${_formatBytes(item.bytes.length)}',
+                          style: TextStyle(fontSize: 10, color: colors.text3),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconAction(
+                    icon: Icons.close_rounded,
+                    size: 16,
+                    onTap: () => setState(() {
+                      _pendingMedia.removeAt(index);
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -1287,10 +1325,8 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _submit(AppState state, Bot? bot) async {
     final text = _input.text.trim();
-    final bytes = _pendingBytes;
-    final name = _pendingName;
-    final kind = _pendingKind;
-    final hasMedia = bytes != null;
+    final pending = List<_PendingMedia>.of(_pendingMedia);
+    final hasMedia = pending.isNotEmpty;
     if ((!hasMedia && text.isEmpty) || bot == null) return;
     final list = state.messagesFor(widget.botId, widget.peerId);
     final lastIn = _lastInbound(list);
@@ -1313,31 +1349,51 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
 
-    final job = _QueuedSend(
-      bot: bot,
-      peerId: widget.peerId,
-      peerKind: lastIn?.peerKind ?? 'private',
-      text: text,
-      bytes: bytes,
-      name: name,
-      kind: kind,
-      inReplyTo: passive ? target : null,
-      active: active,
-    );
+    final peerKind = lastIn?.peerKind ?? 'private';
+    final replyTo = passive ? target : null;
+    final jobs = <_QueuedSend>[];
+    if (text.isNotEmpty) {
+      jobs.add(
+        _QueuedSend(
+          bot: bot,
+          peerId: widget.peerId,
+          peerKind: peerKind,
+          text: text,
+          bytes: null,
+          name: '',
+          kind: '',
+          inReplyTo: replyTo,
+          active: active,
+        ),
+      );
+    }
+    for (final item in pending) {
+      jobs.add(
+        _QueuedSend(
+          bot: bot,
+          peerId: widget.peerId,
+          peerKind: peerKind,
+          text: '',
+          bytes: item.bytes,
+          name: item.name,
+          kind: item.kind,
+          inReplyTo: replyTo,
+          active: active,
+        ),
+      );
+    }
 
-    // 先清空输入框和待发送附件，再进入队列；失败也不把文本塞回输入框。
+    // 文本和每个媒体都作为一个独立队列项；输入区立即清空，失败不回填。
     setState(() {
       _input.clear();
       _replyTo = null;
       _mentioning = false;
       _mentionName = '';
-      _pendingBytes = null;
-      _pendingName = '';
-      _pendingKind = '';
+      _pendingMedia.clear();
       _panelOpen = false;
       _sendError = '';
     });
-    _queue.add(job);
+    _queue.addAll(jobs);
     unawaited(_pumpQueue(state));
     _focusInput();
     _scrollToBottom();
@@ -1765,6 +1821,18 @@ class _StaggerInState extends State<_StaggerIn>
   }
 }
 
+
+class _PendingMedia {
+  const _PendingMedia({
+    required this.bytes,
+    required this.name,
+    required this.kind,
+  });
+
+  final Uint8List bytes;
+  final String name;
+  final String kind;
+}
 
 class _QueuedSend {
   const _QueuedSend({
