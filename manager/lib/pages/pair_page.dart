@@ -2,6 +2,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../core/browser_env.dart';
@@ -12,6 +13,7 @@ import '../ui/widgets.dart';
 import '../l10n/l10n.dart';
 import '../l10n/ltext.dart';
 import '../ui/squircle.dart';
+import 'qr_scan_page.dart';
 
 class PairPage extends StatefulWidget {
   const PairPage({super.key});
@@ -72,6 +74,27 @@ class _PairPageState extends State<PairPage> {
     }
     _pairText.text = text;
     _reparse();
+    if (!mounted) return;
+    if (_parsed == null) {
+      setState(() => _error = '剪贴板内容不是有效的配对信息');
+    } else {
+      setState(() => _error = '');
+    }
+  }
+
+  Future<void> _scanPair() async {
+    final raw = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(builder: (_) => const QrScanPage()),
+    );
+    if (raw == null || raw.isEmpty) return;
+    _pairText.text = raw;
+    _reparse();
+    if (!mounted) return;
+    if (_parsed == null) {
+      setState(() => _error = '二维码里不是有效的配对信息');
+    } else {
+      setState(() => _error = '');
+    }
   }
 
   Future<void> _runAuto() async {
@@ -226,6 +249,16 @@ class _PairPageState extends State<PairPage> {
                                 style: context.texts.bodySmall?.copyWith(color: colors.text2),
                               ),
                             ),
+                            if (!kIsWeb)
+                              TextButton(
+                                onPressed: _scanPair,
+                                style: TextButton.styleFrom(
+                                  minimumSize: const Size(44, 44),
+                                  foregroundColor: colors.accent,
+                                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                                ),
+                                child: const LText('扫码'),
+                              ),
                             TextButton(
                               onPressed: _pastePair,
                               style: TextButton.styleFrom(

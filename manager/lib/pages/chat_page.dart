@@ -47,8 +47,6 @@ class _ChatPageState extends State<ChatPage> {
   String _sendError = '';
   ChatMessage? _replyTo;
   final FocusNode _inputFocus = FocusNode();
-  bool _mentioning = false;
-  String _mentionName = '';
   bool _panelOpen = false;
   int _panelPage = 0;
   final List<_PendingMedia> _pendingMedia = <_PendingMedia>[];
@@ -875,7 +873,6 @@ class _ChatPageState extends State<ChatPage> {
                 children: <Widget>[
                   if (_pendingMedia.isNotEmpty) _pendingPreview(context),
                   if (_replyTo != null) _replyPreview(context),
-                  if (_mentioning) _mentionPreview(context),
                   if (_sendError.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
@@ -1358,34 +1355,6 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Widget _mentionPreview(BuildContext context) {
-    final colors = context.colors;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.fromLTRB(10, 5, 4, 5),
-      decoration: SquircleBoxDecoration(
-        color: colors.bg,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: <Widget>[
-          LText(
-            '@$_mentionName',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colors.accent),
-          ),
-          const Spacer(),
-          IconAction(
-            icon: Icons.close_rounded,
-            size: 18,
-            onTap: () => setState(() {
-              _mentioning = false;
-              _mentionName = '';
-            }),
-          ),
-        ],
-      ),
-    );
-  }
 
   final List<_QueuedSend> _queue = <_QueuedSend>[];
 
@@ -1397,7 +1366,7 @@ class _ChatPageState extends State<ChatPage> {
     final list = state.messagesFor(widget.botId, widget.peerId);
     final lastIn = _lastInbound(list);
     final canInitiate = bot.constraints.canInitiate;
-    final passive = _replyTo != null || _mentioning;
+    final passive = _replyTo != null;
     final active = canInitiate && !passive;
     final target = _replyTo?.msgId ?? lastIn?.msgId;
     if (_replyTo != null && _replyTo!.outgoing) {
@@ -1407,9 +1376,7 @@ class _ChatPageState extends State<ChatPage> {
     }
     if (!active && target == null) {
       setState(() {
-        _sendError = _mentioning
-            ? '还没有可 @ 的消息：等对方发一条再试'
-            : '还没有可回复的消息：等对方发一条';
+        _sendError = '还没有可回复的消息：等对方发一条';
       });
       _focusInput();
       return;
@@ -1461,8 +1428,6 @@ class _ChatPageState extends State<ChatPage> {
     setState(() {
       _input.clear();
       _replyTo = null;
-      _mentioning = false;
-      _mentionName = '';
       _pendingMedia.clear();
       _panelOpen = false;
       _sendError = '';
@@ -1590,14 +1555,6 @@ class _ChatPageState extends State<ChatPage> {
               ),
             ),
             const SizedBox(height: 12),
-            PrimaryButton(
-              label: '@ 提到 $name',
-              onTap: () {
-                _insertMention(name);
-                Navigator.of(sheetContext).pop();
-              },
-            ),
-            const SizedBox(height: 8),
             SecondaryButton(
               label: '引用这条消息',
               onTap: () {
@@ -1752,9 +1709,6 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _showActions(AppState state, ChatMessage msg) async {
     final colors = context.colors;
-    // @ 只对入站消息开放，且只指向发送者；群名不是可 @ 的对象。
-    final mentionName =
-        msg.senderName.isNotEmpty ? msg.senderName : shortPeer(msg.senderId);
     await showLiantSheet<void>(
       context: context,
       title: '消息操作',
@@ -1790,14 +1744,6 @@ class _ChatPageState extends State<ChatPage> {
                 },
               ),
               const SizedBox(height: 8),
-              SecondaryButton(
-                label: '@ ${mentionName.isEmpty ? '对方' : mentionName}',
-                onTap: () {
-                  _insertMention(mentionName.isEmpty ? '对方' : mentionName);
-                  Navigator.of(sheetContext).pop();
-                },
-              ),
-              const SizedBox(height: 8),
             ],
             const SizedBox(height: 8),
             SecondaryButton(
@@ -1814,24 +1760,6 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  void _insertMention(String name) {
-    final mention = '@$name ';
-    final value = _input.value;
-    final selection = value.selection;
-    final start = selection.isValid ? selection.start : value.text.length;
-    final end = selection.isValid ? selection.end : start;
-    final next = value.text.replaceRange(start, end, mention);
-    _input.value = TextEditingValue(
-      text: next,
-      selection: TextSelection.collapsed(offset: start + mention.length),
-    );
-    setState(() {
-      _mentioning = true;
-      _mentionName = name;
-      _sendError = '';
-    });
-    _focusInput();
-  }
 
   Future<void> _openSettings(AppState state) async {
     final key = _key;
