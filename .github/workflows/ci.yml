@@ -213,6 +213,16 @@ jobs:
         working-directory: manager
         run: |
           set -euo pipefail
+          # Flutter 3.24 的 --split-per-abi 会给分包 versionCode 加 ABI 偏移。
+          # 在 CI 内把该表达式改回 variant.versionCode，保持 universal/arm64/x86 一致。
+          flutter_gradle="$FLUTTER_ROOT/packages/flutter_tools/gradle/src/main/groovy/flutter.groovy"
+          if [ -f "$flutter_gradle" ]; then
+            sed -i 's/abiVersionCode \* 1000 + variant.versionCode/variant.versionCode/' "$flutter_gradle"
+            if grep -q 'abiVersionCode \* 1000 + variant.versionCode' "$flutter_gradle"; then
+              echo "Flutter ABI versionCode patch failed" >&2
+              exit 1
+            fi
+          fi
           flutter build apk --release
           cp build/app/outputs/flutter-apk/app-release.apk /tmp/LianT-universal.apk
           flutter build apk --release --split-per-abi

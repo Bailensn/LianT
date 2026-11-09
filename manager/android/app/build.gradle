@@ -45,14 +45,3 @@ flutter {
 }
 
 
-// Flutter 3.24 的 --split-per-abi 会按 ABI 给 versionCode 加 2000/4000 偏移，
-// 这里在所有工程配置完成后强制所有分包使用同一个 versionCode。
-afterEvaluate {
-    android.applicationVariants.all { variant ->
-        variant.outputs.each { output ->
-            if (output.versionCodeOverride != null) {
-                output.versionCodeOverride = liantVersionCode
-            }
-        }
-    }
-}
