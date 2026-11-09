@@ -23,12 +23,13 @@ const MinRetention = 7 * 24 * time.Hour
 // DefaultMediaBytes 是单 Bot 媒体的默认上限：3 GB。
 const DefaultMediaBytes int64 = 3 << 30
 
-// DefaultRetention 返回 v1 的默认策略。
+// DefaultRetention 返回默认策略：不主动限制消息时间或媒体总量。
+// 实际能存多久只受磁盘容量限制；平台单条消息/媒体的上限仍由平台决定。
 func DefaultRetention() Retention {
 	return Retention{
-		Text:       MinRetention,
-		Media:      MinRetention,
-		MediaBytes: DefaultMediaBytes,
+		Text:       100 * 365 * 24 * time.Hour,
+		Media:      100 * 365 * 24 * time.Hour,
+		MediaBytes: 1 << 62,
 	}
 }
 

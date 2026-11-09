@@ -284,6 +284,7 @@ func toInbound(event string, ev messageEvent) (platform.Inbound, bool) {
 			Kind:       inboundKind(ev.Attachments),
 			Text:       inboundText(ev.Content, ev.Attachments),
 			Media:      attachments(ev.Attachments),
+			QuoteRef:   quoteRefOf(ev.MessageScene.Ext),
 			At:         parseTime(ev.Timestamp),
 		}, true
 
@@ -306,6 +307,7 @@ func toInbound(event string, ev messageEvent) (platform.Inbound, bool) {
 			Kind:       inboundKind(ev.Attachments),
 			Text:       inboundText(ev.Content, ev.Attachments),
 			Media:      attachments(ev.Attachments),
+			QuoteRef:   quoteRefOf(ev.MessageScene.Ext),
 			At:         parseTime(ev.Timestamp),
 		}, true
 
@@ -324,12 +326,29 @@ func toInbound(event string, ev messageEvent) (platform.Inbound, bool) {
 			Kind:       inboundKind(ev.Attachments),
 			Text:       inboundText(ev.Content, ev.Attachments),
 			Media:      attachments(ev.Attachments),
+			QuoteRef:   quoteRefOf(ev.MessageScene.Ext),
 			At:         parseTime(ev.Timestamp),
 		}, true
 
 	default:
 		return platform.Inbound{}, false
 	}
+}
+
+// quoteRefOf 从 MessageScene.ext 里取 msg_idx，QQ 引用消息要用这个 ref_idx。
+func quoteRefOf(ext []string) string {
+	for _, item := range ext {
+		for _, part := range strings.Split(item, "&") {
+			key, value, ok := strings.Cut(part, "=")
+			if ok && key == "msg_idx" {
+				return value
+			}
+		}
+		if strings.HasPrefix(item, "msg_idx=") {
+			return strings.TrimPrefix(item, "msg_idx=")
+		}
+	}
+	return ""
 }
 
 // inboundKind 按第一个附件判断消息类型；没有附件就是文本。

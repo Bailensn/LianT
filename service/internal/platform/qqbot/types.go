@@ -99,6 +99,9 @@ type messageEvent struct {
 		Username     string `json:"username"`
 		MemberRole   string `json:"member_role"`
 	} `json:"author"`
+	MessageScene struct {
+		Ext []string `json:"ext"`
+	} `json:"message_scene"`
 }
 
 func parseTime(s string) time.Time {

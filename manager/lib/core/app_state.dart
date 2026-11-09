@@ -738,23 +738,38 @@ class AppState extends ChangeNotifier {
     final client = _client;
     // 离线时没有历史可拉；聊天页会自己显示「连接恢复后加载」。
     if (client == null) return;
-    final res = await client.request('msg.list', <String, dynamic>{
-      'bot_id': botId,
-      'peer_id': peerId,
-      'limit': 100,
-    });
-    final raw = res['messages'];
-    if (raw is List) {
-      for (final item in raw) {
-        if (item is Map<String, dynamic>) {
-          final msg = ChatMessage.fromJson(item);
-          // 历史接口自带 direction，按 msg_id 去重后铺上屏。
-          if (msg.msgId.isNotEmpty &&
-              !messages.any((m) => m.msgId == msg.msgId)) {
-            messages = <ChatMessage>[...messages, msg]..sort(_byTime);
+    final seen = messages.map((m) => m.msgId).toSet();
+    final added = <ChatMessage>[];
+    Map<String, dynamic>? before;
+    while (true) {
+      final res = await client.request('msg.list', <String, dynamic>{
+        'bot_id': botId,
+        'peer_id': peerId,
+        'limit': 100,
+        if (before != null) 'before': before,
+      });
+      final raw = res['messages'];
+      final page = <ChatMessage>[];
+      if (raw is List) {
+        for (final item in raw) {
+          if (item is Map<String, dynamic>) {
+            final msg = ChatMessage.fromJson(item);
+            if (msg.msgId.isNotEmpty) {
+              page.add(msg);
+              if (seen.add(msg.msgId)) added.add(msg);
+            }
           }
         }
       }
+      if (page.isEmpty || res['has_more'] != true) break;
+      final oldest = page.first;
+      before = <String, dynamic>{
+        'ts': oldest.ts,
+        'msg_id': oldest.msgId,
+      };
+    }
+    if (added.isNotEmpty) {
+      messages = <ChatMessage>[...messages, ...added]..sort(_byTime);
       _scheduleSaveMessages();
       notifyListeners();
     }
@@ -766,6 +781,7 @@ class AppState extends ChangeNotifier {
     required String peerKind,
     required String text,
     String? inReplyTo,
+    String? quoteRef,
     bool active = false,
     String? senderName,
   }) async {
@@ -781,6 +797,7 @@ class AppState extends ChangeNotifier {
       ts: DateTime.now().millisecondsSinceEpoch,
       direction: 'out',
       inReplyTo: active ? null : inReplyTo,
+      quoteRef: active ? '' : (quoteRef ?? ''),
       pending: true,
       active: active,
       senderName: senderName ?? '',
@@ -792,6 +809,8 @@ class AppState extends ChangeNotifier {
         'peer_id': peerId,
         'body': <String, dynamic>{'plain': text},
         if (!active && inReplyTo != null) 'in_reply_to': inReplyTo,
+        if (!active && quoteRef != null && quoteRef.isNotEmpty)
+          'quote_ref': quoteRef,
         if (active) 'active': true,
       });
       final msgId = res['msg_id'] as String? ?? localId;
@@ -811,6 +830,7 @@ class AppState extends ChangeNotifier {
     required String name,
     required String kind,
     String? inReplyTo,
+    String? quoteRef,
     bool active = false,
   }) async {
     final client = _client;
@@ -826,6 +846,7 @@ class AppState extends ChangeNotifier {
       direction: 'out',
       msgType: kind,
       inReplyTo: active ? null : inReplyTo,
+      quoteRef: active ? '' : (quoteRef ?? ''),
       pending: true,
       active: active,
     );
@@ -842,6 +863,8 @@ class AppState extends ChangeNotifier {
           'data': base64Encode(data),
         },
         if (!active && inReplyTo != null) 'in_reply_to': inReplyTo,
+        if (!active && quoteRef != null && quoteRef.isNotEmpty)
+          'quote_ref': quoteRef,
         if (active) 'active': true,
       });
       final msgId = res['msg_id'] as String? ?? localId;
@@ -894,6 +917,7 @@ class AppState extends ChangeNotifier {
       peerKind: msg.peerKind,
       text: msg.body.plain,
       inReplyTo: msg.inReplyTo,
+      quoteRef: msg.quoteRef,
       active: msg.active,
     );
   }

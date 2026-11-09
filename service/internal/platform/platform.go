@@ -138,6 +138,7 @@ type SendRequest struct {
 	Peer      Peer
 	Text      string
 	InReplyTo string
+	QuoteRef  string
 }
 
 // Media 是待发送的富媒体；Data 已经在内存里，上限由调用方校验。

@@ -40,6 +40,7 @@ type Message struct {
 	Plain      string
 	Doc        *format.Doc
 	InReplyTo  string
+	QuoteRef   string
 	OperatorID string
 }
 
@@ -144,11 +145,11 @@ func (s *Store) AppendMessage(ctx context.Context, m Message) (inserted bool, er
 	res, err := tx.ExecContext(ctx, `
 INSERT INTO messages (
 	bot_id, msg_id, peer_id, peer_kind, direction, sender_id, sender_name, sender_role,
-	msg_type, ts, body_plain, body_doc, in_reply_to, operator_id, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	msg_type, ts, body_plain, body_doc, in_reply_to, quote_ref, operator_id, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(bot_id, msg_id) DO NOTHING`,
 		m.BotID, m.MsgID, m.PeerID, m.PeerKind, m.Direction, m.SenderID, m.SenderName, m.SenderRole,
-		msgType, ts, m.Plain, doc, m.InReplyTo, m.OperatorID, s.nowMillis())
+		msgType, ts, m.Plain, doc, m.InReplyTo, m.QuoteRef, m.OperatorID, s.nowMillis())
 	if err != nil {
 		return false, fmt.Errorf("store: 写入消息 %s: %w", m.MsgID, err)
 	}
@@ -183,7 +184,7 @@ WHERE excluded.last_ts > peers.last_ts
 func (s *Store) Message(ctx context.Context, botID, msgID string) (Message, error) {
 	row := s.db.QueryRowContext(ctx, `
 SELECT bot_id, msg_id, peer_id, peer_kind, direction, sender_id, sender_name, sender_role,
-       msg_type, ts, body_plain, body_doc, in_reply_to, operator_id
+       msg_type, ts, body_plain, body_doc, in_reply_to, quote_ref, operator_id
 FROM messages WHERE bot_id = ? AND msg_id = ?`, botID, msgID)
 	m, err := scanMessage(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -215,7 +216,7 @@ func (s *Store) Messages(ctx context.Context, q ListQuery) ([]Message, bool, err
 	}
 
 	const cols = `bot_id, msg_id, peer_id, peer_kind, direction, sender_id, sender_name, sender_role,
-	              msg_type, ts, body_plain, body_doc, in_reply_to, operator_id`
+	              msg_type, ts, body_plain, body_doc, in_reply_to, quote_ref, operator_id`
 
 	var (
 		query string
@@ -355,7 +356,7 @@ func scanMessage(r rowScanner) (Message, error) {
 	if err := r.Scan(
 		&m.BotID, &m.MsgID, &m.PeerID, &m.PeerKind, &m.Direction,
 		&m.SenderID, &m.SenderName, &m.SenderRole, &m.Type, &m.TS, &m.Plain,
-		&doc, &m.InReplyTo, &m.OperatorID,
+		&doc, &m.InReplyTo, &m.QuoteRef, &m.OperatorID,
 	); err != nil {
 		return Message{}, err
 	}

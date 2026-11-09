@@ -150,6 +150,11 @@ func (a *Adapter) SendText(
 		payload["msg_id"] = req.InReplyTo
 		payload["msg_seq"] = a.nextSeq()
 	}
+	if req.QuoteRef != "" {
+		payload["message_reference"] = map[string]any{
+			"message_id": req.QuoteRef,
+		}
+	}
 
 	id, err := a.postMessage(ctx, c, path, payload)
 	if err != nil {
@@ -257,6 +262,11 @@ func (a *Adapter) SendMedia(
 	if req.InReplyTo != "" {
 		payload["msg_id"] = req.InReplyTo
 		payload["msg_seq"] = a.nextSeq()
+	}
+	if req.QuoteRef != "" {
+		payload["message_reference"] = map[string]any{
+			"message_id": req.QuoteRef,
+		}
 	}
 	id, err := a.postMessage(ctx, c, path, payload)
 	if err != nil {

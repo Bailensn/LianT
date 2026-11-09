@@ -1,7 +1,7 @@
 name: liant
 description: LianT Manager（Bot Engine 客户端）
 publish_to: none
-version: 1.0.0+96
+version: 1.0.0+97
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -23,6 +23,8 @@ dependencies:
   file_picker: ^8.3.7
   http: ^1.6.0
   image_picker: 1.1.2
+  image_picker_android: 0.8.13+25
+  image_picker_platform_interface: 2.11.2
 
 dev_dependencies:
   flutter_test:

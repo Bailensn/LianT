@@ -3,6 +3,8 @@ import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_picker_android/image_picker_android.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1137,7 +1139,11 @@ class _ChatPageState extends State<ChatPage> {
     try {
       final picked = <_PendingMedia>[];
       if (media) {
-        // 媒体入口走系统媒体选择器，支持一次选择多张图片/视频。
+        // 强制使用 Android Photo Picker；默认的 ACTION_GET_CONTENT 就是文件界面。
+        final platform = ImagePickerPlatform.instance;
+        if (platform is ImagePickerAndroid) {
+          platform.useAndroidPhotoPicker = true;
+        }
         final files = await ImagePicker().pickMultipleMedia(
           requestFullMetadata: false,
         );
@@ -1159,7 +1165,10 @@ class _ChatPageState extends State<ChatPage> {
         );
         for (final file in result?.files ?? const <PlatformFile>[]) {
           final bytes = file.bytes;
-          if (bytes == null) continue;
+          if (bytes == null) {
+            if (mounted) setState(() => _sendError = '读取文件失败：${file.name}');
+            continue;
+          }
           picked.add(
             _PendingMedia(
               bytes: bytes,
@@ -1408,6 +1417,12 @@ class _ChatPageState extends State<ChatPage> {
 
     final peerKind = lastIn?.peerKind ?? 'private';
     final replyTo = passive ? target : null;
+    final quoteRef = _replyTo?.quoteRef ?? '';
+    if (pending.isNotEmpty && target == null) {
+      setState(() => _sendError = '发送媒体前需要先有一条入站消息作为回复目标');
+      _focusInput();
+      return;
+    }
     final jobs = <_QueuedSend>[];
     if (text.isNotEmpty) {
       jobs.add(
@@ -1420,6 +1435,7 @@ class _ChatPageState extends State<ChatPage> {
           name: '',
           kind: '',
           inReplyTo: replyTo,
+          quoteRef: quoteRef,
           active: active,
         ),
       );
@@ -1434,8 +1450,9 @@ class _ChatPageState extends State<ChatPage> {
           bytes: item.bytes,
           name: item.name,
           kind: item.kind,
-          inReplyTo: replyTo,
-          active: active,
+          inReplyTo: target,
+          quoteRef: quoteRef,
+          active: false,
         ),
       );
     }
@@ -1472,6 +1489,7 @@ class _ChatPageState extends State<ChatPage> {
             name: job.name,
             kind: job.kind,
             inReplyTo: job.inReplyTo,
+            quoteRef: job.quoteRef,
             active: job.active,
           );
         } else {
@@ -1481,6 +1499,7 @@ class _ChatPageState extends State<ChatPage> {
             peerKind: job.peerKind,
             text: job.text,
             inReplyTo: job.inReplyTo,
+            quoteRef: job.quoteRef,
             active: job.active,
           );
         }
@@ -1733,10 +1752,9 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _showActions(AppState state, ChatMessage msg) async {
     final colors = context.colors;
-    final list = state.messagesFor(widget.botId, widget.peerId);
-    final mentionName = msg.outgoing
-        ? state.conversationTitle(widget.botId, widget.peerId, list)
-        : (msg.senderName.isNotEmpty ? msg.senderName : shortPeer(msg.senderId));
+    // @ 只对入站消息开放，且只指向发送者；群名不是可 @ 的对象。
+    final mentionName =
+        msg.senderName.isNotEmpty ? msg.senderName : shortPeer(msg.senderId);
     await showLiantSheet<void>(
       context: context,
       title: '消息操作',
@@ -1772,14 +1790,15 @@ class _ChatPageState extends State<ChatPage> {
                 },
               ),
               const SizedBox(height: 8),
+              SecondaryButton(
+                label: '@ ${mentionName.isEmpty ? '对方' : mentionName}',
+                onTap: () {
+                  _insertMention(mentionName.isEmpty ? '对方' : mentionName);
+                  Navigator.of(sheetContext).pop();
+                },
+              ),
+              const SizedBox(height: 8),
             ],
-            SecondaryButton(
-              label: '@ ${mentionName.isEmpty ? '对方' : mentionName}',
-              onTap: () {
-                _insertMention(mentionName.isEmpty ? '对方' : mentionName);
-                Navigator.of(sheetContext).pop();
-              },
-            ),
             const SizedBox(height: 8),
             SecondaryButton(
               label: '复制文本',
@@ -2011,6 +2030,7 @@ class _QueuedSend {
     required this.name,
     required this.kind,
     required this.inReplyTo,
+    required this.quoteRef,
     required this.active,
   });
 
@@ -2022,6 +2042,7 @@ class _QueuedSend {
   final String name;
   final String kind;
   final String? inReplyTo;
+  final String quoteRef;
   final bool active;
 }
 

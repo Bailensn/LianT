@@ -208,6 +208,7 @@ class ChatMessage {
     this.senderName = '',
     this.senderRole = '',
     this.inReplyTo,
+    this.quoteRef = '',
     this.pending = false,
     this.failed = false,
     this.active = false,
@@ -225,6 +226,7 @@ class ChatMessage {
   final String senderName;
   final String senderRole;
   final String? inReplyTo;
+  final String quoteRef;
   final bool pending;
   final bool failed;
   final bool active;
@@ -252,6 +254,7 @@ class ChatMessage {
       senderName: senderName,
       senderRole: senderRole,
       inReplyTo: inReplyTo ?? this.inReplyTo,
+      quoteRef: quoteRef,
       pending: pending ?? this.pending,
       failed: failed ?? this.failed,
       active: active,
@@ -271,6 +274,7 @@ class ChatMessage {
         if (senderName.isNotEmpty) 'sender_name': senderName,
         if (senderRole.isNotEmpty) 'sender_role': senderRole,
         if (inReplyTo != null) 'in_reply_to': inReplyTo,
+        if (quoteRef.isNotEmpty) 'quote_ref': quoteRef,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json, {String? direction}) {
@@ -287,6 +291,7 @@ class ChatMessage {
       senderName: json['sender_name'] as String? ?? '',
       senderRole: json['sender_role'] as String? ?? '',
       inReplyTo: json['in_reply_to'] as String?,
+      quoteRef: json['quote_ref'] as String? ?? '',
     );
   }
 }

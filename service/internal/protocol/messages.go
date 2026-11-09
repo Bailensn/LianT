@@ -209,6 +209,8 @@ type MsgSend struct {
 	Body       Body      `json:"body"`
 	Media      *OutMedia `json:"media,omitempty"`
 	InReplyTo  string    `json:"in_reply_to,omitempty"`
+	// QuoteRef 是 QQ 引用所需的 ref_idx（message_scene.ext 的 msg_idx）。
+	QuoteRef   string    `json:"quote_ref,omitempty"`
 	// Active 表示按主动消息发送：不绑定触发消息，也就没有 @ 和引用样式。
 	// 平台是否允许由 bot.Constraints.can_initiate 与配额决定。
 	Active     bool   `json:"active,omitempty"`
@@ -229,6 +231,9 @@ func (r MsgSend) Validate() error {
 		}
 	} else if err := r.Body.Validate(); err != nil {
 		return err
+	}
+	if r.QuoteRef != "" && r.InReplyTo == "" {
+		return fmt.Errorf("%w: quote_ref 必须配合 in_reply_to", ErrInvalidEnvelope)
 	}
 	return nil
 }
@@ -323,6 +328,8 @@ type MsgInbound struct {
 	Body       Body   `json:"body"`
 	MsgID      string `json:"msg_id"`
 	TS         int64  `json:"ts"`
+	InReplyTo  string `json:"in_reply_to,omitempty"`
+	QuoteRef   string `json:"quote_ref,omitempty"`
 	Direction  string `json:"direction,omitempty"`
 }
 
@@ -408,6 +415,7 @@ type DeviceRevoke struct {
 
 // AuditEntry 是一条安全事件。
 type AuditEntry struct {
+	ID       int64  `json:"id,omitempty"`
 	TS       int64  `json:"ts"`
 	Kind     string `json:"kind"`
 	DeviceID string `json:"device_id,omitempty"`
@@ -418,12 +426,15 @@ type AuditEntry struct {
 
 // AuditList 是 audit.list 的请求。
 type AuditList struct {
-	Limit int `json:"limit,omitempty"`
+	Limit    int   `json:"limit,omitempty"`
+	BeforeTS int64 `json:"before_ts,omitempty"`
+	BeforeID int64 `json:"before_id,omitempty"`
 }
 
 // AuditListOK 是 audit.list 的响应，新的在前。
 type AuditListOK struct {
 	Entries []AuditEntry `json:"entries"`
+	HasMore bool         `json:"has_more"`
 }
 
 // PeerEvent 通知会话资料变化：拿到群名，或需要白名单授权。

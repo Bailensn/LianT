@@ -79,14 +79,23 @@ func (s *Store) migratePostgres(ctx context.Context) error {
 	} else if err != nil {
 		return fmt.Errorf("store: 读取 PostgreSQL schema 版本: %w", err)
 	}
-	if version < 3 {
+	if version > 0 && version < 3 {
+		return fmt.Errorf("store: PostgreSQL schema 版本过旧（%d），请先升级到 v3", version)
+	}
+	if version == 3 {
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE messages ADD COLUMN IF NOT EXISTS quote_ref TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("store: PostgreSQL 迁移到 v4: %w", err)
+		}
+		version = 4
+	}
+	if version < 4 {
 		for _, stmt := range pgSchema {
 			if _, err := tx.ExecContext(ctx, stmt); err != nil {
 				return fmt.Errorf("store: PostgreSQL 建表: %w", err)
 			}
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_meta (id, version) VALUES (1, $1)
-			ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version`, 3); err != nil {
+			ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version`, 4); err != nil {
 			return fmt.Errorf("store: 写入 PostgreSQL schema 版本: %w", err)
 		}
 	}
@@ -141,6 +150,7 @@ var pgSchema = []string{
 		body_plain  TEXT NOT NULL,
 		body_doc    BYTEA,
 		in_reply_to TEXT NOT NULL DEFAULT '',
+		quote_ref   TEXT NOT NULL DEFAULT '',
 		operator_id TEXT NOT NULL DEFAULT '',
 		created_at  BIGINT NOT NULL,
 		PRIMARY KEY (bot_id, msg_id),

@@ -271,6 +271,7 @@ func (c *Core) Send(ctx context.Context, sess server.Session, raw json.RawMessag
 			Peer:      platform.Peer{ID: peer.ID, Kind: peer.Kind},
 			Media:     platform.Media{Kind: kind, Name: req.Media.Name, Data: data},
 			InReplyTo: req.InReplyTo,
+			QuoteRef:  req.QuoteRef,
 		})
 		if err != nil {
 			return nil, &protocol.Error{
@@ -299,6 +300,7 @@ func (c *Core) Send(ctx context.Context, sess server.Session, raw json.RawMessag
 			Peer:      platform.Peer{ID: peer.ID, Kind: peer.Kind},
 			Text:      plain,
 			InReplyTo: req.InReplyTo,
+			QuoteRef:  req.QuoteRef,
 		})
 		if err != nil {
 			return nil, &protocol.Error{
@@ -550,6 +552,7 @@ func (c *Core) Ingest(ctx context.Context, botID string, in platform.Inbound) (b
 		TS:         ts,
 		Plain:      in.Text,
 		Doc:        in.Doc,
+		QuoteRef:   in.QuoteRef,
 	}
 	inserted, err := c.opt.Store.AppendMessage(ctx, msg)
 	if err != nil {
@@ -750,6 +753,8 @@ func toProtocolMessage(m store.Message) protocol.MsgInbound {
 		Body:       protocol.Body{Plain: m.Plain, Doc: m.Doc},
 		MsgID:      m.MsgID,
 		TS:         m.TS,
+		InReplyTo:  m.InReplyTo,
+		QuoteRef:   m.QuoteRef,
 		Direction:  m.Direction,
 	}
 }
