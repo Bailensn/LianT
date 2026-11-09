@@ -435,6 +435,63 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  Widget _fileBubble(BuildContext context, String name, bool outgoing) {
+    final colors = context.colors;
+    final fileName = name.isEmpty ? '未命名文件' : name;
+    final extension = fileName.contains('.')
+        ? fileName.split('.').last.toUpperCase()
+        : 'FILE';
+    final foreground = outgoing ? Colors.white : colors.accent;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 190, maxWidth: 280),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Container(
+            width: 42,
+            height: 42,
+            decoration: SquircleBoxDecoration(
+              color: outgoing
+                  ? Colors.white.withOpacity(0.18)
+                  : colors.accent.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Icon(Icons.insert_drive_file_rounded, size: 23, color: foreground),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                LText(
+                  fileName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: outgoing ? Colors.white : colors.text,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                LText(
+                  '$extension 文件',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: outgoing
+                        ? Colors.white.withOpacity(0.72)
+                        : colors.text3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _imageBubble(BuildContext context, ImageProvider provider) {
     return GestureDetector(
       onTap: () => _openFullscreenImage(context, provider),
@@ -553,10 +610,10 @@ class _ChatPageState extends State<ChatPage> {
         );
       }
     } else if (fileLike) {
-      final name = msg.body.plain.trim();
-      content = LText(
-        name.isEmpty ? '[文件]' : '[文件] $name',
-        style: TextStyle(fontSize: 15, color: outgoing ? Colors.white : colors.text),
+      content = _fileBubble(
+        context,
+        msg.body.plain.trim(),
+        outgoing,
       );
     } else if (videoLike) {
       content = LText(
