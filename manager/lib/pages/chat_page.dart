@@ -206,15 +206,8 @@ class _ChatPageState extends State<ChatPage> {
         if (m.msgId.isNotEmpty) m.msgId: m,
     };
     final title = state.conversationTitle(widget.botId, widget.peerId, list);
-    final lastIn = _lastInbound(list);
-    final windowSeconds = bot?.constraints.replyWindowS;
-    int? windowLeft;
-    if (windowSeconds != null && lastIn != null) {
-      final deadline = lastIn.ts + windowSeconds * 1000;
-      windowLeft = ((deadline - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
-    }
     final topInset = MediaQuery.paddingOf(context).top;
-    final headerHeight = _collapsed ? 56.0 : 76.0;
+    const headerHeight = 56.0;
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -243,13 +236,7 @@ class _ChatPageState extends State<ChatPage> {
             top: 0,
             left: 0,
             right: 0,
-            child: _header(
-              context,
-              state,
-              bot,
-              title,
-              windowLeft,
-            ),
+            child: _header(context, state, title),
           ),
           Positioned(
             top: 0,
@@ -714,23 +701,8 @@ class _ChatPageState extends State<ChatPage> {
     Navigator.of(context).maybePop();
   }
 
-  Widget _header(
-    BuildContext context,
-    AppState state,
-    Bot? bot,
-    String title,
-    int? windowLeft,
-  ) {
+  Widget _header(BuildContext context, AppState state, String title) {
     final colors = context.colors;
-    final hint = state.peerHints[_key];
-    final subtitle = hint == 'whitelist' ? '群名需 QQ 白名单授权' : widget.peerId;
-    final botLine = <String>[
-      bot?.title ?? widget.botId,
-      if (windowLeft != null)
-        windowLeft > 0
-            ? '回复窗口 ${formatCountdown(windowLeft)}'
-            : '回复窗口已过',
-    ].join(' · ');
 
     return ColoredBox(
       color: colors.bg,
@@ -738,7 +710,7 @@ class _ChatPageState extends State<ChatPage> {
         bottom: false,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-        height: _collapsed ? 56 : 76,
+        height: 56,
         child: ClipRect(
           child: BackdropFilter(
             filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
@@ -785,27 +757,6 @@ class _ChatPageState extends State<ChatPage> {
                             color: colors.text,
                           ),
                         ),
-                        if (!_collapsed) ...<Widget>[
-                          const SizedBox(height: 1),
-                          LText(
-                            subtitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 11, color: colors.text3),
-                          ),
-                          LText(
-                            botLine,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colors.text2,
-                              fontFeatures: const <FontFeature>[
-                                FontFeature.tabularFigures(),
-                              ],
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ),
