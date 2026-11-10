@@ -1,10 +1,11 @@
 name: liant
 description: LianT Manager（Bot Engine 客户端）
 publish_to: none
-version: 1.0.0+101
+version: 1.0.0+102
 
 environment:
-  sdk: '>=3.4.0 <4.0.0'
+  # CI 用 Flutter 3.24.5（Dart 3.5.4）；升 SDK 时会一起抬。
+  sdk: '>=3.5.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -14,14 +15,14 @@ dependencies:
   cupertino_icons: ^1.0.8
   # 协议层的 SHA-256；签名/验签用的 P-256 在 lib/core/p256.dart 里自己实现，
   # 这样 Web 与 Android 两边的行为完全一致，也不会被插件版本拖累。
-  crypto: ^3.0.3
+  crypto: ^3.0.6
   # 2.5 起要求 Flutter 3.41，钉在 2.3.x 以同时兼容 CI 的 3.24.5。
   hive: 2.2.3
   hive_flutter: 1.1.0
   shared_preferences: '>=2.3.0 <2.4.0'
   web_socket_channel: ^3.0.1
   # 只在 Web 上用来读地址栏参数（预览用），其它平台走条件导入的空实现。
-  web: ^1.0.0
+  web: ^1.1.0
   file_picker: ^8.3.7
   http: ^1.6.0
   image_picker: 1.1.2
@@ -32,7 +33,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
+  flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true

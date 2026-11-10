@@ -157,6 +157,30 @@ GitHub Secrets：
 日常 CI：`.github/workflows/ci.yml`，只发 pre-release。
 `workflow_dispatch` 会跑全部 job；路径检测已修成多行。
 
+### 构建工具链（2026-11 整理）
+
+| 项 | 版本 | 说明 |
+| --- | --- | --- |
+| Flutter | 3.24.5（Dart 3.5.4） | CI 钉死；最新稳定已是 3.47.9 |
+| AGP | 8.5.2 | Flutter 3.24.5 支持到 8.5 |
+| Gradle | 8.7 | 同上，模板上限 |
+| Kotlin | 1.9.24 | 配合 AGP 8.5 |
+| Java | 17 | compileOptions / jvmTarget |
+| compileSdk | 34 | 跟随 `flutter.compileSdkVersion` |
+
+- release 只在 `ndk.abiFilters` 里保留 `arm64-v8a`。`--target-platform` 只管 Flutter
+  引擎和 `libapp.so`，管不到依赖 AAR 自带的 `.so`：ML Kit 条码（mobile_scanner）、
+  CameraX、DataStore 每个都带四套 ABI，不裁的话 APK 白胖约 6 MB（压缩后）。
+- `android.enableJetifier` 和 `android.newDsl` / `android.builtInKotlin` 已删：前两个
+  是 AGP 9 的开关，当前 AGP 8.5 用不到；Jetifier 没有旧 support 库要转换。
+- 根 `build.gradle` 改用 `layout.buildDirectory`（`buildDir` 在 Gradle 9 会被删）。
+- **还没升到 Flutter 3.47 的原因**：AGP 9.1 + Gradle 9.3.1 + Kotlin 2.4 是新模板，
+  而且 `mobile_scanner` 5→7、`image_picker` 等插件的 Dart API 会变（扫码页要重写），
+  属于单独一次迁移，不是改配置就能收尾的。
+- **注意 `pubspec.lock` 是 3.47 生成的**（`sdks: dart: >=3.13.0`），CI 用 3.24.5
+  跑 `flutter pub get` 会静默降级一批依赖。要么把 CI 也升上去，要么在 3.24.5 上
+  重新生成 lock 并提交，别让两边不一致。
+
 **本地不要直接在 `/storage/emulated/0` 跑 `flutter build apk`**：
 `android/gradlew` 没有执行权限，Flutter 会报
 `lacked sufficient permissions to execute`。而且这台机器上没有 Flutter/JDK，
