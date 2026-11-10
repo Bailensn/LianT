@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../core/net/client.dart';
 import '../core/net/message_client.dart';
+import '../core/platform/crash_log.dart';
 import '../core/net/protocol.dart';
 import '../ui/format.dart';
 import '../ui/tokens.dart';
@@ -54,6 +55,7 @@ class SettingsPage extends StatelessWidget {
               onTap: state.reconnect,
             ),
           const _BackgroundStatusRow(),
+          const _LastErrorRow(),
           _SettingsRow(
             title: '消息连接',
             subtitle: state.usesBackgroundBridge
@@ -362,6 +364,53 @@ class _BackgroundStatusRowState extends State<_BackgroundStatusRow> {
     return _SettingsRow(
       title: '后台服务',
       subtitle: _subtitle,
+      onTap: _refresh,
+    );
+  }
+}
+
+/// 最近一条未捕获错误（有的话），用来解释「上次怎么没的」。
+class _LastErrorRow extends StatefulWidget {
+  const _LastErrorRow();
+
+  @override
+  State<_LastErrorRow> createState() => _LastErrorRowState();
+}
+
+class _LastErrorRowState extends State<_LastErrorRow> {
+  String? _error;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final text = await readLastError();
+    if (!mounted) return;
+    setState(() {
+      _error = text;
+      _loaded = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) {
+      return const _SettingsRow(title: '最近的错误', subtitle: '读取中…');
+    }
+    final error = _error;
+    if (error == null) {
+      return const _SettingsRow(title: '最近的错误', subtitle: '无');
+    }
+    final firstLine = error.split('\n').first;
+    return _SettingsRow(
+      title: '最近的错误',
+      subtitle: firstLine.length > 120
+          ? '${firstLine.substring(0, 120)}…'
+          : firstLine,
       onTap: _refresh,
     );
   }

@@ -27,6 +27,8 @@ class MainActivity : FlutterActivity() {
                         result.success(MessageService.stateFile(this).absolutePath)
                     "bridgePath" ->
                         result.success(MessageService.bridgeFile(this).absolutePath)
+                    "logPath" ->
+                        result.success(MessageService.logFile(this).absolutePath)
                     else -> result.notImplemented()
                 }
             }

@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/app_state.dart';
 import 'core/background/runtime.dart';
+import 'core/platform/crash_log.dart';
 import 'core/net/client.dart';
 import 'pages/bots_page.dart';
 import 'pages/chats_page.dart';
@@ -24,6 +25,16 @@ import 'ui/squircle.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 未捕获的异步错误默认会把整个进程打掉（Android 上就是「闪退」）：
+  // 先落盘再吞掉，至少下次能在设置页里看到原因。
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    unawaited(recordError(error, stack));
+    return true;
+  };
+  FlutterError.onError = (details) {
+    unawaited(recordError(details.exception, details.stack));
+    FlutterError.presentError(details);
+  };
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   // Web 版默认要用户点一下才开启语义树；这里直接打开，
   // 无障碍、AI 浏览器的 DOM 快照与自动化都依赖它。
@@ -44,10 +55,19 @@ Future<void> main() async {
 /// `vm:entry-point` 保证摇树优化不会删掉它。
 @pragma('vm:entry-point')
 void backgroundMain() {
-  // 后台引擎没有 View，但平台通道需要 binding；Flutter 3.24 的
-  // RendererBinding 只在真正用到 renderView 时才要求 implicitView，这里安全。
+  // 后台引擎没有 View，平台通道需要 binding。
   WidgetsFlutterBinding.ensureInitialized();
-  unawaited(startBackgroundRuntime());
+  // 后台 isolate 里没人接的异常同样会打死进程，统一记下来再吞掉。
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    unawaited(recordError(error, stack));
+    return true;
+  };
+  FlutterError.onError = (details) {
+    unawaited(recordError(details.exception, details.stack));
+  };
+  unawaited(startBackgroundRuntime().catchError((Object error, StackTrace stack) async {
+    await recordError(error, stack);
+  }));
 }
 
 class LiantApp extends StatefulWidget {

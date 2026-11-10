@@ -107,6 +107,7 @@ class MessageService : Service() {
                 when (call.method) {
                     "statePath" -> result.success(stateFile(this).absolutePath)
                     "bridgePath" -> result.success(bridgeFile(this).absolutePath)
+                    "logPath" -> result.success(logFile(this).absolutePath)
                     else -> result.notImplemented()
                 }
             }
@@ -303,6 +304,10 @@ class MessageService : Service() {
         /** 后台进程写给 UI 的桥接信息（本地端口 + 令牌）。 */
         fun bridgeFile(context: Context): File =
             File(context.filesDir, "liant_bridge.json")
+
+        /** 未捕获异常落盘的位置（UI 与 :background 进程共用）。 */
+        fun logFile(context: Context): File =
+            File(context.filesDir, "liant_crash.log")
 
         /** 用前台服务的方式拉起；Android 12+ 后台可能被拒绝，调用方自己兜住异常。 */
         fun start(context: Context, action: String? = null) {
