@@ -157,29 +157,38 @@ GitHub Secrets：
 日常 CI：`.github/workflows/ci.yml`，只发 pre-release。
 `workflow_dispatch` 会跑全部 job；路径检测已修成多行。
 
-### 构建工具链（2026-11 整理）
+### 构建工具链（2026-11：升到 Flutter 3.47.9）
 
 | 项 | 版本 | 说明 |
 | --- | --- | --- |
-| Flutter | 3.24.5（Dart 3.5.4） | CI 钉死；最新稳定已是 3.47.9 |
-| AGP | 8.5.2 | Flutter 3.24.5 支持到 8.5 |
-| Gradle | 8.7 | 同上，模板上限 |
-| Kotlin | 1.9.24 | 配合 AGP 8.5 |
-| Java | 17 | compileOptions / jvmTarget |
-| compileSdk | 34 | 跟随 `flutter.compileSdkVersion` |
+| Flutter | 3.47.9（Dart 3.13.7） | CI 与 `pubspec.lock` 终于对齐了 |
+| AGP | 9.1.0 | 3.47.9 模板值 |
+| Gradle | 9.3.1 | 3.47.9 模板值 |
+| Kotlin | 2.4.0 | 3.47.9 模板值；app 里用 `kotlin.compilerOptions` 定 jvmTarget |
+| Java | 17 | `compileOptions` / jvmTarget |
+| compileSdk / targetSdk | 36 / 36 | 跟随 `flutter.*` |
+| minSdk | 24 | Flutter 3.47 的下限（原来 21） |
 
-- release 只在 `ndk.abiFilters` 里保留 `arm64-v8a`。`--target-platform` 只管 Flutter
-  引擎和 `libapp.so`，管不到依赖 AAR 自带的 `.so`：ML Kit 条码（mobile_scanner）、
-  CameraX、DataStore 每个都带四套 ABI，不裁的话 APK 白胖约 6 MB（压缩后）。
-- `android.enableJetifier` 和 `android.newDsl` / `android.builtInKotlin` 已删：前两个
-  是 AGP 9 的开关，当前 AGP 8.5 用不到；Jetifier 没有旧 support 库要转换。
-- 根 `build.gradle` 改用 `layout.buildDirectory`（`buildDir` 在 Gradle 9 会被删）。
-- **还没升到 Flutter 3.47 的原因**：AGP 9.1 + Gradle 9.3.1 + Kotlin 2.4 是新模板，
-  而且 `mobile_scanner` 5→7、`image_picker` 等插件的 Dart API 会变（扫码页要重写），
-  属于单独一次迁移，不是改配置就能收尾的。
-- **注意 `pubspec.lock` 是 3.47 生成的**（`sdks: dart: >=3.13.0`），CI 用 3.24.5
-  跑 `flutter pub get` 会静默降级一批依赖。要么把 CI 也升上去，要么在 3.24.5 上
-  重新生成 lock 并提交，别让两边不一致。
+迁移时踩到、别再踩的坑：
+
+- **ABI 裁剪**：`defaultConfig.ndk.abiFilters` 和 buildTypes 里的 `ndk.abiFilters` 都**没用**，
+  因为 `FlutterPlugin.configureAbiWithoutSplits()` 会在 afterEvaluate 里把 abiFilters
+  重置成 Flutter 支持的全部 ABI（armeabi-v7a / arm64-v8a / x86_64）。真正生效的是
+  `packaging.jniLibs.excludes += "lib/x86_64/**"` 这类打包层过滤。
+  否则 ML Kit 条码（mobile_scanner）、CameraX、DataStore、dartjni 各自的 .so 会带三套。
+- **插件 compileSdk**：老插件的 Android 模块还写着 compileSdk 34，而
+  `flutter_plugin_android_lifecycle` / AndroidX 已要求 36，AGP 9 的 AAR metadata 检查会
+  直接失败。根 `build.gradle.kts` 里统一把 `LibraryExtension.compileSdk` 覆盖成 36。
+  这个 `afterEvaluate` 必须放在 `evaluationDependsOn(":app")` **之前**，否则报
+  "Cannot run Project.afterEvaluate when the project is already evaluated"。
+- **.so 压缩**：AGP 9 默认 `extractNativeLibs=false`（不压缩），APK 会大一倍；
+  `packaging.jniLibs.useLegacyPackaging = true` 换回压缩，侧载分发更在意下载体积。
+- 构建脚本已从 Groovy 换成 Kotlin DSL（`build.gradle.kts` / `settings.gradle.kts` /
+  `app/build.gradle.kts`），与 3.47.9 模板一致。
+- `mobile_scanner 5.2.3` 还在用 Kotlin Gradle Plugin，构建会打印
+  "migrate to Built-in Kotlin" 警告（目前只是警告）。升到 7.x 会改扫码页 API，没做。
+- 依赖基本没动（`shared_preferences` 仍是 2.3.x、`mobile_scanner` 5.x），
+  先保证「同代码、同行为、新工具链」。要升插件大版本另开一次。
 
 **本地不要直接在 `/storage/emulated/0` 跑 `flutter build apk`**：
 `android/gradlew` 没有执行权限，Flutter 会报
