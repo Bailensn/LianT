@@ -1,7 +1,7 @@
 // 机器人页：列表、状态、启停、添加与移除。
 import 'package:flutter/material.dart';
 
-import '../core/protocol.dart';
+import '../core/net/protocol.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
 import '../l10n/ltext.dart';

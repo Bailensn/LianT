@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../core/protocol.dart';
+import '../core/net/protocol.dart';
 import '../l10n/ltext.dart';
 import '../ui/format.dart';
 import '../ui/tokens.dart';

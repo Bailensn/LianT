@@ -11,14 +11,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../l10n/l10n.dart';
-import 'background_service.dart';
-import 'background_state.dart';
-import 'client.dart';
-import 'identity.dart';
-import 'message_client.dart';
-import 'p256.dart';
-import 'protocol.dart';
-import 'socket.dart';
+import 'background/service.dart';
+import 'background/state.dart';
+import 'identity/identity.dart';
+import 'identity/p256.dart';
+import 'net/client.dart';
+import 'net/message_client.dart';
+import 'net/protocol.dart';
+import 'net/socket.dart';
 
 /// 媒体加载状态。
 class MediaState {

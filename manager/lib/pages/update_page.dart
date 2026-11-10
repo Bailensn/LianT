@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../core/background_service.dart';
-import '../core/update_service.dart';
-import '../core/version.dart';
+import '../core/background/service.dart';
+import '../core/platform/update_service.dart';
+import '../core/platform/version.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
 import '../l10n/ltext.dart';

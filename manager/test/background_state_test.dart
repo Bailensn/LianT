@@ -3,10 +3,10 @@
 // 这两块是跨进程正确性的关键：状态文件要能原样读回，通知 ID 在
 // UI 进程和 :background 进程里必须算出同一个值（否则同一条消息会弹两次）。
 import 'package:flutter_test/flutter_test.dart';
-import 'package:liant/core/background_state.dart';
-import 'package:liant/core/identity.dart';
-import 'package:liant/core/p256.dart';
-import 'package:liant/core/protocol.dart';
+import 'package:liant/core/background/state.dart';
+import 'package:liant/core/identity/identity.dart';
+import 'package:liant/core/identity/p256.dart';
+import 'package:liant/core/net/protocol.dart';
 
 Identity _identity() {
   final key = p256GenerateKey();

@@ -9,6 +9,34 @@ Manager 版本：`1.0.0+103`，versionCode `103`。
 - `manager-v1.0.0-101`：前台服务改 `specialUse` + 后台独占 WebSocket、本地桥接转发
 - `manager-v1.0.0-103`：Flutter 3.47.9 / AGP 9.1 / Gradle 9.3.1 / Kotlin 2.4（同代码、新工具链）
 
+### 代码结构（`lib/`）
+
+```
+lib/
+  main.dart              入口 + backgroundMain（后台引擎入口，不能挪）
+  core/
+    app_state.dart       应用状态根（连接、Bot、消息、设备、审计、本地备注）
+    net/                 协议与连接
+      protocol.dart        信封/数据结构、convKey、通知 ID
+      client_api.dart      MessageClient 接口 + ConnState
+      client.dart          直连实现 LiantClient
+      socket*.dart         WebSocket 的 io/web 条件分支
+      message_client*.dart 选桥接还是直连（io/web 条件分支）
+    background/          独立进程相关
+      service.dart         UI → 原生通道（启动/停止/通知）
+      state*.dart          跨进程共享状态文件（io/stub）
+      runtime*.dart        后台消息循环（io/stub）
+      bridge_*.dart        本地桥接：协议、端口信息、服务端、客户端
+    identity/            身份与密码学
+      identity.dart        设备身份、配对信息解析
+      p256.dart            P-256 签名/验签（自己实现，Web 与 Android 一致）
+    platform/            平台差异
+      browser_env*.dart    地址栏参数（Web 用）
+      version.dart         版本号
+      update_service.dart  检查更新
+  l10n/  pages/  ui/     文案、页面、设计系统
+```
+
 先看 `git status`。工作区可能有一处未提交的
 `manager/android/gradle.properties`，是 Flutter migrator 自动加的
 `android.builtInKotlin=false`、`android.newDsl=false`，不要盲目提交。
@@ -39,9 +67,9 @@ UI 进程                                :background 进程（MessageService）
   `foregroundServiceType="specialUse"`（类型说明见 §一.4）。
 - Dart 入口 `backgroundMain` **放在 `lib/main.dart`**，不能挪走：AOT 按函数名在
   **根库**里找入口，放在没人 import 的文件里会被摇树删掉。后台逻辑在
-  `lib/core/background_runtime_io.dart`。
-- 桥接：`lib/core/bridge_server_io.dart`（后台）/ `bridge_client_io.dart`（UI），
-  协议在 `bridge_protocol.dart`，端口与令牌在 `liant/background_state` 通道
+  `lib/core/background/runtime_io.dart`。
+- 桥接：`lib/core/background/bridge_server.dart`（后台）/ `bridge_client.dart`（UI），
+  协议在 `background/bridge_protocol.dart`，端口与令牌在 `liant/background_state` 通道
   给出的 `liant_bridge.json` 里。UI 的请求（bot.list / msg.send / state.snapshot …）
   全部经桥接转给后台进程，再由那条唯一的 WebSocket 发出去。
 
@@ -49,7 +77,7 @@ UI 进程                                :background 进程（MessageService）
 
 - 后台进程 `LiantClient` 收到的 `msg.inbound` / `event.*` / `auth.ok` 全部
   通过桥接 `broadcastEvent` 实时转给 UI；连接状态用 `broadcastState`。
-- UI 进程的 `AppState` 拿到的是 `MessageClient` 接口（`client_api.dart`），
+- UI 进程的 `AppState` 拿到的是 `MessageClient` 接口（`net/client_api.dart`），
   实现可以是直连 `LiantClient`，也可以是 `BridgeMessageClient`。
 - 降级：Android 上 `createMessageClient()` 先等桥接最多 6 秒，等不到就直连，
   并在设置页「消息连接」显示「主进程直连（后台服务未就绪）」。回到前台时如果

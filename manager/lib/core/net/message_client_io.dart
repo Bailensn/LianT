@@ -2,10 +2,10 @@
 // 让全 App 只有后台进程那一条 WebSocket；桥接连不上才降级直连。
 import 'dart:io';
 
-import 'bridge_client_io.dart';
-import 'bridge_info_io.dart';
+import '../background/bridge_client.dart';
+import '../background/bridge_info.dart';
 import 'client.dart';
-import 'identity.dart';
+import '../identity/identity.dart';
 import 'protocol.dart';
 
 /// 建连接客户端。

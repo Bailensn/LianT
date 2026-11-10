@@ -8,8 +8,8 @@ import 'dart:io';
 import 'dart:math';
 
 import 'bridge_protocol.dart';
-import 'client_api.dart';
-import 'protocol.dart';
+import '../net/client_api.dart';
+import '../net/protocol.dart';
 
 /// 一条本地 TCP 桥接，JSON 行协议。
 class BridgeServer {

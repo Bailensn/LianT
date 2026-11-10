@@ -11,7 +11,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:liant/core/p256.dart';
+import 'package:liant/core/identity/p256.dart';
 
 int _seq = 0;
 final Random _random = Random.secure();

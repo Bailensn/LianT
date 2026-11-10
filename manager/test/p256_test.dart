@@ -2,8 +2,8 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:liant/core/identity.dart';
-import 'package:liant/core/p256.dart';
+import 'package:liant/core/identity/identity.dart';
+import 'package:liant/core/identity/p256.dart';
 
 // openssl ecparam -name prime256v1 -genkey / dgst -sha256 -sign 生成。
 const _opensslPubDer =

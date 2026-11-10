@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/app_state.dart';
-import '../core/protocol.dart';
+import '../core/net/protocol.dart';
 import '../ui/format.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';

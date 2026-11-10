@@ -3,13 +3,13 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:liant/core/bridge_client_io.dart';
-import 'package:liant/core/bridge_info_io.dart';
-import 'package:liant/core/bridge_server_io.dart';
-import 'package:liant/core/client_api.dart';
-import 'package:liant/core/identity.dart';
-import 'package:liant/core/p256.dart';
-import 'package:liant/core/protocol.dart';
+import 'package:liant/core/background/bridge_client.dart';
+import 'package:liant/core/background/bridge_info.dart';
+import 'package:liant/core/background/bridge_server.dart';
+import 'package:liant/core/net/client_api.dart';
+import 'package:liant/core/identity/identity.dart';
+import 'package:liant/core/identity/p256.dart';
+import 'package:liant/core/net/protocol.dart';
 
 Identity _identity() {
   final key = p256GenerateKey();

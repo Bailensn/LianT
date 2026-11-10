@@ -4,7 +4,7 @@
 //   - LiantClient（直连）：Web/桌面，以及 Android 上后台服务不可用时的降级；
 //   - BridgeMessageClient（桥接）：Android 正常路径，真正的 WebSocket 在
 //     `:background` 进程里，UI 进程通过本地桥接拿事件、发请求。
-import 'identity.dart';
+import '../identity/identity.dart';
 
 /// 连接状态，界面按它渲染顶部说明条。
 enum ConnState { idle, connecting, online, reconnecting, error }

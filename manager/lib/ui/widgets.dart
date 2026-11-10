@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/app_state.dart';
-import '../core/protocol.dart';
+import '../core/net/protocol.dart';
 import 'tokens.dart';
 import '../l10n/l10n.dart';
 import '../l10n/ltext.dart';

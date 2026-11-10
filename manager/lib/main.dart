@@ -10,8 +10,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/app_state.dart';
-import 'core/background_runtime.dart';
-import 'core/client.dart';
+import 'core/background/runtime.dart';
+import 'core/net/client.dart';
 import 'pages/bots_page.dart';
 import 'pages/chats_page.dart';
 import 'pages/pair_page.dart';

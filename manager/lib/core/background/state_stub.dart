@@ -1,7 +1,7 @@
 // Web/桌面：没有独立后台进程，这里全是空实现。
 //
 // 与 background_state_io.dart 保持同一套签名，调用方不用关心平台。
-import 'identity.dart';
+import '../identity/identity.dart';
 
 class BackgroundState {
   const BackgroundState({

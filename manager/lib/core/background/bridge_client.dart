@@ -6,11 +6,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'bridge_info_io.dart';
+import 'bridge_info.dart';
 import 'bridge_protocol.dart';
-import 'client_api.dart';
-import 'identity.dart';
-import 'protocol.dart';
+import '../net/client_api.dart';
+import '../identity/identity.dart';
+import '../net/protocol.dart';
 
 class _PendingBridge {
   _PendingBridge(this.completer, this.timer);

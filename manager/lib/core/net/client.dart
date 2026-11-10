@@ -9,8 +9,8 @@ import 'dart:math';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'client_api.dart';
-import 'identity.dart';
-import 'p256.dart';
+import '../identity/identity.dart';
+import '../identity/p256.dart';
 import 'protocol.dart';
 import 'socket.dart';
 

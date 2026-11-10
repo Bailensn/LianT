@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-import '../core/browser_env.dart';
-import '../core/identity.dart';
-import '../core/protocol.dart';
+import '../core/platform/browser_env.dart';
+import '../core/identity/identity.dart';
+import '../core/net/protocol.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
 import '../l10n/l10n.dart';

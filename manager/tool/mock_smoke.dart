@@ -3,7 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:liant/core/p256.dart';
+import 'package:liant/core/identity/p256.dart';
 
 Future<void> main(List<String> args) async {
   final uri = Uri.parse(args.isNotEmpty ? args[0] : 'ws://127.0.0.1:8099/v1/ws');

@@ -10,12 +10,12 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
-import 'background_state.dart';
-import 'bridge_info_io.dart';
-import 'bridge_server_io.dart';
-import 'client.dart';
-import 'identity.dart';
-import 'protocol.dart';
+import 'state.dart';
+import 'bridge_info.dart';
+import 'bridge_server.dart';
+import '../net/client.dart';
+import '../identity/identity.dart';
+import '../net/protocol.dart';
 
 /// 后台进程自己的原生通道（MessageService 注册）。
 const MethodChannel _notifyChannel = MethodChannel('liant/background_notify');

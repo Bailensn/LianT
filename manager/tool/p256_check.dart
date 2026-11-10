@@ -9,7 +9,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:liant/core/p256.dart';
+import 'package:liant/core/identity/p256.dart';
 
 Future<void> main(List<String> args) async {
   if (args.length != 4) {

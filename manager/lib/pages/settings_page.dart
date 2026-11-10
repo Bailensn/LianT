@@ -1,8 +1,8 @@
 // 设置页：连接信息、已配对设备、安全日志、解除配对。
 import 'package:flutter/material.dart';
 
-import '../core/client.dart';
-import '../core/protocol.dart';
+import '../core/net/client.dart';
+import '../core/net/protocol.dart';
 import '../ui/format.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';

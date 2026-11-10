@@ -10,7 +10,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
-import 'identity.dart';
+import '../identity/identity.dart';
 
 /// 原生侧用来回答「状态文件在哪」的通道；MainActivity 与 MessageService 都注册。
 const MethodChannel _stateChannel = MethodChannel('liant/background_state');
