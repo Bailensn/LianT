@@ -153,6 +153,18 @@ adb shell kill <PID>
 adb reboot   # 开机后不打开 App，直接发消息
 ```
 
+## 一.5 下一步：核心搬 Kotlin（等你开工）
+
+用户已拍板方向：**Flutter 只做界面，网络/协议/签名/身份/存储/通知全搬 Kotlin**，
+后台进程不再起第二个 FlutterEngine（内存 50 MB → 15–20 MB）。
+
+完整施工说明见 **[`docs/NATIVE-CORE.md`](NATIVE-CORE.md)**：目标结构、要搬的文件与行数、
+协议细节（握手/签名/桥接帧）、三步迁移、风险清单。这里只记三条：
+
+1. 沿用现有 TCP 桥接，Dart 的 `BridgeMessageClient` 不用改；`AppState` 留在 Dart。
+2. 第一步只做「Kotlin 连接 + 认证」，用 `liant_crash.log` 看结果，不动现有链路。
+3. 认证是否通过只能真机验证；DER/SPKI/base64 差一个字节就失败。
+
 ## 二、已经完成的功能
 
 - 协议 v1：WSS 握手、P-256 自证、消息、媒体、设备、审计
