@@ -215,7 +215,7 @@ sender_role?, msg_type, body, msg_id, ts, in_reply_to?, quote_ref?, direction?`
 - `peer_kind` ∈ `private/group/channel`，决定界面是单聊还是群聊。
 - `sender_role` ∈ `owner/admin/member`（QQ 需要成员信息接口权限，拿不到就为空）。
 - `msg_type` ∈ `text/image/video/audio/file`；媒体消息的 `body.plain` 是说明文字或文件名。
-- 入站带了 `to_me`/`mentioned` 语义时通过 `to_me` 生效（QQ 只推 @ 到机器人的群消息）。
+- QQ 只推送「@ 到机器人」的群消息，所以入站本身就代表「被提及」。
 
 **`msg.list`**：游标 `{ts, msg_id}`，`before` 往前翻、`after` 往后补（两者不能同时出现），
 `limit` 0–100（0 用服务端默认）；返回 `has_more`。服务端按 `(ts, msg_id)` 稳定排序，
