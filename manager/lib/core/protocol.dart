@@ -379,6 +379,17 @@ class Retention {
 /// 会话键：协议规定 peer_id 只在单个 bot 内唯一，所以永远带 bot。
 String convKey(String botId, String peerId) => '$botId|$peerId';
 
+/// 通知 ID：同一条消息在 UI 进程和 `:background` 进程里必须算出同一个值，
+/// 两边才不会各弹一次。这里用固定的 FNV-1a，不依赖 String.hashCode 的实现。
+int notificationIdFor(String msgId) {
+  var hash = 0x811c9dc5;
+  for (final unit in msgId.codeUnits) {
+    hash ^= unit;
+    hash = (hash * 0x01000193) & 0x7fffffff;
+  }
+  return hash == 0 ? 1 : hash;
+}
+
 /// openid 很长，标题只显示后 6 位。
 String shortPeer(String peerId) {
   final raw = peerId.contains(':') ? peerId.split(':').skip(1).join(':') : peerId;

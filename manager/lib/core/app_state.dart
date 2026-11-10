@@ -12,6 +12,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../l10n/l10n.dart';
 import 'background_service.dart';
+import 'background_state.dart';
 import 'client.dart';
 import 'identity.dart';
 import 'p256.dart';
@@ -76,6 +77,7 @@ class AppState extends ChangeNotifier {
   bool _booted = false;
   bool _syncing = false;
   Timer? _saveTimer;
+  Timer? _bgStateTimer;
   AppLifecycleListener? _lifecycle;
 
   Identity? identity;
@@ -159,14 +161,15 @@ class AppState extends ChangeNotifier {
           return;
         }
         _setForeground(false);
-        if (state == AppLifecycleState.detached) {
-          unawaited(stopMessageService());
-        } else if (identity != null) {
+        // 注意：detached（Activity 销毁、划掉任务）时**不能**停服务，
+        // 后台进程存在的意义就是 UI 进程没了它还继续收消息。
+        if (state != AppLifecycleState.detached && identity != null) {
           unawaited(startMessageService());
         }
       },
     );
     _booted = true;
+    _syncBackgroundState(immediate: true);
     notifyListeners();
     if (identity != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -223,6 +226,7 @@ class AppState extends ChangeNotifier {
     }
     identity = id;
     await _prefs.setString(_kIdentity, jsonEncode(id.toJson()));
+    _syncBackgroundState(immediate: true);
     error = '';
     notifyListeners();
     unawaited(startMessageService());
@@ -368,6 +372,9 @@ class AppState extends ChangeNotifier {
     await _prefs.remove(_kIdentity);
     await _prefs.remove(_kMessages);
     await _messageBox?.clear();
+    // 后台进程属于「已配对」状态：停服务、删共享状态，避免它继续用旧身份连。
+    unawaited(stopMessageService());
+    await clearBackgroundState();
     notifyListeners();
   }
 
@@ -502,6 +509,7 @@ class AppState extends ChangeNotifier {
         if (title is String && title.isNotEmpty) {
           titles[key] = title;
           unawaited(_persistMap(_kTitles, titles));
+          _syncBackgroundState();
         }
         final hint = env.payload['hint'];
         if (hint is String && hint.isNotEmpty) {
@@ -601,12 +609,49 @@ class AppState extends ChangeNotifier {
 
   void _setForeground(bool value) {
     appInForeground = value;
-    unawaited(_prefs.setBool('liant.foreground', value));
+    // 立即写：后台进程靠这个标志决定要不要弹通知，慢一拍就会重复弹。
+    _syncBackgroundState(immediate: true);
+  }
+
+  // -------------------------------------------------------------------------
+  // 后台进程共享状态
+  // -------------------------------------------------------------------------
+
+  /// 把「后台进程弹通知要用到的状态」写进共享文件。
+  ///
+  /// 跨进程读不了 shared_preferences（每个进程一份缓存），所以这里走文件；
+  /// 写操作合并到 200ms 一次，避免连续操作时反复落盘。
+  void _syncBackgroundState({bool immediate = false}) {
+    _bgStateTimer?.cancel();
+    if (immediate) {
+      unawaited(_writeBackgroundState());
+      return;
+    }
+    _bgStateTimer = Timer(const Duration(milliseconds: 200), () {
+      unawaited(_writeBackgroundState());
+    });
+  }
+
+  Future<void> _writeBackgroundState() async {
+    final id = identity;
+    if (id == null) {
+      await clearBackgroundState();
+      return;
+    }
+    await writeBackgroundState(
+      BackgroundState(
+        identity: id,
+        foreground: appInForeground,
+        muted: Map<String, bool>.of(muted),
+        titles: Map<String, String>.of(titles),
+        remarks: Map<String, String>.of(remarks),
+      ),
+    );
   }
 
   void _notifyInbound(ChatMessage msg) {
-    // 前台/后台都先由 UI isolate 尝试通知；后台 engine 用同一个通知 ID
-    // 覆盖同一条消息，避免后台通知依赖 engine 是否成功启动。
+    // UI 进程照旧弹一次；:background 进程也会弹（UI 不在前台时），两边用
+    // 同一个通知 ID + setOnlyAlertOnce，所以同一条消息最多响一次。
     final key = convKey(msg.botId, msg.peerId);
     if (mutedFor(key)) return;
     if (openConversation == key) return;
@@ -623,7 +668,7 @@ class AppState extends ChangeNotifier {
       isGroup ? '$sender: $summary' : summary,
       90,
     );
-    final id = msg.msgId.hashCode & 0x7fffffff;
+    final id = notificationIdFor(msg.msgId);
     unawaited(showMessageNotification(id: id, title: title, body: body));
   }
 
@@ -1004,6 +1049,7 @@ class AppState extends ChangeNotifier {
       muted.remove(key);
     }
     unawaited(_persistMap(_kMuted, muted));
+    _syncBackgroundState();
     notifyListeners();
   }
 
@@ -1015,6 +1061,7 @@ class AppState extends ChangeNotifier {
       remarks[key] = trimmed;
     }
     unawaited(_persistMap(_kRemarks, remarks));
+    _syncBackgroundState();
     notifyListeners();
   }
 
@@ -1030,8 +1077,9 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _bgStateTimer?.cancel();
     _lifecycle?.dispose();
-    unawaited(stopMessageService());
+    // 同样不停后台服务：只有解除配对才真正停。
     _client?.stop();
     super.dispose();
   }

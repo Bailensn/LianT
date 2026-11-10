@@ -1,4 +1,6 @@
 // LianT 客户端入口：配对页与三栏主壳。
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -8,6 +10,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/app_state.dart';
+import 'core/background_runtime.dart';
 import 'core/client.dart';
 import 'pages/bots_page.dart';
 import 'pages/chats_page.dart';
@@ -32,6 +35,18 @@ Future<void> main() async {
   final messageBox = await Hive.openBox<String>('messages');
   final state = AppState(prefs, messageBox: messageBox)..boot();
   runApp(LiantApp(state: state));
+}
+
+/// 后台进程入口：由原生 `MessageService` 在独立进程的 FlutterEngine 里按函数名调起。
+///
+/// 必须留在根库（本文件）：AOT 运行时是按名字在根库的顶层符号里找入口的。
+/// `vm:entry-point` 保证摇树优化不会删掉它。
+@pragma('vm:entry-point')
+void backgroundMain() {
+  // 后台引擎没有 View，但平台通道需要 binding；Flutter 3.24 的
+  // RendererBinding 只在真正用到 renderView 时才要求 implicitView，这里安全。
+  WidgetsFlutterBinding.ensureInitialized();
+  unawaited(startBackgroundRuntime());
 }
 
 class LiantApp extends StatefulWidget {

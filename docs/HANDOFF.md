@@ -1,87 +1,99 @@
 # 交接说明（给下一个会话）
 
 仓库：`/storage/emulated/0/LianT`，分支 `main`。
-当前最新代码提交：`7d118fc`（只修 CI dispatch 路径检测）。
-Manager 版本：`1.0.0+98`，versionCode `98`。
+Manager 版本：`1.0.0+100`，versionCode `100`。
 稳定版已发布：Service `v1.0.0`、Manager `manager-v1.0.0`（正式签名、仅 arm64）。
 
 先看 `git status`。工作区可能有一处未提交的
 `manager/android/gradle.properties`，是 Flutter migrator 自动加的
 `android.builtInKotlin=false`、`android.newDsl=false`，不要盲目提交。
 
+本机没有 Flutter/JDK/Gradle，**不能本地构建**：改完等 CI（push 触发
+`.github/workflows/ci.yml`）出包，从 Release 下载 APK。推送方式见 §五。
+
 ---
 
-## 一、当前任务：真正的后台常驻进程
+## 一、后台常驻：独立进程（已实现，待真机验证）
 
-用户明确要求：**独立进程**，不是 UI 进程里的线程，也不是只挂一个通知。
+用户要求的是**独立进程**：UI 进程被系统杀掉后仍能保持 WebSocket、收消息、发通知。
 
-目标行为：
+### 现在的结构
 
-- App 退到后台，UI 进程被系统杀掉后，仍能独立保持 WebSocket、收消息、发通知
-- 不是依赖 Activity 或 UI isolate
-- 前台服务通知保留；Android 不允许无通知的永久后台进程
+```
+UI 进程                          :background 进程（MessageService）
+  MainActivity                     startForeground + 常驻通知
+  FlutterEngine（跑 main）          FlutterEngine（跑 backgroundMain）
+  LiantClient（给界面）             LiantClient（只负责收消息/发通知）
+  写 liant_background_state.json   读 liant_background_state.json
+```
 
-建议实现：
+- 清单里 `MessageService` 带 `android:process=":background"`、
+  `stopWithTask="false"`、`foregroundServiceType="dataSync"`。
+- Dart 入口 `backgroundMain` **放在 `lib/main.dart`**，不能挪走：
+  AOT 运行时按函数名在**根库**（main.dart 所在库）里找入口；放在没人 import
+  的文件里会被摇树删掉。函数上的 `@pragma('vm:entry-point')` 必须保留。
+- 后台逻辑在 `lib/core/background_runtime_io.dart`（Web 用 `_stub.dart`，条件导出）。
 
-1. `AndroidManifest.xml` 里 `MessageService` 增加
-   `android:process=":background"`、`android:stopWithTask="false"`、
-   `android:exported="false"`。
-2. `MessageService` 独立进程里：
-   - `startForeground` + 常驻通知
-   - 初始化 `FlutterLoader`
-   - 创建自己的 `FlutterEngine`
-   - `GeneratedPluginRegistrant` / 插件注册
-   - `MethodChannel("liant/background_notify")` 接收 Dart 通知请求
-   - `DartExecutor.DartEntrypoint("lib/background_main.dart", "backgroundMain")`
-3. `lib/background_main.dart` 独立连接 `LiantClient`：
-   - 读设备身份
-   - 监听 `msg.inbound`
-   - 判断免打扰/前台状态
-   - 调 MethodChannel 发系统通知
-4. 生命周期：
-   - `START_STICKY`
-   - `onTaskRemoved` 里用 AlarmManager 定时尝试拉起
-   - `BOOT_COMPLETED` receiver 开机恢复
-   - Android 14 注意 FGS 类型与启动限制
-5. 进程间状态（**关键坑**）：
-   - `shared_preferences` 默认按进程缓存，独立进程读不到 UI 进程刚写的值
-   - 不要在独立进程里直接依赖 `SharedPreferences.getInstance()` 的缓存
-   - 方案 A：通过原生 `SharedPreferences("FlutterSharedPreferences", MODE_MULTI_PROCESS)`
-     读取 `flutter.liant.identity` / `flutter.liant.foreground` / `flutter.liant.muted`
-   - 方案 B：把身份、免打扰、前台标志改成原生可读的文件/DataStore，Dart 走 MethodChannel
-   - 先确认 `shared_preferences` 实际写入文件名和 key 前缀，不要猜
-6. 去重：
-   - UI 和后台进程都收到同一条消息时，用同一个通知 ID
-   - 通知加 `setOnlyAlertOnce(true)`，避免响两次
-7. 通知权限：
-   - `POST_NOTIFICATIONS` 需要用户授权
-   - 通知渠道：`liant.notifications.v2`，系统默认通知音
-8. OEM：
-   - 只能引导电池优化白名单/自启动，不能承诺永不杀
-   - 真机要测：划掉任务、锁屏、息屏、重启、强停
+### 跨进程状态（关键坑，已经踩过）
 
-需要改的文件：
+`shared_preferences` 在每个进程各有一份内存缓存，`reload()` 也不会真回读磁盘，
+后台进程读到的经常是旧值。所以改成共享文件：
 
-- `manager/android/app/src/main/kotlin/com/bailensn/liant/MessageService.kt`
-- `manager/android/app/src/main/kotlin/com/bailensn/liant/MainActivity.kt`
-- `manager/android/app/src/main/AndroidManifest.xml`
-- `manager/lib/background_main.dart`
-- `manager/lib/core/app_state.dart`
-- `manager/lib/core/client.dart`
-- 可能新增 `BootReceiver.kt`、`NotificationHelper.kt`
+- 路径：`filesDir/liant_background_state.json`，由原生 `liant/background_state`
+  通道的 `statePath` 提供（MainActivity 与 MessageService 都注册，两个进程
+  拿到的是同一个文件）。
+- UI 进程写（`lib/core/background_state_io.dart`）：内容 = 身份 + 前台标志 +
+  免打扰 + 会话标题 + 备注；先写 `.tmp` 再 rename，写操作串行化。
+- 后台进程读：每条消息前重读一次，免打扰/前台开关立刻生效；每分钟对一次，
+  识别解除配对、重新配对。
+- 文件存在即代表「已配对」，`RestartReceiver` 靠它决定开机要不要拉起服务。
 
-验证：
+### 通知去重
+
+- 两边算同一个通知 ID：`notificationIdFor(msgId)`（protocol.dart，FNV-1a，
+  不用 `String.hashCode`，避免跨进程/跨版本不一致）。
+- 通知都带 `setOnlyAlertOnce(true)`，所以同一条消息最多响一次。
+- 分工：UI 在前台时后台进程不弹（读共享状态里的 `foreground`）；
+  UI 不在前台时两边都可能弹，靠上面的 ID 合并。
+
+### 生命周期
+
+- `START_STICKY`；系统重启服务时 `onStartCommand` 的 intent 可能为 null，引擎在
+  `onCreate` 里恢复。
+- `onTaskRemoved` 排一个 `setAndAllowWhileIdle` 闹钟（60 秒后）兜底拉起，
+  拉起失败只记日志（Android 12+ 后台启动前台服务会被系统拒绝）。
+- `RestartReceiver`：开机（BOOT_COMPLETED / QUICKBOOT_POWERON）、闹钟、
+  常驻通知被划掉后的重发，三个来源共用。
+- **UI 侧不要再在 `detached`/`dispose` 里停服务**：那样划掉任务就没后台了。
+  只有 `unpair()` 才停服务 + 删共享状态。
+
+### 已知限制（要跟用户说清楚）
+
+- 两个进程各一条 WebSocket，服务端会看到同一设备两条连接（协议没有单会话限制，
+  `Broadcast` 会都发）。内存比单进程多一个 FlutterEngine 的量级。
+- Android 12+ 从后台拉起前台服务受限；OEM 省电策略下仍可能被杀，只能引导用户
+  加白名单，不能承诺「永不杀」。
+- `dataSync` 类型在 **targetSdk 35** 的 Android 15 上有每天 6 小时上限；本项目
+  现在 targetSdk 仍是 Flutter 3.24 默认的 34，升级 targetSdk 前必须先重新设计
+  前台服务类型。
+- 证书/身份都是明文写在共享文件里（和 shared_preferences 一样在应用私有目录）。
+
+### 真机验证清单
 
 ```bash
-# 构建
-cd manager
-flutter analyze
-flutter build apk --release --target-platform android-arm64
-
-# 安装后检查进程
-adb shell ps -A | grep bailensn
-adb shell dumpsys activity services com.bailensn.liant
+# 装包后：确认有两个进程
+adb shell ps -A | grep bailensn        # 期望看到 :background 独立 PID
+adb shell dumpsys activity services com.bailensn.liant | grep -A3 MessageService
 adb shell dumpsys notification --noredact | grep -A5 liant
+
+# 验证「UI 进程被杀后仍在线」
+adb shell am kill com.bailensn.liant   # 只杀 UI 进程（后台进程保留）
+#   或者：在最近任务里划掉 App
+# 然后从另一台设备给 Bot 发消息：应收到通知
+# 常驻通知文案会显示「已连接 · 正在后台接收消息」/「连接中断，正在重连…」
+
+# 验证开机恢复
+adb reboot   # 开机后不打开 App，直接发消息
 ```
 
 ---
@@ -100,7 +112,8 @@ adb shell dumpsys notification --noredact | grep -A5 liant
 - 发送队列：文本 + 多图/多文件逐条发送；输入框立即清空，失败不回填
 - 图片消息不套蓝气泡；文件消息显示为文件卡片
 - 群聊/私聊标识
-- 通知：UI 与后台同 ID 兜底；系统默认通知音
+- 通知：UI 与 `:background` 进程同一通知 ID 去重；系统默认通知音
+- 独立后台进程（本页 §一）
 - 性能：去掉实时模糊、MaterialApp 全局重建、会话列表懒构建、tab 隔离重绘
 - 保留策略：不主动限制消息时间/媒体总量（默认 100 年 / 1<<62 字节）
 - 本地聊天记录：Hive 持久化，去掉 2000 条/2.5MB 上限；首次启动会迁移旧 shared_preferences 消息
@@ -128,23 +141,23 @@ GitHub Secrets：
 
 **本地不要直接在 `/storage/emulated/0` 跑 `flutter build apk`**：
 `android/gradlew` 没有执行权限，Flutter 会报
-`lacked sufficient permissions to execute`。要本地编就把仓库复制到
-`$HOME/LianT` 之类的可执行分区，或直接用 CI。
+`lacked sufficient permissions to execute`。而且这台机器上没有 Flutter/JDK，
+构建只能走 CI。
 
 ---
 
 ## 四、还没验证/待办
 
-1. 真机引用是否显示；`quote_ref` 需要 Service v1.0.0+ 和 Manager v1.0.0
-2. 扫码相机权限、配对
-3. 禁言/踢人权限：踢人接口需要白名单/内邀；失败提示是否正确
-4. 后台通知、声音、划掉任务、重启、OEM 省电
+1. 后台进程真机验证（§一末尾清单）：划掉任务、强停、锁屏、重启、OEM 省电
+2. 真机引用是否显示；`quote_ref` 需要 Service v1.0.0+ 和 Manager v1.0.0
+3. 扫码相机权限、配对
+4. 禁言/踢人权限：踢人接口需要白名单/内邀；失败提示是否正确
 5. 多图、文字+图片、文件发送
 6. SQLite v3→v4、PostgreSQL v3→v4 升级测试
 7. 安全日志分页：目前仍只加载最近 20 条，`audit.list` 已加 cursor 字段但
    Manager/SecurityLogPage 还没接完
 8. x86_64 已不支持，只发 arm64，发布说明要写清楚
-9. 本地构建只用 CI 或内部存储，不要用 sdcard 路径
+9. 后台进程的常驻通知目前没有「停用」入口；要不要在设置页给个开关需要产品拍板
 
 ---
 
@@ -153,6 +166,16 @@ GitHub Secrets：
 - 中文交流，中文注释，中文提交信息
 - 不留假数据/假按钮；平台不支持就明确写不支持
 - 改完至少 `flutter analyze`；涉及 Service 要跑 `go vet ./...`、`go test -race ./...`
+  （本机没有 Flutter，靠 CI 的 `client-check` 兜）
 - 不要重新引入 Spring/Java 后端，Service 是 Go
 - 不要提交 `key.properties`、`*.jks`、token、keystore
 - 发布前确认 CI 全绿；不要用 debug 签名发稳定版
+- 推送到 GitHub：这台机器没有 ssh 客户端，用 HTTP + token
+  （token 在 `~/newtoken.txt`，不要写进仓库、不要贴进提交信息）：
+  ```bash
+  TOKEN=$(tr -d '\r\n' < ~/newtoken.txt)
+  git -c user.name=Bailensn \
+      -c user.email=186718762+Bailensn@users.noreply.github.com \
+      commit -m "..." 
+  git push "https://${TOKEN}@github.com/Bailensn/LianT.git" HEAD:main
+  ```

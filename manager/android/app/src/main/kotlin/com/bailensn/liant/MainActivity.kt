@@ -19,6 +19,15 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // 共享状态文件路径：UI 进程写、:background 进程读，必须是同一个文件。
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MessageService.CHANNEL_STATE)
+            .setMethodCallHandler { call, result ->
+                if (call.method == "statePath") {
+                    result.success(MessageService.stateFile(this).absolutePath)
+                } else {
+                    result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "liant/background")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -76,12 +85,7 @@ class MainActivity : FlutterActivity() {
 
     private fun startMessageService() {
         requestNotificationPermission()
-        val intent = Intent(this, MessageService::class.java)
-        if (Build.VERSION.SDK_INT >= 26) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
+        MessageService.start(this)
     }
 
     private fun showNotification(id: Int, title: String, body: String) {
