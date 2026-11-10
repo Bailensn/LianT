@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -27,7 +28,9 @@ Future<void> main() async {
   }
   // 本地身份很小，启动前同步读出来，避免先闪一下配对页。
   final prefs = await SharedPreferences.getInstance();
-  final state = AppState(prefs)..boot();
+  await Hive.initFlutter();
+  final messageBox = await Hive.openBox<String>('messages');
+  final state = AppState(prefs, messageBox: messageBox)..boot();
   runApp(LiantApp(state: state));
 }
 

@@ -1,7 +1,7 @@
 name: liant
 description: LianT Manager（Bot Engine 客户端）
 publish_to: none
-version: 1.0.0+98
+version: 1.0.0+99
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -16,6 +16,8 @@ dependencies:
   # 这样 Web 与 Android 两边的行为完全一致，也不会被插件版本拖累。
   crypto: ^3.0.3
   # 2.5 起要求 Flutter 3.41，钉在 2.3.x 以同时兼容 CI 的 3.24.5。
+  hive: 2.2.3
+  hive_flutter: 1.1.0
   shared_preferences: '>=2.3.0 <2.4.0'
   web_socket_channel: ^3.0.1
   # 只在 Web 上用来读地址栏参数（预览用），其它平台走条件导入的空实现。

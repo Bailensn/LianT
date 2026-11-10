@@ -103,6 +103,7 @@ adb shell dumpsys notification --noredact | grep -A5 liant
 - 通知：UI 与后台同 ID 兜底；系统默认通知音
 - 性能：去掉实时模糊、MaterialApp 全局重建、会话列表懒构建、tab 隔离重绘
 - 保留策略：不主动限制消息时间/媒体总量（默认 100 年 / 1<<62 字节）
+- 本地聊天记录：Hive 持久化，去掉 2000 条/2.5MB 上限；首次启动会迁移旧 shared_preferences 消息
 - JKS 正式签名 + `Release` 稳定版 workflow
 
 ---

@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -56,9 +57,10 @@ class Conversation {
 
 /// 应用状态。
 class AppState extends ChangeNotifier {
-  AppState(this._prefs);
+  AppState(this._prefs, {Box<String>? messageBox}) : _messageBox = messageBox;
 
   final SharedPreferences _prefs;
+  final Box<String>? _messageBox;
 
   static const String _kIdentity = 'liant.identity';
   static const String _kRemarks = 'liant.remarks';
@@ -365,6 +367,7 @@ class AppState extends ChangeNotifier {
     media.clear();
     await _prefs.remove(_kIdentity);
     await _prefs.remove(_kMessages);
+    await _messageBox?.clear();
     notifyListeners();
   }
 
@@ -540,7 +543,7 @@ class AppState extends ChangeNotifier {
   void _append(ChatMessage msg) {
     if (messages.any((m) => m.msgId == msg.msgId)) return;
     messages = <ChatMessage>[...messages, msg]..sort(_byTime);
-    _scheduleSaveMessages();
+    unawaited(_persistMessage(msg));
     notifyListeners();
   }
 
@@ -549,7 +552,7 @@ class AppState extends ChangeNotifier {
     if (bytes != null && next.msgId.isNotEmpty) localMedia[next.msgId] = bytes;
     messages = messages.map((m) => m.msgId == localId ? next : m).toList()
       ..sort(_byTime);
-    _scheduleSaveMessages();
+    unawaited(_replacePersistedMessage(localId, next));
     notifyListeners();
   }
 
@@ -770,7 +773,9 @@ class AppState extends ChangeNotifier {
     }
     if (added.isNotEmpty) {
       messages = <ChatMessage>[...messages, ...added]..sort(_byTime);
-      _scheduleSaveMessages();
+      for (final msg in added) {
+        unawaited(_persistMessage(msg));
+      }
       notifyListeners();
     }
   }
@@ -910,6 +915,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> retrySend(ChatMessage msg, Bot bot) async {
     messages = messages.where((m) => m.msgId != msg.msgId).toList();
+    unawaited(_deletePersistedMessage(msg.msgId));
     notifyListeners();
     await send(
       bot: bot,
@@ -1036,46 +1042,80 @@ class AppState extends ChangeNotifier {
 
   /// 会话列表没有服务端索引，历史只能靠本地留存；与网页端一样按 msg_id 去重。
   void _loadMessages() {
-    final raw = _prefs.getString(_kMessages);
-    if (raw == null) return;
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return;
-      final loaded = <ChatMessage>[];
-      for (final item in decoded) {
-        if (item is Map<String, dynamic>) {
-          final msg = ChatMessage.fromJson(item);
-          if (msg.msgId.isNotEmpty) loaded.add(msg);
+    final loaded = <ChatMessage>[];
+    final box = _messageBox;
+    if (box != null) {
+      for (final raw in box.values) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is Map<String, dynamic>) {
+            final msg = ChatMessage.fromJson(decoded);
+            if (msg.msgId.isNotEmpty) loaded.add(msg);
+          }
+        } on FormatException {
+          // 单条坏数据忽略。
         }
       }
-      messages = loaded..sort(_byTime);
-    } on FormatException {
-      // 坏数据直接忽略，下一次写入会覆盖。
     }
+    if (loaded.isEmpty) {
+      // 迁移旧版 shared_preferences 里的消息，迁移成功后只保留 Hive。
+      final raw = _prefs.getString(_kMessages);
+      if (raw != null) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) {
+            for (final item in decoded) {
+              if (item is Map<String, dynamic>) {
+                final msg = ChatMessage.fromJson(item);
+                if (msg.msgId.isNotEmpty) loaded.add(msg);
+              }
+            }
+          }
+        } on FormatException {
+          // 坏数据忽略。
+        }
+        if (loaded.isNotEmpty) {
+          for (final msg in loaded) {
+            unawaited(_persistMessage(msg));
+          }
+        }
+        unawaited(_prefs.remove(_kMessages));
+      }
+    }
+    messages = loaded..sort(_byTime);
   }
 
-  void _scheduleSaveMessages() {
-    _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(milliseconds: 800), _saveMessages);
-  }
-
-  Future<void> _saveMessages() async {
-    // localStorage 有 5MB 上限：先按条数收口，再按体积丢掉最旧的。
-    var kept = messages.length > 2000
-        ? messages.sublist(messages.length - 2000)
-        : messages;
-    var encoded = jsonEncode(kept.map((m) => m.toJson()).toList());
-    while (encoded.length > 2500000 && kept.length > 200) {
-      kept = kept.sublist(100);
-      encoded = jsonEncode(kept.map((m) => m.toJson()).toList());
-    }
+  Future<void> _persistMessage(ChatMessage msg) async {
+    final box = _messageBox;
+    if (box == null) return;
     try {
-      await _prefs.setString(_kMessages, encoded);
+      await box.put(msg.msgId, jsonEncode(msg.toJson()));
     } catch (_) {
-      // 存不下不影响当前会话；下次写入会再尝试。
+      // 本地存储失败不影响当前会话。
     }
   }
 
+  Future<void> _replacePersistedMessage(
+    String localId,
+    ChatMessage next,
+  ) async {
+    final box = _messageBox;
+    if (box == null) return;
+    try {
+      await box.delete(localId);
+      await box.put(next.msgId, jsonEncode(next.toJson()));
+    } catch (_) {
+      // 忽略本地失败。
+    }
+  }
+
+  Future<void> _deletePersistedMessage(String msgId) async {
+    final box = _messageBox;
+    if (box == null) return;
+    try {
+      await box.delete(msgId);
+    } catch (_) {}
+  }
 
   void _loadMap<T>(String key, Map<String, T> target) {
     final raw = _prefs.getString(key);
