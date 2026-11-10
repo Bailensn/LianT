@@ -3,8 +3,10 @@
 仓库：`/storage/emulated/0/LianT`，分支 `main`。
 Manager 版本：`1.0.0+101`，versionCode `101`。
 稳定版已发布：Service `v1.0.0`、Manager `manager-v1.0.0`（正式签名、仅 arm64）。
-独立后台进程这一版由 CI 出了测试包：`manager-v1.0.0-100`（arm64，
-`.github/workflows/ci.yml` 的 android job 自动发布 pre-release）。
+最近两个测试包（arm64，`.github/workflows/ci.yml` 的 android job 自动发 pre-release）：
+
+- `manager-v1.0.0-100`：独立 `:background` 进程（两进程各一条连接）
+- `manager-v1.0.0-101`：前台服务改 `specialUse` + 后台独占 WebSocket、本地桥接转发
 
 先看 `git status`。工作区可能有一处未提交的
 `manager/android/gradle.properties`，是 Flutter migrator 自动加的

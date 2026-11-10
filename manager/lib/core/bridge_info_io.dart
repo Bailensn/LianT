@@ -68,16 +68,6 @@ Future<void> writeBridgeInfo(BridgeInfo info) async {
   }
 }
 
-/// 后台进程调用：退出时删掉，免得 UI 去连一个已经不存在的端口。
-Future<void> clearBridgeInfo() async {
-  final path = await _infoPath();
-  if (path == null) return;
-  try {
-    final file = File(path);
-    if (await file.exists()) await file.delete();
-  } catch (_) {}
-}
-
 /// UI 进程调用：读桥接信息；没有文件或内容损坏时返回 null。
 Future<BridgeInfo?> readBridgeInfo() async {
   final path = await _infoPath();
