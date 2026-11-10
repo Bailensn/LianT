@@ -504,7 +504,7 @@ class _ChatPageState extends State<ChatPage> {
               width: double.infinity,
               height: 220,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
+              errorBuilder: (_, _, _) => Container(
                 width: double.infinity,
                 height: 160,
                 alignment: Alignment.center,
@@ -1227,7 +1227,7 @@ class _ChatPageState extends State<ChatPage> {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: _pendingMedia.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 6),
+          separatorBuilder: (_, _) => const SizedBox(width: 6),
           itemBuilder: (context, index) {
             final item = _pendingMedia[index];
             final isImage = item.kind == 'image';
