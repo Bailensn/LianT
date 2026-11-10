@@ -155,9 +155,11 @@ void main() {
     expect(client, isNotNull);
     client!.start();
     await Future<void>.delayed(const Duration(milliseconds: 50));
+    // 先挂断言再断开：否则错误在没人监听时完成，会被当成未捕获异常。
     final pending = client.request('slow', const <String, dynamic>{});
+    final failed = expectLater(pending, throwsA(isA<ProtocolException>()));
     await Future<void>.delayed(const Duration(milliseconds: 50));
     await server.stop();
-    await expectLater(pending, throwsA(isA<ProtocolException>()));
+    await failed;
   });
 }
