@@ -40,6 +40,16 @@ android {
         // 这里换回压缩，安装时解压；侧载分发更在意下载体积。
         jniLibs {
             useLegacyPackaging = true
+            // Flutter 插件会把自己支持的 ABI 全塞进 abiFilters（含 x86_64/armeabi-v7a），
+            // 而依赖 AAR（ML Kit 条码、CameraX、DataStore、dartjni）自带三套 .so。
+            // 本项目只发 aarch64，这里直接按 APK 内的路径把它们剔掉。
+            excludes.addAll(
+                listOf(
+                    "lib/armeabi-v7a/**",
+                    "lib/x86/**",
+                    "lib/x86_64/**",
+                )
+            )
         }
     }
 
