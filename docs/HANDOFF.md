@@ -16,8 +16,12 @@ lib/
   main.dart              入口 + backgroundMain（后台引擎入口，不能挪）
   core/
     app_state.dart       应用状态根（连接、Bot、消息、设备、审计、本地备注）
+    state/
+      models.dart          展示模型（媒体状态、会话摘要），app_state 再导出
     net/                 协议与连接
-      protocol.dart        信封/数据结构、convKey、通知 ID
+      protocol.dart        公共出口 + convKey / 通知 ID / shortPeer
+      envelope.dart        信封与 ProtocolException
+      models.dart          Bot / 消息 / 设备 / 审计 / 保留策略
       client_api.dart      MessageClient 接口 + ConnState
       client.dart          直连实现 LiantClient
       socket*.dart         WebSocket 的 io/web 条件分支
@@ -34,7 +38,11 @@ lib/
       browser_env*.dart    地址栏参数（Web 用）
       version.dart         版本号
       update_service.dart  检查更新
-  l10n/  pages/  ui/     文案、页面、设计系统
+  l10n/
+    l10n.dart            语言解析与查表
+    ltext.dart           按当前语言渲染的 Text
+    strings/*.dart       一种语言一个文件（zh_Hant/en/ja/ko），中文是原文
+  pages/  ui/             页面、设计系统
 ```
 
 先看 `git status`。工作区可能有一处未提交的
