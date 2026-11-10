@@ -10,7 +10,8 @@
 | [DEPLOY.md](DEPLOY.md) | 二进制 + systemd 部署、配对与运行 | 装机、升级、排障 |
 | [SECURITY.md](SECURITY.md) | 信任根、连接校验、公网暴露与已知取舍 | 改认证、密钥或网络边界 |
 | [RELEASING.md](RELEASING.md) | 版本号、CI 产物与发布流程 | 发版、改 workflow |
-| [HANDOFF.md](HANDOFF.md) | 当前实现状态、构建命令、待办与已知缺口 | 接手项目的第一份文件 |
+| [HANDOFF.md](HANDOFF.md) | 当前实现状态、构建工具链、待办与已知缺口 | 接手项目的第一份文件 |
+| [NATIVE-CORE.md](NATIVE-CORE.md) | 迁移计划：Flutter 只做界面，网络/协议/签名/存储/通知搬到 Kotlin | 动后台进程或想把核心搬出 Dart 之前 |
 
 约定：
 
