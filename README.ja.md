@@ -95,9 +95,7 @@ systemd ユニット、LianT テーブル（`LianT` と `config.enc` が存在�
 - [ドキュメント一覧](docs/README.md)
 - [設計と決定](docs/DESIGN.md)
 - [プロトコル](docs/PROTOCOL.md)
-- [UI 規約](docs/UI-DESIGN.md)
 - [デプロイ](docs/DEPLOY.md)
-- [セキュリティ](docs/SECURITY.md)
 
 ## ライセンス
 

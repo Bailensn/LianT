@@ -106,9 +106,7 @@ données ne sont jamais supprimés automatiquement.
 - [Index](docs/README.md)
 - [Conception et décisions](docs/DESIGN.md)
 - [Protocole](docs/PROTOCOL.md)
-- [Règles d'interface](docs/UI-DESIGN.md)
 - [Déploiement](docs/DEPLOY.md)
-- [Sécurité](docs/SECURITY.md)
 
 ## Licence
 

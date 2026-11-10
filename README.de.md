@@ -106,9 +106,7 @@ und -datenbanken werden nie automatisch gelöscht.
 - [Index](docs/README.md)
 - [Design und Entscheidungen](docs/DESIGN.md)
 - [Protokoll](docs/PROTOCOL.md)
-- [UI-Regeln](docs/UI-DESIGN.md)
 - [Deployment](docs/DEPLOY.md)
-- [Sicherheit](docs/SECURITY.md)
 
 ## Lizenz
 

@@ -95,9 +95,7 @@ systemd 유닛, LianT 테이블(`LianT`와 `config.enc`가 있을 때), 설치 �
 - [문서 색인](docs/README.md)
 - [설계와 결정](docs/DESIGN.md)
 - [프로토콜](docs/PROTOCOL.md)
-- [UI 규칙](docs/UI-DESIGN.md)
 - [배포](docs/DEPLOY.md)
-- [보안](docs/SECURITY.md)
 
 ## 라이선스
 

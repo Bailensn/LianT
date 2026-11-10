@@ -95,9 +95,7 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/uninsta
 - [文件索引](docs/README.md)
 - [設計與決策](docs/DESIGN.md)
 - [通訊協議](docs/PROTOCOL.md)
-- [介面規範](docs/UI-DESIGN.md)
 - [部署](docs/DEPLOY.md)
-- [安全模型](docs/SECURITY.md)
 
 ## 授權
 

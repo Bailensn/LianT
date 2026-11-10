@@ -96,9 +96,7 @@ Elimina la unidad, las tablas de LianT (si `LianT` y `config.enc` existen), el d
 - [Índice](docs/README.md)
 - [Diseño y decisiones](docs/DESIGN.md)
 - [Protocolo](docs/PROTOCOL.md)
-- [Reglas de UI](docs/UI-DESIGN.md)
 - [Despliegue](docs/DEPLOY.md)
-- [Seguridad](docs/SECURITY.md)
 
 ## Licencia
 

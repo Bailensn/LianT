@@ -2,7 +2,7 @@ name: CI
 
 # 一个工作流，按变更路径决定跑什么：
 #   service/**  → Go 检查，push 时再构建并发布 pre-release
-#   manager/**  → Flutter 检查，push 时再出三个 APK
+#   manager/**  → Flutter 检查，push 时再出 arm64 APK
 #   scripts/**  → 只跑 Go 检查
 #   docs / *.md → 整个工作流跳过
 on:

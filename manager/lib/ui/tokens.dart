@@ -1,6 +1,6 @@
 // 视觉 token 与主题。
 //
-// 与 docs/UI-DESIGN.md 对齐：背景分层表达层级、单一品牌蓝、34px 大标题、
+// 与 docs/DESIGN.md §7 对齐：背景分层表达层级、单一品牌蓝、34px 大标题、
 // 1px 半透明分隔线、深浅色跟随系统。
 import 'package:flutter/material.dart';
 import 'squircle.dart';

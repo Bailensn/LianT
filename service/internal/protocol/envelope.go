@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Version 是线上协议版本。只加字段不升版本（docs/DESIGN.md §7）。
+// Version 是线上协议版本。只加字段不升版本。
 const Version = 1
 
 // MaxFrame 是单帧上限：8 MiB，给 5 MiB 媒体的 base64 留出余量。

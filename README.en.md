@@ -109,9 +109,7 @@ Database roles and databases are never dropped automatically.
 - [Index](docs/README.md)
 - [Design and decisions](docs/DESIGN.md)
 - [Wire protocol](docs/PROTOCOL.md)
-- [UI rules](docs/UI-DESIGN.md)
 - [Deployment](docs/DEPLOY.md)
-- [Security](docs/SECURITY.md)
 - [Third-party notices](NOTICE)
 
 ## License

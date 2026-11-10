@@ -101,12 +101,8 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/uninsta
 - 文档索引：[docs/README.md](docs/README.md)
 - 设计文档与决策记录：[DESIGN.md](docs/DESIGN.md)
 - 通信协议：[PROTOCOL.md](docs/PROTOCOL.md)
-- 界面规范（Flutter）：[UI-DESIGN.md](docs/UI-DESIGN.md)
 - 部署说明：[DEPLOY.md](docs/DEPLOY.md)
-- 安全模型：[SECURITY.md](docs/SECURITY.md)
 - 第三方声明：[NOTICE](NOTICE)
-- 发布规则：[RELEASING.md](docs/RELEASING.md)
-- 交接与当前状态：[HANDOFF.md](docs/HANDOFF.md)
 
 ## 仓库结构
 
