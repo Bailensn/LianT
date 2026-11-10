@@ -33,6 +33,22 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = liantVersionCode
         versionName = "1.0.0"
+
+        // 只打 arm64-v8a（本项目只发 aarch64）。
+        // --target-platform 只管 Flutter 引擎/libapp.so，管不到依赖 AAR 自带的 .so：
+        // ML Kit 条码（mobile_scanner）、CameraX、DataStore 每个都带四个 ABI，
+        // 不裁的话 APK 会白胖约 6 MB。
+        ndk {
+            abiFilters.add("arm64-v8a")
+        }
+    }
+
+    packaging {
+        // AGP 9 默认不压缩 .so（extractNativeLibs=false），APK 直接大一倍。
+        // 这里换回压缩，安装时解压；侧载分发更在意下载体积。
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 
     signingConfigs {
@@ -56,13 +72,6 @@ android {
                 signingConfigs.getByName("debug")
             }
 
-            // 只打 arm64-v8a。
-            // --target-platform 只管 Flutter 引擎/libapp.so，管不到依赖 AAR 自带的 .so：
-            // ML Kit 条码（mobile_scanner）、CameraX、DataStore 每个都带四个 ABI，
-            // 不裁的话 APK 会白胖约 6 MB（压缩后）。
-            ndk {
-                abiFilters.add("arm64-v8a")
-            }
         }
     }
 }
