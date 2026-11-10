@@ -1,12 +1,13 @@
 # 交接说明（给下一个会话）
 
 仓库：`/storage/emulated/0/LianT`，分支 `main`。
-Manager 版本：`1.0.0+101`，versionCode `101`。
+Manager 版本：`1.0.0+103`，versionCode `103`。
 稳定版已发布：Service `v1.0.0`、Manager `manager-v1.0.0`（正式签名、仅 arm64）。
 最近两个测试包（arm64，`.github/workflows/ci.yml` 的 android job 自动发 pre-release）：
 
 - `manager-v1.0.0-100`：独立 `:background` 进程（两进程各一条连接）
 - `manager-v1.0.0-101`：前台服务改 `specialUse` + 后台独占 WebSocket、本地桥接转发
+- `manager-v1.0.0-103`：Flutter 3.47.9 / AGP 9.1 / Gradle 9.3.1 / Kotlin 2.4（同代码、新工具链）
 
 先看 `git status`。工作区可能有一处未提交的
 `manager/android/gradle.properties`，是 Flutter migrator 自动加的
@@ -189,6 +190,10 @@ GitHub Secrets：
   "migrate to Built-in Kotlin" 警告（目前只是警告）。升到 7.x 会改扫码页 API，没做。
 - 依赖基本没动（`shared_preferences` 仍是 2.3.x、`mobile_scanner` 5.x），
   先保证「同代码、同行为、新工具链」。要升插件大版本另开一次。
+- `pubspec.lock` 现在比 `pubspec.yaml` 旧一个版本（里面还是 flutter_lints 4，约束已经是 ^6）。
+  随便找台有 Flutter 的机器跑一次 `flutter pub get`，把更新后的 lock 一起提交即可。
+- targetSdk 从 34 跳到 36：Android 15+ 的 edge-to-edge、前台服务限制都按新目标生效。
+  界面本来就显式开了 edge-to-edge 并按安全区布局，但**还没在真机上确认过**。
 
 **本地不要直接在 `/storage/emulated/0` 跑 `flutter build apk`**：
 `android/gradlew` 没有执行权限，Flutter 会报
