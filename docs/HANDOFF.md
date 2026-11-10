@@ -87,7 +87,11 @@ adb shell dumpsys activity services com.bailensn.liant | grep -A3 MessageService
 adb shell dumpsys notification --noredact | grep -A5 liant
 
 # 验证「UI 进程被杀后仍在线」
-adb shell am kill com.bailensn.liant   # 只杀 UI 进程（后台进程保留）
+#   am kill 只杀可回收进程：UI 退到后台后会被杀，带前台服务的 :background 不会被杀
+adb shell am kill com.bailensn.liant
+#   更精确的做法：只杀 UI 进程的 PID
+adb shell ps -A | grep bailensn | grep -v ':background'   # 取 PID
+adb shell kill <刚才那个 PID>
 #   或者：在最近任务里划掉 App
 # 然后从另一台设备给 Bot 发消息：应收到通知
 # 常驻通知文案会显示「已连接 · 正在后台接收消息」/「连接中断，正在重连…」

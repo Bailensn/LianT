@@ -387,7 +387,10 @@ int notificationIdFor(String msgId) {
     hash ^= unit;
     hash = (hash * 0x01000193) & 0x7fffffff;
   }
-  return hash == 0 ? 1 : hash;
+  // 1001 是常驻通知的 ID（MessageService.NOTIFICATION_ID），撞上就顺延，
+  // 否则消息通知会把「正在后台接收消息」那条盖掉。
+  if (hash == 0 || hash == 1001) hash += 1;
+  return hash;
 }
 
 /// openid 很长，标题只显示后 6 位。
