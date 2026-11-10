@@ -3,6 +3,8 @@
 仓库：`/storage/emulated/0/LianT`，分支 `main`。
 Manager 版本：`1.0.0+100`，versionCode `100`。
 稳定版已发布：Service `v1.0.0`、Manager `manager-v1.0.0`（正式签名、仅 arm64）。
+独立后台进程这一版由 CI 出了测试包：`manager-v1.0.0-100`（arm64，
+`.github/workflows/ci.yml` 的 android job 自动发布 pre-release）。
 
 先看 `git status`。工作区可能有一处未提交的
 `manager/android/gradle.properties`，是 Flutter migrator 自动加的
