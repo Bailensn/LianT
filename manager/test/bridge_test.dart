@@ -132,7 +132,7 @@ void main() {
     final client = await BridgeMessageClient.connect(
       identity: _identity(),
       info: BridgeInfo(port: server.port!, token: 'wrong-token', at: 0),
-      onState: (_, __) {},
+      onState: (_, _) {},
       onEvent: (_) {},
     );
     expect(client, isNull);
@@ -149,7 +149,7 @@ void main() {
     final client = await BridgeMessageClient.connect(
       identity: _identity(),
       info: BridgeInfo(port: server.port!, token: server.token!, at: 0),
-      onState: (_, __) {},
+      onState: (_, _) {},
       onEvent: (_) {},
     );
     expect(client, isNotNull);

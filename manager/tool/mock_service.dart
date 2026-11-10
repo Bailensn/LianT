@@ -155,7 +155,7 @@ Map<String, dynamic> _envelope(
     'id': _nowId(),
     'type': type,
     'ts': DateTime.now().millisecondsSinceEpoch,
-    if (replyTo != null) 'reply_to': replyTo,
+    'reply_to': ?replyTo,
     'payload': payload ?? <String, dynamic>{},
   };
 }

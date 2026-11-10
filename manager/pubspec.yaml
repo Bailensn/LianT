@@ -1,11 +1,11 @@
 name: liant
 description: LianT Manager（Bot Engine 客户端）
 publish_to: none
-version: 1.0.0+102
+version: 1.0.0+103
 
 environment:
-  # CI 用 Flutter 3.24.5（Dart 3.5.4）；升 SDK 时会一起抬。
-  sdk: '>=3.5.0 <4.0.0'
+  # Flutter 3.47.9 / Dart 3.13.7（CI 与 templates 对齐）。
+  sdk: '>=3.13.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -33,7 +33,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true

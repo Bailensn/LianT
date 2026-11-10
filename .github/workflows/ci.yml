@@ -96,16 +96,16 @@ jobs:
       - name: Cache Flutter SDK
         uses: actions/cache@v6
         with:
-          path: ${{ runner.tool_cache }}/flutter-3.24.5
-          key: flutter-3.24.5-${{ runner.os }}-${{ runner.arch }}
+          path: ${{ runner.tool_cache }}/flutter-3.47.9
+          key: flutter-3.47.9-${{ runner.os }}-${{ runner.arch }}
           restore-keys: |
-            flutter-3.24.5-${{ runner.os }}-
+            flutter-3.47.9-${{ runner.os }}-
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
+          flutter-version: '3.47.9'
           channel: stable
           cache: false
-          cache-path: ${{ runner.tool_cache }}/flutter-3.24.5
+          cache-path: ${{ runner.tool_cache }}/flutter-3.47.9
       - name: Cache pub
         uses: actions/cache@v6
         with:
@@ -178,16 +178,16 @@ jobs:
       - name: Cache Flutter SDK
         uses: actions/cache@v6
         with:
-          path: ${{ runner.tool_cache }}/flutter-3.24.5
-          key: flutter-3.24.5-${{ runner.os }}-${{ runner.arch }}
+          path: ${{ runner.tool_cache }}/flutter-3.47.9
+          key: flutter-3.47.9-${{ runner.os }}-${{ runner.arch }}
           restore-keys: |
-            flutter-3.24.5-${{ runner.os }}-
+            flutter-3.47.9-${{ runner.os }}-
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
+          flutter-version: '3.47.9'
           channel: stable
           cache: false
-          cache-path: ${{ runner.tool_cache }}/flutter-3.24.5
+          cache-path: ${{ runner.tool_cache }}/flutter-3.47.9
       - name: Cache pub
         uses: actions/cache@v6
         with:

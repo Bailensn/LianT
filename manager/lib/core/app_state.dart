@@ -59,6 +59,8 @@ class Conversation {
 
 /// 应用状态。
 class AppState extends ChangeNotifier {
+  // 具名参数必须是公开名，字段是私有的，没有 initializing formal 写法。
+  // ignore: prefer_initializing_formals
   AppState(this._prefs, {Box<String>? messageBox}) : _messageBox = messageBox;
 
   final SharedPreferences _prefs;
@@ -840,7 +842,7 @@ class AppState extends ChangeNotifier {
         'bot_id': botId,
         'peer_id': peerId,
         'limit': 100,
-        if (before != null) 'before': before,
+        'before': ?before,
       });
       final raw = res['messages'];
       final page = <ChatMessage>[];
