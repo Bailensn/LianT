@@ -33,14 +33,6 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = liantVersionCode
         versionName = "1.0.0"
-
-        // 只打 arm64-v8a（本项目只发 aarch64）。
-        // --target-platform 只管 Flutter 引擎/libapp.so，管不到依赖 AAR 自带的 .so：
-        // ML Kit 条码（mobile_scanner）、CameraX、DataStore 每个都带四个 ABI，
-        // 不裁的话 APK 会白胖约 6 MB。
-        ndk {
-            abiFilters.add("arm64-v8a")
-        }
     }
 
     packaging {
@@ -80,6 +72,16 @@ kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
     }
+}
+
+// Flutter 的 Gradle 插件会在 afterEvaluate 里把 defaultConfig.ndk.abiFilters
+// 重置成「Flutter 支持的全部 ABI」（armeabi-v7a / arm64-v8a / x86_64，见
+// FlutterPlugin.configureAbiWithoutSplits），.so 为 ML Kit 条码（mobile_scanner）、
+// CameraX、DataStore 这些 AAR 自带，不裁就会各带三套。这里在它之后再改回 arm64。
+afterEvaluate {
+    val filters = android.defaultConfig.ndk.abiFilters
+    filters.clear()
+    filters.add("arm64-v8a")
 }
 
 flutter {
