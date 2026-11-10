@@ -16,6 +16,7 @@ import 'pages/bots_page.dart';
 import 'pages/chats_page.dart';
 import 'pages/pair_page.dart';
 import 'pages/settings_page.dart';
+import 'l10n/l10n.dart';
 import 'ui/tokens.dart';
 import 'ui/widgets.dart';
 import 'l10n/ltext.dart';
@@ -58,7 +59,7 @@ class LiantApp extends StatefulWidget {
   State<LiantApp> createState() => _LiantAppState();
 }
 
-class _LiantAppState extends State<LiantApp> {
+class _LiantAppState extends State<LiantApp> with WidgetsBindingObserver {
   late Locale? _locale = widget.state.locale;
   final ThemeData _light = LiantTheme.light();
   final ThemeData _dark = LiantTheme.dark();
@@ -67,6 +68,16 @@ class _LiantAppState extends State<LiantApp> {
   void initState() {
     super.initState();
     widget.state.addListener(_onState);
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeLocales(List<Locale>? locales) {
+    super.didChangeLocales(locales);
+    // 跟随系统时，系统语言变了要重新解析一次：LText 在 build 里读 L10n.code。
+    if (widget.state.languageSetting != 'system') return;
+    L10n.setSetting('system');
+    setState(() {});
   }
 
   @override
@@ -88,6 +99,7 @@ class _LiantAppState extends State<LiantApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.state.removeListener(_onState);
     super.dispose();
   }
