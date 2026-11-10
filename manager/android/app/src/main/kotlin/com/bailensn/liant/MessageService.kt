@@ -101,10 +101,10 @@ class MessageService : Service() {
         // 共享状态文件路径：UI 进程与后台进程都从这里取，保证是同一个文件。
         MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL_STATE)
             .setMethodCallHandler { call, result ->
-                if (call.method == "statePath") {
-                    result.success(stateFile(this).absolutePath)
-                } else {
-                    result.notImplemented()
+                when (call.method) {
+                    "statePath" -> result.success(stateFile(this).absolutePath)
+                    "bridgePath" -> result.success(bridgeFile(this).absolutePath)
+                    else -> result.notImplemented()
                 }
             }
         MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL_NOTIFY)
@@ -177,13 +177,14 @@ class MessageService : Service() {
 
     private fun postForeground() {
         val notification = buildForegroundNotification()
-        if (Build.VERSION.SDK_INT >= 29) {
+        if (Build.VERSION.SDK_INT >= 34) {
             startForeground(
                 NOTIFICATION_ID,
                 notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
             )
         } else {
+            // 29~33 不认识 specialUse，两参版本会按清单里的类型提交。
             startForeground(NOTIFICATION_ID, notification)
         }
     }
@@ -295,6 +296,10 @@ class MessageService : Service() {
          */
         fun stateFile(context: Context): File =
             File(context.filesDir, "liant_background_state.json")
+
+        /** 后台进程写给 UI 的桥接信息（本地端口 + 令牌）。 */
+        fun bridgeFile(context: Context): File =
+            File(context.filesDir, "liant_bridge.json")
 
         /** 用前台服务的方式拉起；Android 12+ 后台可能被拒绝，调用方自己兜住异常。 */
         fun start(context: Context, action: String? = null) {

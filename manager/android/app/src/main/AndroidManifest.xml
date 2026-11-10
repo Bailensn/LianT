@@ -2,7 +2,10 @@
     <!-- 与服务端建立 WSS 连接；Android 的 release 清单默认不带这个权限。 -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <!-- 常驻消息服务用 specialUse：dataSync 在 targetSdk 35 的 Android 15 上有
+         每天 6 小时上限，会把这个「一直在收消息」的服务掐掉。
+         specialUse 没有时长限制；不上架 Play，不需要额外申报。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- 开机后把常驻服务拉回来。 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
@@ -39,8 +42,13 @@
             android:name=".MessageService"
             android:exported="false"
             android:process=":background"
-            android:foregroundServiceType="dataSync"
-            android:stopWithTask="false" />
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false">
+            <!-- Android 14+ 用 specialUse 必须声明用途，否则 startForeground 抛异常。 -->
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="self_hosted_im_websocket" />
+        </service>
         <receiver
             android:name=".RestartReceiver"
             android:exported="false">

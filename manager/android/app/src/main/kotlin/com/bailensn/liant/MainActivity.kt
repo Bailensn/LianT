@@ -22,10 +22,12 @@ class MainActivity : FlutterActivity() {
         // 共享状态文件路径：UI 进程写、:background 进程读，必须是同一个文件。
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MessageService.CHANNEL_STATE)
             .setMethodCallHandler { call, result ->
-                if (call.method == "statePath") {
-                    result.success(MessageService.stateFile(this).absolutePath)
-                } else {
-                    result.notImplemented()
+                when (call.method) {
+                    "statePath" ->
+                        result.success(MessageService.stateFile(this).absolutePath)
+                    "bridgePath" ->
+                        result.success(MessageService.bridgeFile(this).absolutePath)
+                    else -> result.notImplemented()
                 }
             }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "liant/background")

@@ -8,13 +8,15 @@ import 'dart:math';
 
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'client_api.dart';
 import 'identity.dart';
 import 'p256.dart';
 import 'protocol.dart';
 import 'socket.dart';
 
-/// 连接状态，界面按它渲染顶部说明条。
-enum ConnState { idle, connecting, online, reconnecting, error }
+// ConnState 与 MessageClient 定义在 client_api.dart，这里再导出一次，
+// 原来 `import 'client.dart'` 的地方不用改。
+export 'client_api.dart';
 
 class _Pending {
   _Pending(this.completer, this.timer);
@@ -23,8 +25,8 @@ class _Pending {
   final Timer timer;
 }
 
-/// 一台已配对设备的连接。
-class LiantClient {
+/// 一台已配对设备的连接（直连）。
+class LiantClient implements MessageClient {
   LiantClient({
     required this.identity,
     required this.onState,

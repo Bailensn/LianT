@@ -1,7 +1,7 @@
 # 交接说明（给下一个会话）
 
 仓库：`/storage/emulated/0/LianT`，分支 `main`。
-Manager 版本：`1.0.0+100`，versionCode `100`。
+Manager 版本：`1.0.0+101`，versionCode `101`。
 稳定版已发布：Service `v1.0.0`、Manager `manager-v1.0.0`（正式签名、仅 arm64）。
 独立后台进程这一版由 CI 出了测试包：`manager-v1.0.0-100`（arm64，
 `.github/workflows/ci.yml` 的 android job 自动发布 pre-release）。
@@ -15,94 +15,104 @@ Manager 版本：`1.0.0+100`，versionCode `100`。
 
 ---
 
-## 一、后台常驻：独立进程（已实现，待真机验证）
+## 一、后台常驻：独立进程 + 单一连接（已实现，待真机验证）
 
-用户要求的是**独立进程**：UI 进程被系统杀掉后仍能保持 WebSocket、收消息、发通知。
+用户要求：**独立进程**，UI 进程被杀后仍保持 WebSocket；而且**全 App 只有后台进程
+那一条连接**，事件实时转发回 UI 进程。
 
-### 现在的结构
+### 结构
 
 ```
-UI 进程                          :background 进程（MessageService）
-  MainActivity                     startForeground + 常驻通知
-  FlutterEngine（跑 main）          FlutterEngine（跑 backgroundMain）
-  LiantClient（给界面）             LiantClient（只负责收消息/发通知）
-  写 liant_background_state.json   读 liant_background_state.json
+UI 进程                                :background 进程（MessageService）
+  MainActivity                          startForeground（specialUse）+ 常驻通知
+  FlutterEngine（main）                 FlutterEngine（backgroundMain）
+  BridgeMessageClient                   BridgeServer ── LiantClient ── WSS
+        │  TCP 127.0.0.1 + 令牌                ▲
+        └────────── JSON 行协议 ──────────────┘
+  写 liant_background_state.json         读同一个文件（前台/免打扰/标题/备注）
 ```
 
-- 清单里 `MessageService` 带 `android:process=":background"`、
-  `stopWithTask="false"`、`foregroundServiceType="dataSync"`。
-- Dart 入口 `backgroundMain` **放在 `lib/main.dart`**，不能挪走：
-  AOT 运行时按函数名在**根库**（main.dart 所在库）里找入口；放在没人 import
-  的文件里会被摇树删掉。函数上的 `@pragma('vm:entry-point')` 必须保留。
-- 后台逻辑在 `lib/core/background_runtime_io.dart`（Web 用 `_stub.dart`，条件导出）。
+- 清单：`MessageService` 带 `android:process=":background"`、`stopWithTask="false"`、
+  `foregroundServiceType="specialUse"`（类型说明见 §一.4）。
+- Dart 入口 `backgroundMain` **放在 `lib/main.dart`**，不能挪走：AOT 按函数名在
+  **根库**里找入口，放在没人 import 的文件里会被摇树删掉。后台逻辑在
+  `lib/core/background_runtime_io.dart`。
+- 桥接：`lib/core/bridge_server_io.dart`（后台）/ `bridge_client_io.dart`（UI），
+  协议在 `bridge_protocol.dart`，端口与令牌在 `liant/background_state` 通道
+  给出的 `liant_bridge.json` 里。UI 的请求（bot.list / msg.send / state.snapshot …）
+  全部经桥接转给后台进程，再由那条唯一的 WebSocket 发出去。
 
-### 跨进程状态（关键坑，已经踩过）
+### 1. 只有一条 WebSocket
 
-`shared_preferences` 在每个进程各有一份内存缓存，`reload()` 也不会真回读磁盘，
-后台进程读到的经常是旧值。所以改成共享文件：
+- 后台进程 `LiantClient` 收到的 `msg.inbound` / `event.*` / `auth.ok` 全部
+  通过桥接 `broadcastEvent` 实时转给 UI；连接状态用 `broadcastState`。
+- UI 进程的 `AppState` 拿到的是 `MessageClient` 接口（`client_api.dart`），
+  实现可以是直连 `LiantClient`，也可以是 `BridgeMessageClient`。
+- 降级：Android 上 `createMessageClient()` 先等桥接最多 6 秒，等不到就直连，
+  并在设置页「消息连接」显示「主进程直连（后台服务未就绪）」。回到前台时如果
+  后台服务已经活了（桥接文件心跳 90 秒内），会切回桥接（最多 5 分钟试一次）。
+- 直连降级期间如果后台也在跑，服务端会看到两条连接 —— 这是唯一会出现双连接的情况。
 
-- 路径：`filesDir/liant_background_state.json`，由原生 `liant/background_state`
-  通道的 `statePath` 提供（MainActivity 与 MessageService 都注册，两个进程
-  拿到的是同一个文件）。
-- UI 进程写（`lib/core/background_state_io.dart`）：内容 = 身份 + 前台标志 +
-  免打扰 + 会话标题 + 备注；先写 `.tmp` 再 rename，写操作串行化。
-- 后台进程读：每条消息前重读一次，免打扰/前台开关立刻生效；每分钟对一次，
-  识别解除配对、重新配对。
-- 文件存在即代表「已配对」，`RestartReceiver` 靠它决定开机要不要拉起服务。
+### 2. 跨进程状态
 
-### 通知去重
+`shared_preferences` 每个进程各一份内存缓存，`reload()` 也不回读磁盘，所以改成
+共享文件 `liant_background_state.json`（UI 写、后台读，先写 `.tmp` 再 rename，
+写操作串行化）。内容是身份 + 前台标志 + 免打扰 + 会话标题 + 备注；文件存在即
+代表「已配对」，`RestartReceiver` 靠它决定开机要不要拉起服务。
+
+### 3. 通知去重与分工
 
 - 两边算同一个通知 ID：`notificationIdFor(msgId)`（protocol.dart，FNV-1a，
-  不用 `String.hashCode`，避免跨进程/跨版本不一致）。
-- 通知都带 `setOnlyAlertOnce(true)`，所以同一条消息最多响一次。
-- 分工：UI 在前台时后台进程不弹（读共享状态里的 `foreground`）；
-  UI 不在前台时两边都可能弹，靠上面的 ID 合并。
+  并避开常驻通知的 1001）。
+- UI 在前台时后台进程不弹（读共享状态里的 `foreground`）；UI 不在前台时后台弹。
+- 通知都带 `setOnlyAlertOnce(true)`，同一条消息最多响一次。
 
-### 生命周期
+### 4. 前台服务类型：`specialUse`
 
-- `START_STICKY`；系统重启服务时 `onStartCommand` 的 intent 可能为 null，引擎在
-  `onCreate` 里恢复。
+`dataSync` 在 **targetSdk 35 的 Android 15** 上有每天 6 小时上限，会把这个
+「一直在收消息」的服务掐掉，所以换成 `specialUse`：
+
+- 权限 `FOREGROUND_SERVICE_SPECIAL_USE`；
+- `<property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE">`
+  必须声明用途，否则 Android 14+ `startForeground` 抛异常；
+- 没有时长限制；代价是上架 Google Play 时要申报理由（本项目只侧载，不涉及）；
+- 运行时只在 `SDK_INT >= 34` 传显式类型，29~33 用两参版本按清单类型提交。
+
+### 5. 生命周期
+
+- `START_STICKY`；系统重启服务时 `onStartCommand` 的 intent 可能为 null，
+  引擎在 `onCreate` 里恢复。
 - `onTaskRemoved` 排一个 `setAndAllowWhileIdle` 闹钟（60 秒后）兜底拉起，
-  拉起失败只记日志（Android 12+ 后台启动前台服务会被系统拒绝）。
-- `RestartReceiver`：开机（BOOT_COMPLETED / QUICKBOOT_POWERON）、闹钟、
-  常驻通知被划掉后的重发，三个来源共用。
-- **UI 侧不要再在 `detached`/`dispose` 里停服务**：那样划掉任务就没后台了。
-  只有 `unpair()` 才停服务 + 删共享状态。
+  失败只记日志（Android 12+ 后台启动前台服务会被系统拒绝）。
+- `RestartReceiver`：开机、闹钟、常驻通知被划掉三个来源共用。
+- UI 侧**不能**在 `detached`/`dispose` 里停服务，只有 `unpair()` 才停。
 
-### 已知限制（要跟用户说清楚）
+### 6. 已知限制
 
-- 两个进程各一条 WebSocket，服务端会看到同一设备两条连接（协议没有单会话限制，
-  `Broadcast` 会都发）。内存比单进程多一个 FlutterEngine 的量级。
-- Android 12+ 从后台拉起前台服务受限；OEM 省电策略下仍可能被杀，只能引导用户
-  加白名单，不能承诺「永不杀」。
-- `dataSync` 类型在 **targetSdk 35** 的 Android 15 上有每天 6 小时上限；本项目
-  现在 targetSdk 仍是 Flutter 3.24 默认的 34，升级 targetSdk 前必须先重新设计
-  前台服务类型。
-- 证书/身份都是明文写在共享文件里（和 shared_preferences 一样在应用私有目录）。
+- 桥接是 127.0.0.1 的 TCP，任何 App 都能连端口，所以握手必须带后台随机令牌
+  （写在应用私有目录，别的 App 读不到），端口每次启动都换。
+- 后台进程被 OEM 杀掉后，UI 会先在 6 秒后降级直连，回前台再尝试切回。
+- Android 12+ 从后台拉起前台服务受限；省电白名单只能引导用户加，不能承诺永不杀。
+- 身份（含私钥）明文存在应用私有目录的共享文件里，和 shared_preferences 一个级别。
 
 ### 真机验证清单
 
 ```bash
 # 装包后：确认有两个进程
 adb shell ps -A | grep bailensn        # 期望看到 :background 独立 PID
-adb shell dumpsys activity services com.bailensn.liant | grep -A3 MessageService
-adb shell dumpsys notification --noredact | grep -A5 liant
+
+# 设置页「消息连接」应显示「后台进程常驻」；常驻通知应显示「已连接」
 
 # 验证「UI 进程被杀后仍在线」
-#   am kill 只杀可回收进程：UI 退到后台后会被杀，带前台服务的 :background 不会被杀
-adb shell am kill com.bailensn.liant
-#   更精确的做法：只杀 UI 进程的 PID
-adb shell ps -A | grep bailensn | grep -v ':background'   # 取 PID
-adb shell kill <刚才那个 PID>
-#   或者：在最近任务里划掉 App
-# 然后从另一台设备给 Bot 发消息：应收到通知
-# 常驻通知文案会显示「已连接 · 正在后台接收消息」/「连接中断，正在重连…」
+adb shell am kill com.bailensn.liant        # 只杀可回收进程
+# 或只杀 UI 进程的 PID：
+adb shell ps -A | grep bailensn | grep -v ':background'
+adb shell kill <PID>
+# 然后从别的号给 Bot 发消息：应收到通知（界面重新打开后能看到这些消息）
 
 # 验证开机恢复
 adb reboot   # 开机后不打开 App，直接发消息
 ```
-
----
 
 ## 二、已经完成的功能
 
@@ -119,7 +129,7 @@ adb reboot   # 开机后不打开 App，直接发消息
 - 图片消息不套蓝气泡；文件消息显示为文件卡片
 - 群聊/私聊标识
 - 通知：UI 与 `:background` 进程同一通知 ID 去重；系统默认通知音
-- 独立后台进程（本页 §一）
+- 独立后台进程 + 单一 WebSocket + 本地桥接（§一）；前台服务类型 `specialUse`
 - 性能：去掉实时模糊、MaterialApp 全局重建、会话列表懒构建、tab 隔离重绘
 - 保留策略：不主动限制消息时间/媒体总量（默认 100 年 / 1<<62 字节）
 - 本地聊天记录：Hive 持久化，去掉 2000 条/2.5MB 上限；首次启动会迁移旧 shared_preferences 消息

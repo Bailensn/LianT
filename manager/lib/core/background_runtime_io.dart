@@ -1,15 +1,18 @@
 // 独立后台进程里的消息循环。
 //
 // 由 MessageService 在自己的 FlutterEngine 里执行 `backgroundMain` 进入；
-// 这里不含任何 UI，只做三件事：连服务端、把新消息变成系统通知、报告连接状态。
-//
-// 与 UI 进程分工：UI 在前台时通知交给 UI 进程（它知道当前打开了哪个会话），
-// 这里只在 UI 不在前台时弹。两边用同一个通知 ID，即使同时弹也只会响一次。
+// 这里不含任何 UI，只做四件事：
+//   1. 连服务端（全 App 唯一一条 WebSocket）；
+//   2. 把状态与事件实时转给 UI 进程（本地桥接）；
+//   3. 转发 UI 发来的请求；
+//   4. UI 不在前台时弹系统通知。
 import 'dart:async';
 
 import 'package:flutter/services.dart';
 
 import 'background_state.dart';
+import 'bridge_info_io.dart';
+import 'bridge_server_io.dart';
 import 'client.dart';
 import 'identity.dart';
 import 'protocol.dart';
@@ -19,13 +22,17 @@ const MethodChannel _notifyChannel = MethodChannel('liant/background_notify');
 
 BackgroundState? _state;
 LiantClient? _client;
+BridgeServer? _bridge;
 Timer? _retryTimer;
+ConnState _lastState = ConnState.idle;
+String _lastDetail = '';
 bool _running = false;
 
-/// 后台进程入口主体：读共享状态、连接服务端，然后常驻。
+/// 后台进程入口主体：起桥接、读共享状态、连接服务端，然后常驻。
 Future<void> startBackgroundRuntime() async {
   if (_running) return;
   _running = true;
+  await _startBridge();
   // 每分钟对一次共享状态：识别解除配对、重新配对这类运行期变化。
   Timer.periodic(const Duration(seconds: 60), (_) {
     unawaited(_refreshState());
@@ -40,6 +47,47 @@ Future<void> startBackgroundRuntime() async {
   _connect();
 }
 
+// ---------------------------------------------------------------------------
+// 本地桥接
+// ---------------------------------------------------------------------------
+
+Future<void> _startBridge() async {
+  try {
+    final bridge = BridgeServer(
+      clientOf: () => _client,
+      connectionOf: () => (_lastState, _lastDetail),
+    );
+    await bridge.start();
+    _bridge = bridge;
+    await _touchBridge();
+    // 心跳：UI 靠这个时间戳判断后台进程是否还活着。
+    Timer.periodic(const Duration(seconds: 30), (_) {
+      unawaited(_touchBridge());
+    });
+  } catch (_) {
+    // 桥接起不来就只做通知；UI 会自动降级直连。
+    _bridge = null;
+  }
+}
+
+Future<void> _touchBridge() async {
+  final bridge = _bridge;
+  final port = bridge?.port;
+  final token = bridge?.token;
+  if (port == null || token == null) return;
+  await writeBridgeInfo(
+    BridgeInfo(
+      port: port,
+      token: token,
+      at: DateTime.now().millisecondsSinceEpoch,
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 连接
+// ---------------------------------------------------------------------------
+
 void _connect() {
   final state = _state;
   if (state == null) return;
@@ -48,6 +96,8 @@ void _connect() {
     identity: state.identity,
     onState: _onConnState,
     onEvent: (env) {
+      // 先转给 UI 进程：界面上的会话、Bot 状态、审计都靠这些事件。
+      _bridge?.broadcastEvent(env);
       if (env.type != 'msg.inbound' && env.type != 'event.msg') return;
       unawaited(_onInbound(env));
     },
@@ -57,6 +107,9 @@ void _connect() {
 }
 
 void _onConnState(ConnState state, String detail) {
+  _lastState = state;
+  _lastDetail = detail;
+  _bridge?.broadcastState(state, detail);
   final text = switch (state) {
     ConnState.online => '已连接 · 正在后台接收消息',
     ConnState.connecting => '正在连接…',
@@ -91,6 +144,9 @@ Future<void> _refreshState() async {
     _client?.stop();
     _client = null;
     _state = null;
+    _lastState = ConnState.idle;
+    _lastDetail = '';
+    _bridge?.broadcastState(_lastState, _lastDetail);
     await _setStatus('未配对');
     return;
   }
@@ -107,6 +163,10 @@ bool _sameTarget(Identity a, Identity b) =>
     a.port == b.port &&
     a.secure == b.secure;
 
+// ---------------------------------------------------------------------------
+// 通知
+// ---------------------------------------------------------------------------
+
 Future<void> _onInbound(Envelope env) async {
   final msg = ChatMessage.fromJson(env.payload, direction: 'in');
   if (msg.msgId.isEmpty || msg.botId.isEmpty) return;
@@ -119,8 +179,10 @@ Future<void> _onInbound(Envelope env) async {
   if (state.muted[key] == true) return;
 
   final isGroup = msg.peerKind == 'group';
-  final fallback = state.remarks[key] ?? state.titles[key] ?? shortPeer(msg.peerId);
-  final sender = msg.senderName.isEmpty ? shortPeer(msg.senderId) : msg.senderName;
+  final fallback =
+      state.remarks[key] ?? state.titles[key] ?? shortPeer(msg.peerId);
+  final sender =
+      msg.senderName.isEmpty ? shortPeer(msg.senderId) : msg.senderName;
   final title = _clip(
     isGroup ? fallback : (msg.senderName.isEmpty ? fallback : msg.senderName),
     36,

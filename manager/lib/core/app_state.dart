@@ -15,6 +15,7 @@ import 'background_service.dart';
 import 'background_state.dart';
 import 'client.dart';
 import 'identity.dart';
+import 'message_client.dart';
 import 'p256.dart';
 import 'protocol.dart';
 import 'socket.dart';
@@ -73,7 +74,10 @@ class AppState extends ChangeNotifier {
   static const String _kLanguage = 'liant.language';
   static const String _kMessages = 'liant.messages';
 
-  LiantClient? _client;
+  MessageClient? _client;
+  bool _usingBridge = false;
+  int _connectGen = 0;
+  DateTime? _bridgeRetryAt;
   bool _booted = false;
   bool _syncing = false;
   Timer? _saveTimer;
@@ -104,6 +108,9 @@ class AppState extends ChangeNotifier {
   bool acceptBeta = false;
 
   bool get booted => _booted;
+
+  /// 当前是不是走 `:background` 进程的桥接（false = 直连降级）。
+  bool get usesBackgroundBridge => _usingBridge;
   bool get online => conn == ConnState.online;
 
   Locale? get locale {
@@ -158,6 +165,7 @@ class AppState extends ChangeNotifier {
       onStateChange: (state) {
         if (state == AppLifecycleState.resumed) {
           _setForeground(true);
+          _maybeUpgradeToBridge();
           return;
         }
         _setForeground(false);
@@ -176,7 +184,7 @@ class AppState extends ChangeNotifier {
         unawaited(startMessageService());
         unawaited(requestNotificationPermission());
       });
-      _connect();
+      unawaited(_connect());
     }
   }
 
@@ -231,7 +239,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     unawaited(startMessageService());
     unawaited(requestNotificationPermission());
-    _connect();
+    unawaited(_connect());
   }
 
   /// 一次性配对：连服务端、发 pair.request、等 pair.ok。
@@ -357,6 +365,9 @@ class AppState extends ChangeNotifier {
 
   Future<void> unpair() async {
     _saveTimer?.cancel();
+    _connectGen++;
+    _usingBridge = false;
+    _bridgeRetryAt = null;
     _client?.stop();
     _client = null;
     identity = null;
@@ -381,20 +392,55 @@ class AppState extends ChangeNotifier {
   /// 立刻重连（界面上的「立即重试」）。
   void reconnect() {
     if (identity == null) return;
-    _connect();
+    unawaited(_connect());
   }
 
-  void _connect() {
+  Future<void> _connect() async {
     final id = identity;
     if (id == null) return;
-    _client?.stop();
-    final client = LiantClient(
+    final gen = ++_connectGen;
+    if (conn != ConnState.connecting) {
+      conn = ConnState.connecting;
+      detail = '';
+      notifyListeners();
+    }
+    // Android 上会先等后台进程的本地桥接（全 App 只有它那条 WebSocket）；
+    // 等不到才会退化成直连。
+    final launch = await createMessageClient(
       identity: id,
-      onState: _onConnState,
-      onEvent: _onEvent,
+      onState: (state, reason) {
+        if (gen == _connectGen) _onConnState(state, reason);
+      },
+      onEvent: (env) {
+        if (gen == _connectGen) _onEvent(env);
+      },
     );
-    _client = client;
-    client.start();
+    if (gen != _connectGen) {
+      launch.client.stop();
+      return;
+    }
+    _client?.stop();
+    _client = launch.client;
+    _usingBridge = launch.bridged;
+    launch.client.start();
+  }
+
+  /// 直连降级之后，回前台时如果后台服务已经活过来，就切回桥接。
+  ///
+  /// 切换会重连一次，所以最多 5 分钟试一次。
+  void _maybeUpgradeToBridge() {
+    if (_usingBridge || identity == null) return;
+    final now = DateTime.now();
+    final retryAt = _bridgeRetryAt;
+    if (retryAt != null && now.isBefore(retryAt)) return;
+    _bridgeRetryAt = now.add(const Duration(minutes: 5));
+    unawaited(_tryUpgradeToBridge());
+  }
+
+  Future<void> _tryUpgradeToBridge() async {
+    if (!await backgroundServiceAlive()) return;
+    if (_usingBridge || identity == null) return;
+    await _connect();
   }
 
   void _onConnState(ConnState state, String reason) {
@@ -449,7 +495,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> _fallbackSnapshot(LiantClient client) async {
+  Future<void> _fallbackSnapshot(MessageClient client) async {
     try {
       final botList = await client.request('bot.list', const <String, dynamic>{});
       final rawBots = botList['bots'];

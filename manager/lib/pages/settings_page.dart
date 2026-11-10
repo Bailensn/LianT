@@ -53,6 +53,12 @@ class SettingsPage extends StatelessWidget {
               onTap: state.reconnect,
             ),
           _SettingsRow(
+            title: '消息连接',
+            subtitle: state.usesBackgroundBridge
+                ? '后台进程常驻 · 关掉界面也能收消息'
+                : '主进程直连（后台服务未就绪）',
+          ),
+          _SettingsRow(
             title: '服务指纹',
             subtitle: identity.fingerprint.isEmpty ? '未知' : identity.fingerprint,
             selectable: true,
