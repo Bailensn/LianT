@@ -28,14 +28,14 @@ DB_PASSWORD=your_password
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
-  | sudo bash -s -- --beta
+  | sudo bash -s --
 ```
 
 依序詢問安裝目錄、連接埠、執行使用者與資料庫類型。預設 PostgreSQL；選擇 `sqlite` 使用 SQLite。非互動 SQLite：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
-  | sudo bash -s -- -y --beta \
+  | sudo bash -s -- -y \
       --dir "$INSTALL_DIR" --port "$PORT" --user "$RUN_USER" --db sqlite
 ```
 
@@ -52,14 +52,15 @@ CREATE DATABASE your_db_name OWNER your_db_user;
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
-  | sudo bash -s -- -y --beta \
+  | sudo bash -s -- -y \
       --db postgres --db-host "$DB_HOST" --db-port "$DB_PORT" \
       --db-name "$DB_NAME" --db-user "$DB_USER" --db-pass "$DB_PASSWORD"
 ```
 
 亦可匯出 `LIANT_DB_HOST`、`LIANT_DB_PORT`、`LIANT_DB_NAME`、`LIANT_DB_USER`、`LIANT_DB_PASSWORD`，搭配 `sudo -E` 使用。
 
-預設僅安裝穩定版。Service 目前僅發布 pre-release（Alpha），需加上 `--beta`（或 `LIANT_BETA=1`）。
+預設安裝最新穩定版；正式 Release 同時包含 Service 二進位與 Manager APK。只有要裝預發布版時才加 `--beta`（或 `LIANT_BETA=1`）。
+同一個 Release 裡還有 `LianT-android-arm64.apk`（客戶端），裝到 Android 手機即可。
 
 參數：`--dir`、`--port`、`--user`、`--url`、`--beta`、`--db postgres|sqlite`、`--db-host`、`--db-port`、`--db-name`、`--db-user`、`--db-pass`、`-y`。
 

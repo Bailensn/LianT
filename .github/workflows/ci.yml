@@ -226,19 +226,23 @@ jobs:
           else
             echo "::warning::ANDROID_KEYSTORE_BASE64 未配置，使用 debug 签名（仅测试包）"
           fi
-      - name: Build APKs
+      - name: Build APK
+        id: apk
         working-directory: manager
         run: |
           set -euo pipefail
           # 只产出 arm64 APK（aarch64 手机），不用 --split-per-abi，
           # 所以也不需要再去改 Flutter 内部的 ABI versionCode 偏移。
           flutter build apk --release --target-platform android-arm64
-          cp build/app/outputs/flutter-apk/app-release.apk /tmp/LianT-arm64.apk
-          ls -lh /tmp/LianT-arm64.apk
+          code="$(awk -F'+' '/^version:/{print $2; exit}' pubspec.yaml)"
+          apk="/tmp/LianT-android-arm64-${code}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$apk"
+          ls -lh "$apk"
+          echo "apk=$apk" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-android-arm64
-          path: /tmp/LianT-arm64.apk
+          path: ${{ steps.apk.outputs.apk }}
           if-no-files-found: error
           retention-days: 14
       - name: Publish Manager release
@@ -259,4 +263,4 @@ jobs:
             --title "LianT Manager $version ($code) (test)" \
             --notes "Manager $version，versionCode $code（测试版）" \
             --prerelease \
-            /tmp/LianT-arm64.apk
+            "${{ steps.apk.outputs.apk }}"

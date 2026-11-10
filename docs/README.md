@@ -15,9 +15,10 @@
 
 ## 1. 现状
 
-- Manager `1.0.0+106`；稳定版 `manager-v1.0.0`（正式签名，仅 arm64），
-  测试包 `manager-v1.0.0-106` 由 CI 自动发 pre-release。
-- Service `v1.0.0`，二进制 linux amd64 / arm64。
+- Manager `1.0.0+106`，Service 同版本线；测试包 `manager-v1.0.0-106` 由 CI 自动发 pre-release。
+- **正式版以后一个 Release 同时发两端**：tag `v<version>`，含 `LianT-linux-amd64`、
+  `LianT-linux-arm64`、`LianT-android-arm64.apk`、`SHA256SUMS.txt`。
+  历史遗留的 `v1.0.0`（只有 Service）与 `manager-v1.0.0`（只有 APK）是分开发的，不再沿用。
 - 本机没有 Flutter/JDK/Gradle，**不能本地构建**：改完 push，等 CI 出包再装 APK 验证。
 
 已完成：

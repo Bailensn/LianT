@@ -28,14 +28,14 @@ DB_PASSWORD=your_password
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
-  | sudo bash -s -- --beta
+  | sudo bash -s --
 ```
 
 설치 경로, 포트, 실행 사용자, 데이터베이스 종류를 순서대로 묻습니다. 기본값은 PostgreSQL이며 `sqlite`를 선택하면 SQLite를 사용합니다. 비대화형 SQLite:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
-  | sudo bash -s -- -y --beta \
+  | sudo bash -s -- -y \
       --dir "$INSTALL_DIR" --port "$PORT" --user "$RUN_USER" --db sqlite
 ```
 
@@ -52,14 +52,15 @@ CREATE DATABASE your_db_name OWNER your_db_user;
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
-  | sudo bash -s -- -y --beta \
+  | sudo bash -s -- -y \
       --db postgres --db-host "$DB_HOST" --db-port "$DB_PORT" \
       --db-name "$DB_NAME" --db-user "$DB_USER" --db-pass "$DB_PASSWORD"
 ```
 
 `LIANT_DB_HOST`, `LIANT_DB_PORT`, `LIANT_DB_NAME`, `LIANT_DB_USER`, `LIANT_DB_PASSWORD`를 export하고 `sudo -E`를 사용할 수도 있습니다.
 
-기본적으로 안정 버전만 설치합니다. Service는 현재 pre-release(Alpha)만 배포하므로 `--beta`(또는 `LIANT_BETA=1`)를 추가하세요.
+기본적으로 최신 안정 버전을 설치하며, 안정 Release에는 Service 바이너리와 Manager APK가 함께 들어 있습니다. pre-release를 설치할 때만 `--beta`(또는 `LIANT_BETA=1`)를 추가하세요.
+같은 Release에 클라이언트인 `LianT-android-arm64.apk`도 들어 있습니다. Android 폰에 설치하세요.
 
 옵션: `--dir`, `--port`, `--user`, `--url`, `--beta`, `--db postgres|sqlite`, `--db-host`, `--db-port`, `--db-name`, `--db-user`, `--db-pass`, `-y`.
 

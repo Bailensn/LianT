@@ -1,6 +1,7 @@
 name: Release
 
-# 手动发布稳定版：Service tag v<version>，Manager tag manager-v<version>。
+# 手动发布稳定版：**一个 Release** 同时包含 Service 二进制与 Manager APK，
+# tag 是 v<version>（不再单独发 manager-v<version>）。
 on:
   workflow_dispatch:
     inputs:
@@ -13,15 +14,40 @@ permissions:
   contents: write
 
 jobs:
-  service:
+  release:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+
+      # 版本号只有一个来源：manager/pubspec.yaml。输入值必须与它一致，
+      # 否则发出来的 APK 和 tag 对不上（安装后覆盖不上、用户也说不清装的是哪版）。
+      - name: Check version
+        id: version
+        working-directory: manager
+        env:
+          WANT: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          full="$(awk '/^version:/{print $2; exit}' pubspec.yaml)"
+          pub="${full%%+*}"
+          code="${full##*+}"
+          if [ "$pub" != "$WANT" ]; then
+            echo "manager/pubspec.yaml 是 $pub，输入是 $WANT；先改版本号再发版" >&2
+            exit 1
+          fi
+          gradle_code="$(awk -F'= ' '/val liantVersionCode/{print $2; exit}' android/app/build.gradle.kts)"
+          if [ "$code" != "$gradle_code" ]; then
+            echo "pubspec 的 +$code 与 build.gradle.kts 的 liantVersionCode=$gradle_code 不一致" >&2
+            exit 1
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-go@v7
         with:
           go-version-file: service/go.mod
           cache: true
           cache-dependency-path: service/go.sum
+
       - name: Build Service
         working-directory: service
         run: |
@@ -31,27 +57,16 @@ jobs:
           ldflags="-s -w -X main.version=$version"
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$ldflags" -o ../dist/LianT-linux-amd64 ./cmd/liant
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$ldflags" -o ../dist/LianT-linux-arm64 ./cmd/liant
-          cd ../dist && sha256sum * > SHA256SUMS.txt
-      - name: Publish Service release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: v${{ inputs.version }}
-          name: LianT v${{ inputs.version }}
-          prerelease: false
-          files: dist/*
-          fail_on_unmatched_files: true
 
-  android:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.9'
           channel: stable
+
       - name: Pub get
         working-directory: manager
         run: flutter pub get
+
       - name: Configure release signing
         working-directory: manager/android
         env:
@@ -68,17 +83,36 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > app/upload-keystore.jks
           printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
             "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > key.properties
-      - name: Build arm64 APK
+
+      - name: Build Manager APK
         working-directory: manager
         run: |
           set -euo pipefail
           flutter build apk --release --target-platform android-arm64
-          cp build/app/outputs/flutter-apk/app-release.apk /tmp/LianT-arm64.apk
-      - name: Publish Manager release
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             "../../dist/LianT-android-arm64.apk"
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS.txt
+
+      - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: manager-v${{ inputs.version }}
-          name: LianT Manager v${{ inputs.version }}
+          tag_name: v${{ inputs.version }}
+          name: LianT v${{ inputs.version }}
           prerelease: false
-          files: /tmp/LianT-arm64.apk
           fail_on_unmatched_files: true
+          body: |
+            LianT v${{ inputs.version }}（versionCode ${{ steps.version.outputs.code }}）
+
+            - `LianT-linux-amd64` / `LianT-linux-arm64`：Service 服务端
+            - `LianT-android-arm64.apk`：Manager 客户端（正式签名，仅 arm64）
+            - `SHA256SUMS.txt`：校验和
+
+            部署见 docs/DEPLOY.md。
+          files: |
+            dist/LianT-linux-amd64
+            dist/LianT-linux-arm64
+            dist/LianT-android-arm64.apk
+            dist/SHA256SUMS.txt

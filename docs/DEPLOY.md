@@ -12,8 +12,8 @@
 | 磁盘 | 消息库很小；媒体按**单 Bot 3 GB** 规划（3 个 Bot 最多 9 GB） |
 | 时间 | 认证要求时差 ≤ 60 秒，装 chrony/systemd-timesyncd |
 
-二进制从 `Service` workflow 的产物下载：`LianT-linux-amd64` 或 `LianT-linux-arm64`，
-附 `SHA256SUMS.txt`。
+二进制从正式 Release 下载：`LianT-linux-amd64` 或 `LianT-linux-arm64`，附 `SHA256SUMS.txt`。
+**正式版是一个 Release**（tag `v<version>`），里面同时有 Service 二进制和 Manager APK。
 
 ## 2. 数据库
 
@@ -193,8 +193,11 @@ cd build/web && python3 -m http.server 8081 --bind 127.0.0.1
 
 | workflow | 触发 | 做什么 |
 | --- | --- | --- |
-| `ci.yml` | push（`docs/**`、`**/*.md` 以外的改动）、PR、手动 | 路径检测 → `service-check`（协议漂移检查 + `go vet` + `go test -race`）、`client-check`（`flutter analyze` + `test`）、`android`（arm64 APK）。push 时自动发 pre-release |
-| `release.yml` | 手动，输入版本号 | 发 `v<version>`（Service 二进制 + `SHA256SUMS.txt`）与 `manager-v<version>`（正式签名 APK） |
+| `ci.yml` | push（`docs/**`、`**/*.md` 以外的改动）、PR、手动 | 路径检测 → `service-check`（协议漂移检查 + `go vet` + `go test -race`）、`client-check`（`flutter analyze` + `test`）、`android`（arm64 APK）。push 时自动发 pre-release（只有 APK，测试用） |
+| `release.yml` | 手动，输入版本号 | 发**一个** Release `v<version>`：`LianT-linux-amd64`、`LianT-linux-arm64`、`LianT-android-arm64.apk`、`SHA256SUMS.txt` |
+
+**一个正式版 = 一个 Release。** 不要再把 Service 与 Manager 分成两个 tag 发：
+用户装服务端和客户端应该来自同一次发布，版本号天然对齐。
 
 - **pre-release 去重**：`ci.yml` 用 `manager-v<version>-<code>` 当 tag，已存在就跳过，
   所以同一个 versionCode 重复 push 不会产生重复 Release。
@@ -202,9 +205,11 @@ cd build/web && python3 -m http.server 8081 --bind 127.0.0.1
   `ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。
 - **版本号两处必须一致**：`manager/pubspec.yaml` 的 `version: 1.0.0+106` 与
   `manager/android/app/build.gradle.kts` 的 `val liantVersionCode = 106`；每次发版 +1。
-  只改一处会导致 APK 覆盖安装失败或发布 tag 撞车。
-- 正式发版步骤：确认 CI 全绿 → 改两处版本号并提交 → 手动跑 `release.yml` 输入版本号 →
-  检查 Release 里的产物与签名（不要用 debug 签名发稳定版）。
+  `release.yml` 的第一步就会校验这两处与输入的版本号，不一致直接失败，
+  所以「改一处就发版」不会混过去。
+- 正式发版步骤：确认 CI 全绿 → 改两处版本号（前缀一起改，例如 1.0.1 / 107）并提交 →
+  手动跑 `release.yml` 输入同一个版本号 → 检查那个 Release 里四个产物都在、
+  签名不是 debug（`release.yml` 在缺 keystore 时会直接失败）。
 - 只发 arm64：x86_64 与 universal 已不再提供，发布说明要写清楚。
 
 ## 8. 常驻运行

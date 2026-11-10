@@ -29,7 +29,7 @@ Interaktive Installation:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
-  | sudo bash -s -- --beta
+  | sudo bash -s --
 ```
 
 Abfrage von Installationsverzeichnis, Port, Laufzeitbenutzer und Datenbanktyp. PostgreSQL ist
@@ -37,7 +37,7 @@ Standard; `sqlite` wählt SQLite. Nicht interaktiv mit SQLite:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
-  | sudo bash -s -- -y --beta \
+  | sudo bash -s -- -y \
       --dir "$INSTALL_DIR" --port "$PORT" --user "$RUN_USER" --db sqlite
 ```
 
@@ -56,7 +56,7 @@ und dieselbe Schreibweise an den Installer übergeben.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install.sh \
-  | sudo bash -s -- -y --beta \
+  | sudo bash -s -- -y \
       --db postgres --db-host "$DB_HOST" --db-port "$DB_PORT" \
       --db-name "$DB_NAME" --db-user "$DB_USER" --db-pass "$DB_PASSWORD"
 ```
@@ -64,8 +64,9 @@ curl -fsSL https://raw.githubusercontent.com/Bailensn/LianT/main/scripts/install
 Alternativ `LIANT_DB_HOST`, `LIANT_DB_PORT`, `LIANT_DB_NAME`, `LIANT_DB_USER` und
 `LIANT_DB_PASSWORD` exportieren und `sudo -E` verwenden.
 
-Standardmäßig werden nur stabile Releases installiert. Der Service veröffentlicht derzeit nur
-Pre-Releases (Alpha); `--beta` (oder `LIANT_BETA=1`) ergänzen.
+Standardmäßig wird das neueste stabile Release installiert; es enthält sowohl die
+Service-Binaries als auch die Manager-APK. `--beta` (oder `LIANT_BETA=1`) nur für Pre-Releases.
+Dasselbe Release enthält `LianT-android-arm64.apk` (den Client) für dein Android-Gerät.
 
 Optionen: `--dir`, `--port`, `--user`, `--url`, `--beta`, `--db postgres|sqlite`, `--db-host`,
 `--db-port`, `--db-name`, `--db-user`, `--db-pass`, `-y`.
