@@ -70,7 +70,7 @@ class _ChatsPageState extends State<ChatsPage> {
         NoticeCard(
           title: '与服务的连接中断',
           message: state.detail.isEmpty
-              ? '正在尝试重新连接，收到的新消息会在恢复后补齐。'
+              ? '正在尝试重新连接；恢复后打开会话会从服务端补齐历史。'
               : state.detail,
           actionLabel: '立即重试',
           onAction: state.reconnect,

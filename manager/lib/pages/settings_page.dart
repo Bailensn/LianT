@@ -124,7 +124,7 @@ class SettingsPage extends StatelessWidget {
       ),
       GroupCard(
         title: '机器人',
-        footer: '多机器人同时在线，事件按 bot_id 区分；通知与提醒由你自己决定看哪一个。',
+        footer: '多个机器人可同时在线，事件按 bot_id 区分；要静音就在对应会话里设免打扰。',
         children: <Widget>[
           _SettingsRow(
             title: '已配置',
@@ -132,7 +132,7 @@ class SettingsPage extends StatelessWidget {
           ),
           _SettingsRow(
             title: '服务端能力',
-            subtitle: state.caps.isEmpty ? '未握手' : state.caps.join(' · '),
+            subtitle: state.caps.isEmpty ? '连接后才能读取' : state.caps.join(' · '),
           ),
         ],
       ),
@@ -197,10 +197,10 @@ class SettingsPage extends StatelessWidget {
       const GroupCard(
         title: '关于',
         children: <Widget>[
-          _SettingsRow(title: '协议', subtitle: 'v1 · 端到端签名握手'),
+          _SettingsRow(title: '协议', subtitle: 'v1 · 每次连接用设备私钥签名，TLS 只做传输加密'),
           _SettingsRow(
             title: '聊天记录',
-            subtitle: '不落盘：打开会话时按需从服务端拉取最近 100 条',
+            subtitle: '本机保存、不设上限；打开会话时再从服务端补拉最近 100 条',
           ),
           _SettingsRow(title: '客户端', subtitle: 'Flutter · 与网页端同协议'),
         ],

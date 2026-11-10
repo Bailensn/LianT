@@ -162,7 +162,7 @@ class _UpdatePageState extends State<UpdatePage> {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final serviceCurrent = state.serviceVersion.isEmpty
-        ? '未握手'
+        ? '未知'
         : state.serviceVersion;
     return DetailScaffold(
       title: '检查更新',
