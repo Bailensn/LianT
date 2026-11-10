@@ -33,7 +33,9 @@ class LiantClient implements MessageClient {
     required this.onEvent,
   });
 
+  @override
   final Identity identity;
+
   final void Function(ConnState state, String detail) onState;
   final void Function(Envelope event) onEvent;
 
@@ -58,8 +60,10 @@ class LiantClient implements MessageClient {
   bool _online = false;
   bool _fatal = false;
 
+  @override
   bool get online => _online;
 
+  @override
   void start() {
     if (!_closed) return;
     _closed = false;
@@ -68,6 +72,7 @@ class LiantClient implements MessageClient {
     unawaited(_attempt());
   }
 
+  @override
   void stop() {
     _closed = true;
     _online = false;
@@ -86,6 +91,7 @@ class LiantClient implements MessageClient {
   }
 
   /// 发一条不需要响应的消息，返回信封 id。
+  @override
   String send(String type, Map<String, dynamic> payload) {
     if (!_online || _channel == null) {
       throw const ProtocolException('offline', '连接未就绪');
@@ -94,6 +100,7 @@ class LiantClient implements MessageClient {
   }
 
   /// 发一条请求并等待同 id 的响应；超时与 error 都会抛 [ProtocolException]。
+  @override
   Future<Map<String, dynamic>> request(
     String type,
     Map<String, dynamic> payload, {
@@ -126,6 +133,7 @@ class LiantClient implements MessageClient {
   }
 
   /// 把服务端给的媒体相对路径拼成可加载的绝对地址。
+  @override
   String resolveMediaUrl(String url) {
     if (url.startsWith('http://') || url.startsWith('https://')) return url;
     final base = identity.address.httpBase;
