@@ -154,6 +154,13 @@ class AppState extends ChangeNotifier {
         identity = null;
       }
     }
+    // 语言与 beta 开关也要读回来：之前只写不读，重启后会回到「跟随系统」。
+    final language = _prefs.getString(_kLanguage);
+    if (language != null && L10n.settings.contains(language)) {
+      languageSetting = language;
+    }
+    L10n.setSetting(languageSetting);
+    acceptBeta = _prefs.getBool(_kAcceptBeta) ?? false;
     _loadMap(_kRemarks, remarks);
     _loadMap(_kTitles, titles);
     _loadMap(_kPeerHints, peerHints);
