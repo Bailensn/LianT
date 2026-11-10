@@ -90,7 +90,7 @@ jobs:
           set -euo pipefail
           flutter build apk --release --target-platform android-arm64
           cp build/app/outputs/flutter-apk/app-release.apk \
-             "../../dist/LianT-android-arm64.apk"
+             "../dist/LianT-android-arm64.apk"
 
       - name: Checksums
         working-directory: dist
