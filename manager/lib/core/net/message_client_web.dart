@@ -15,3 +15,5 @@ Future<MessageClientLaunch> createMessageClient({
 }
 
 Future<bool> backgroundServiceAlive() async => false;
+
+Future<int?> backgroundServiceAge() async => null;

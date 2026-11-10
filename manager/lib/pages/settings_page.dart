@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/net/client.dart';
+import '../core/net/message_client.dart';
 import '../core/net/protocol.dart';
 import '../ui/format.dart';
 import '../ui/tokens.dart';
@@ -52,6 +53,7 @@ class SettingsPage extends StatelessWidget {
               subtitle: '断开时点这里立刻重试',
               onTap: state.reconnect,
             ),
+          const _BackgroundStatusRow(),
           _SettingsRow(
             title: '消息连接',
             subtitle: state.usesBackgroundBridge
@@ -313,6 +315,54 @@ class _SettingsRow extends StatelessWidget {
           child: content,
         ),
       ),
+    );
+  }
+}
+
+/// 后台进程存活诊断：读桥接心跳文件的时间戳。
+///
+/// 常驻通知上的文案只能说明「连接状态」，这个能说明「进程还在不在」。
+class _BackgroundStatusRow extends StatefulWidget {
+  const _BackgroundStatusRow();
+
+  @override
+  State<_BackgroundStatusRow> createState() => _BackgroundStatusRowState();
+}
+
+class _BackgroundStatusRowState extends State<_BackgroundStatusRow> {
+  int? _ageMs;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final age = await backgroundServiceAge();
+    if (!mounted) return;
+    setState(() {
+      _ageMs = age;
+      _loaded = true;
+    });
+  }
+
+  String get _subtitle {
+    if (!_loaded) return '检查中…';
+    final age = _ageMs;
+    if (age == null) return '未运行';
+    if (age < 0) return '运行中';
+    if (age < 90000) return '运行中 · 心跳 ${(age / 1000).round()} 秒前';
+    return '可能已停止 · 上次心跳 ${age ~/ 60000} 分钟前';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsRow(
+      title: '后台服务',
+      subtitle: _subtitle,
+      onTap: _refresh,
     );
   }
 }

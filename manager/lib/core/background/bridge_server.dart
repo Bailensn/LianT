@@ -27,6 +27,9 @@ class BridgeServer {
   StreamSubscription<String>? _peerLines;
   bool _peerReady = false;
 
+  /// UI 进程是否接着桥接。断开说明 UI 进程已经没了。
+  bool get hasPeer => _peer != null && _peerReady;
+
   int? get port => _server?.port;
 
   String? get token => _token;

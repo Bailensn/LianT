@@ -82,6 +82,13 @@ Future<BridgeInfo?> readBridgeInfo() async {
   }
 }
 
+/// 后台进程最后一次心跳距今多少毫秒；null 表示没有心跳文件。
+Future<int?> backgroundAgeMs() async {
+  final info = await readBridgeInfo();
+  if (info == null || info.at <= 0) return null;
+  return DateTime.now().millisecondsSinceEpoch - info.at;
+}
+
 /// 后台进程是否还活着：桥接信息足够新。
 ///
 /// 后台进程每 30 秒刷新一次 `at`，所以 90 秒没更新就当作已退出。

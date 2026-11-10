@@ -27,6 +27,7 @@ Timer? _retryTimer;
 ConnState _lastState = ConnState.idle;
 String _lastDetail = '';
 bool _running = false;
+int _received = 0;
 
 /// 后台进程入口主体：起桥接、读共享状态、连接服务端，然后常驻。
 Future<void> startBackgroundRuntime() async {
@@ -99,6 +100,8 @@ void _connect() {
       // 先转给 UI 进程：界面上的会话、Bot 状态、审计都靠这些事件。
       _bridge?.broadcastEvent(env);
       if (env.type != 'msg.inbound' && env.type != 'event.msg') return;
+      _received++;
+      if (_lastState == ConnState.online) unawaited(_setStatus(_onlineText()));
       unawaited(_onInbound(env));
     },
   );
@@ -111,7 +114,7 @@ void _onConnState(ConnState state, String detail) {
   _lastDetail = detail;
   _bridge?.broadcastState(state, detail);
   final text = switch (state) {
-    ConnState.online => '已连接 · 正在后台接收消息',
+    ConnState.online => _onlineText(),
     ConnState.connecting => '正在连接…',
     ConnState.reconnecting => '连接中断，正在重连…',
     ConnState.error => detail.isEmpty ? '连接失败' : detail,
@@ -174,7 +177,9 @@ Future<void> _onInbound(Envelope env) async {
   final state = await readBackgroundState() ?? _state;
   if (state == null) return;
   _state = state;
-  if (state.foreground) return;
+  // foreground 由 UI 进程写，UI 进程被系统杀掉时会留下过期的 true。
+  // 桥接上没有对端 = UI 已经没了，这时必须照常通知。
+  if (state.foreground && (_bridge?.hasPeer ?? false)) return;
   final key = convKey(msg.botId, msg.peerId);
   if (state.muted[key] == true) return;
 
@@ -213,6 +218,10 @@ Future<void> _setStatus(String text) async {
     // 原生侧没起来。
   } catch (_) {}
 }
+
+/// 常驻通知上的状态文案；带收到条数，方便一眼看出后台到底有没有在收消息。
+String _onlineText() =>
+    _received == 0 ? '已连接 · 正在后台接收消息' : '已连接 · 已收到 $_received 条';
 
 String _summary(ChatMessage msg) {
   switch (msg.msgType) {

@@ -93,6 +93,9 @@ class MessageService : Service() {
             )
             flutterEngine = engine
         } catch (e: Exception) {
+            // 起不来要能在通知上看出来，不然只会表现为「收不到通知」。
+            statusText = "后台引擎启动失败"
+            postForeground()
             Log.w(TAG, "后台引擎启动失败", e)
         }
     }

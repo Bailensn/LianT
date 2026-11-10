@@ -45,3 +45,9 @@ Future<bool> backgroundServiceAlive() async {
   if (!Platform.isAndroid) return false;
   return backgroundAlive();
 }
+
+/// 后台进程最后一次心跳距今多少毫秒；null 表示没有心跳（没跑起来或已停）。
+Future<int?> backgroundServiceAge() async {
+  if (!Platform.isAndroid) return null;
+  return backgroundAgeMs();
+}
