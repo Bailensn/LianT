@@ -10,9 +10,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/app_state.dart';
-import 'core/background/runtime.dart';
 import 'core/platform/crash_log.dart';
-import 'core/net/client.dart';
+import 'core/net/client_api.dart';
 import 'pages/bots_page.dart';
 import 'pages/chats_page.dart';
 import 'pages/pair_page.dart';
@@ -47,27 +46,6 @@ Future<void> main() async {
   final messageBox = await Hive.openBox<String>('messages');
   final state = AppState(prefs, messageBox: messageBox)..boot();
   runApp(LiantApp(state: state));
-}
-
-/// 后台进程入口：由原生 `MessageService` 在独立进程的 FlutterEngine 里按函数名调起。
-///
-/// 必须留在根库（本文件）：AOT 运行时是按名字在根库的顶层符号里找入口的。
-/// `vm:entry-point` 保证摇树优化不会删掉它。
-@pragma('vm:entry-point')
-void backgroundMain() {
-  // 后台引擎没有 View，平台通道需要 binding。
-  WidgetsFlutterBinding.ensureInitialized();
-  // 后台 isolate 里没人接的异常同样会打死进程，统一记下来再吞掉。
-  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
-    unawaited(recordError(error, stack));
-    return true;
-  };
-  FlutterError.onError = (details) {
-    unawaited(recordError(details.exception, details.stack));
-  };
-  unawaited(startBackgroundRuntime().catchError((Object error, StackTrace stack) async {
-    await recordError(error, stack);
-  }));
 }
 
 class LiantApp extends StatefulWidget {

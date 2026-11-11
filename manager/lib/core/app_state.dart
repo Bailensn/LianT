@@ -15,7 +15,7 @@ import 'background/service.dart';
 import 'background/state.dart';
 import 'identity/identity.dart';
 import 'identity/p256.dart';
-import 'net/client.dart';
+import 'net/client_api.dart';
 import 'net/message_client.dart';
 import 'net/protocol.dart';
 import 'net/socket.dart';
@@ -380,7 +380,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     }
     // Android 上会先等后台进程的本地桥接（全 App 只有它那条 WebSocket）；
-    // 等不到才会退化成直连。
+    // 等不到就显示「后台未就绪」，不再自己另开一条连接。
     final launch = await createMessageClient(
       identity: id,
       onState: (state, reason) {
@@ -400,7 +400,7 @@ class AppState extends ChangeNotifier {
     launch.client.start();
   }
 
-  /// 直连降级之后，回前台时如果后台服务已经活过来，就切回桥接。
+  /// 后台没就绪、用了占位客户端之后，回前台时如果后台服务已经活过来，就切回桥接。
   ///
   /// 切换会重连一次，所以最多 5 分钟试一次。
   void _maybeUpgradeToBridge() {

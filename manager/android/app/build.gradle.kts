@@ -8,8 +8,8 @@ plugins {
 }
 
 // 显示版本固定 1.0.0；versionCode 每次发布 +1。
-// 同时同步 pubspec.yaml 的 +build（当前 107）。
-val liantVersionCode = 107
+// 同时同步 pubspec.yaml 的 +build（当前 108）。
+val liantVersionCode = 108
 
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")

@@ -1,9 +1,8 @@
 // 消息客户端的统一接口。
 //
-// 两种实现：
-//   - LiantClient（直连）：Web/桌面，以及 Android 上后台服务不可用时的降级；
-//   - BridgeMessageClient（桥接）：Android 正常路径，真正的 WebSocket 在
-//     `:background` 进程里，UI 进程通过本地桥接拿事件、发请求。
+// 唯一的实现是 BridgeMessageClient（桥接）：真正的 WebSocket 在 `:background`
+// 进程的 Kotlin 运行时里，UI 进程通过本地桥接拿事件、发请求。
+// 后台没就绪时用 UnavailableClient 占位，不再另开一条直连。
 import '../identity/identity.dart';
 
 /// 连接状态，界面按它渲染顶部说明条。

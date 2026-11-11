@@ -1,7 +1,8 @@
-// Web：没有后台进程，只能直连（浏览器也不允许自签证书绕过，见 socket_web.dart）。
-import 'client.dart';
+// Web：没有后台进程，也没有直连实现（Web 只是本地预览，不对外发布）。
 import '../identity/identity.dart';
+import 'client_api.dart';
 import 'protocol.dart';
+import 'unavailable_client.dart';
 
 Future<MessageClientLaunch> createMessageClient({
   required Identity identity,
@@ -9,7 +10,11 @@ Future<MessageClientLaunch> createMessageClient({
   required void Function(Envelope) onEvent,
 }) async {
   return MessageClientLaunch(
-    LiantClient(identity: identity, onState: onState, onEvent: onEvent),
+    UnavailableClient(
+      identity: identity,
+      reason: 'Web 预览不支持连接服务',
+      onState: onState,
+    ),
     bridged: false,
   );
 }

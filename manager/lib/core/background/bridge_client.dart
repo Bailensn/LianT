@@ -1,6 +1,6 @@
 // UI 进程侧的桥接客户端。
 //
-// 真正的 WebSocket 在 `:background` 进程（BridgeServer + LiantClient），
+// 真正的 WebSocket 在 `:background` 进程（Kotlin 的 BridgeServer + LiantSocket），
 // 这里只是把它转发出来的状态/事件喂给界面，并把请求转回去。
 import 'dart:async';
 import 'dart:convert';

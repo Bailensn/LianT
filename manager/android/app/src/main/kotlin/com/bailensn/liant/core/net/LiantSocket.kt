@@ -39,7 +39,7 @@ import kotlin.math.roundToInt
  * 第一步只用来验证「连得上、认证得过」；桥接与通知在第二步接进来。
  */
 class LiantSocket(
-    private val identity: Identity,
+    val identity: Identity,
     private val listener: Listener,
 ) {
     /** 与 Dart 的 `ConnState` 同名，桥接帧里直接用它的小写名字。 */
@@ -48,8 +48,8 @@ class LiantSocket(
     interface Listener {
         fun onState(state: State, detail: String)
 
-        /** 协议事件原样转发；ping/pong/请求响应不会到这里。 */
-        fun onEvent(type: String, payload: JSONObject)
+        /** 协议事件原样转发（完整信封）；ping/pong/请求响应不会到这里。 */
+        fun onEnvelope(envelope: JSONObject)
     }
 
     /** 协议层错误；`code` 取值见 PROTOCOL.md §7。 */
@@ -438,7 +438,7 @@ class LiantSocket(
                 }
             }
             TYPE_PONG -> Unit
-            else -> listener.onEvent(envelope.type, envelope.payload)
+            else -> listener.onEnvelope(envelope.json)
         }
     }
 
@@ -466,6 +466,7 @@ class LiantSocket(
         val type: String,
         val replyTo: String?,
         val payload: JSONObject,
+        val json: JSONObject,
     )
 
     private fun parseEnvelope(raw: String): Envelope? =
@@ -481,6 +482,7 @@ class LiantSocket(
                     type = type,
                     replyTo = stringOrNull(json, "reply_to"),
                     payload = json.optJSONObject("payload") ?: JSONObject(),
+                    json = json,
                 )
             }
         } catch (_: JSONException) {

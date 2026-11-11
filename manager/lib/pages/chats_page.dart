@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/app_state.dart';
-import '../core/net/client.dart';
+import '../core/net/client_api.dart';
 import '../ui/format.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';

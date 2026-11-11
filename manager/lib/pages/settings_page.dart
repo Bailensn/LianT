@@ -1,7 +1,7 @@
 // 设置页：连接信息、已配对设备、安全日志、解除配对。
 import 'package:flutter/material.dart';
 
-import '../core/net/client.dart';
+import '../core/net/client_api.dart';
 import '../core/net/message_client.dart';
 import '../core/platform/crash_log.dart';
 import '../core/net/protocol.dart';
@@ -60,7 +60,7 @@ class SettingsPage extends StatelessWidget {
             title: '消息连接',
             subtitle: state.usesBackgroundBridge
                 ? '后台进程常驻 · 关掉界面也能收消息'
-                : '主进程直连（后台服务未就绪）',
+                : '后台服务未就绪 · 不直连，等它起来',
           ),
           _SettingsRow(
             title: '服务指纹',

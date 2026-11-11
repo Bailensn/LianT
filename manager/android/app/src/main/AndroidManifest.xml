@@ -37,7 +37,7 @@
             </intent-filter>
         </activity>
         <!-- 常驻消息服务跑在独立进程 :background 里：
-             UI 进程被系统杀掉后，它仍然有自己的 FlutterEngine 和 WebSocket 连接。 -->
+             UI 进程被系统杀掉后，它仍然有自己的 Kotlin WebSocket 连接（不再创建 FlutterEngine）。 -->
         <service
             android:name=".MessageService"
             android:exported="false"
