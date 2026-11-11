@@ -203,7 +203,7 @@ private fun DevicesCard(state: SettingsUiState, onRequestRevoke: (DeviceRow) -> 
         if (state.devices.isEmpty()) {
             SettingsRow(
                 title = "暂无设备",
-                subtitle = if (state.online) "列表为空" else "连接后才能读取",
+                subtitle = if (state.snapshotLoaded) "列表为空" else "连接后才能读取",
             )
         } else {
             state.devices.forEachIndexed { index, device ->
@@ -239,7 +239,11 @@ private fun BotsCard(state: SettingsUiState) {
     ) {
         SettingsRow(
             title = "已配置",
-            subtitle = "${state.botCount} 个，运行中 ${state.botsRunning} 个",
+            subtitle = if (state.snapshotLoaded) {
+                "${state.botCount} 个，运行中 ${state.botsRunning} 个"
+            } else {
+                "连接后才能读取"
+            },
         )
         Hairline(indent = 68.dp)
         SettingsRow(

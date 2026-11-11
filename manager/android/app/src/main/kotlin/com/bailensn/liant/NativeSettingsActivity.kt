@@ -4,6 +4,7 @@ import android.app.Activity
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -25,6 +26,7 @@ import com.bailensn.liant.ui.settings.SettingsScreen
 import com.bailensn.liant.ui.settings.SettingsUiState
 import com.bailensn.liant.ui.theme.LiantTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -38,6 +40,22 @@ import org.json.JSONObject
  */
 class NativeSettingsActivity : ComponentActivity() {
     private val ui = Handler(Looper.getMainLooper())
+
+    /**
+     * 取一次首屏快照。刚连上桥接时后台可能还没把 peer 切过来，
+     * 失败就隔 400ms 重试，最多 5 次。
+     */
+    private suspend fun fetchSnapshot(client: BridgeClient): JSONObject? {
+        repeat(5) { attempt ->
+            val result = withContext(Dispatchers.IO) {
+                runCatching { client.request("state.snapshot", JSONObject()) }
+            }
+            result.onSuccess { return it }
+            Log.w(TAG, "state.snapshot 第 ${attempt + 1} 次失败：${result.exceptionOrNull()?.message}")
+            delay(400)
+        }
+        return null
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -75,15 +93,10 @@ class NativeSettingsActivity : ComponentActivity() {
                 fun reload() {
                     scope.launch {
                         state = withContext(Dispatchers.IO) { SettingsDataLoader.load(context) }
-                        val current = bridge
-                        if (current != null && !current.isClosed) {
-                            val snapshot = withContext(Dispatchers.IO) {
-                                runCatching {
-                                    current.request("state.snapshot", JSONObject())
-                                }.getOrNull()
-                            }
-                            if (snapshot != null) state = state.withSnapshot(snapshot)
-                        }
+                        val current = bridge ?: return@launch
+                        if (current.isClosed) return@launch
+                        val snapshot = fetchSnapshot(current)
+                        if (snapshot != null) state = state.withSnapshot(snapshot)
                     }
                 }
 
@@ -94,15 +107,18 @@ class NativeSettingsActivity : ComponentActivity() {
                     }
                     bridge = connected
                     if (connected == null) {
+                        Log.w(TAG, "原生设置页：桥接连接失败（端口/令牌/后台未就绪）")
                         state = state.copy(connection = "idle")
-                    }
-                    if (connected != null) {
-                        val snapshot = withContext(Dispatchers.IO) {
-                            runCatching {
-                                connected.request("state.snapshot", JSONObject())
-                            }.getOrNull()
+                    } else {
+                        Log.i(TAG, "原生设置页：桥接已就绪，拉取 state.snapshot")
+                        val snapshot = fetchSnapshot(connected)
+                        if (snapshot != null) {
+                            val deviceCount = snapshot.optJSONArray("devices")?.length() ?: 0
+                            Log.i(TAG, "原生设置页：snapshot 已应用（$deviceCount 台设备）")
+                            state = state.withSnapshot(snapshot)
+                        } else {
+                            Log.w(TAG, "原生设置页：state.snapshot 多次失败")
                         }
-                        if (snapshot != null) state = state.withSnapshot(snapshot)
                     }
                 }
 
@@ -130,5 +146,9 @@ class NativeSettingsActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    private companion object {
+        const val TAG = "LianT"
     }
 }

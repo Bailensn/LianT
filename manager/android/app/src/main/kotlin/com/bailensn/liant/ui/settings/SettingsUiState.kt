@@ -40,6 +40,8 @@ data class SettingsUiState(
     val language: String = "简体中文",
     val devices: List<DeviceRow> = emptyList(),
     val devicesLoaded: Boolean = false,
+    /** `state.snapshot` 是否成功拿到过；没拿到就别显示成「列表为空」。 */
+    val snapshotLoaded: Boolean = false,
     val botCount: Int = 0,
     val botsRunning: Int = 0,
     val caps: List<String> = emptyList(),
@@ -92,6 +94,7 @@ data class SettingsUiState(
         return copy(
             devices = devices,
             devicesLoaded = devicesJson != null,
+            snapshotLoaded = true,
             botCount = bots,
             botsRunning = running,
             caps = caps,
