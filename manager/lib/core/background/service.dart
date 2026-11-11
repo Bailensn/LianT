@@ -42,6 +42,15 @@ Future<void> showMessageNotification({
   } catch (_) {}
 }
 
+/// 迁移试水：打开原生设置页（临时入口；UI 全迁后由原生导航替代）。
+Future<void> openComposeSettings() async {
+  try {
+    await _channel.invokeMethod<void>('openComposeSettings');
+  } on MissingPluginException {
+    // 非 Android 没有这个通道。
+  } catch (_) {}
+}
+
 Future<void> openExternalUrl(String url) async {
   if (url.isEmpty) return;
   try {

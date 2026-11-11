@@ -42,8 +42,19 @@ class LiantSocket(
     val identity: Identity,
     private val listener: Listener,
 ) {
-    /** 与 Dart 的 `ConnState` 同名，桥接帧里直接用它的小写名字。 */
-    enum class State { idle, connecting, online, reconnecting, error }
+    /**
+     * 与 Dart 的 `ConnState` 同名。
+     *
+     * [wire] 是桥接帧与 `liant_bridge.json` 里用的字符串：不依赖 enum 的
+     * `name`（release 构建会跑 R8，显式写死更稳）。
+     */
+    enum class State(val wire: String) {
+        idle("idle"),
+        connecting("connecting"),
+        online("online"),
+        reconnecting("reconnecting"),
+        error("error"),
+    }
 
     interface Listener {
         fun onState(state: State, detail: String)

@@ -83,7 +83,7 @@ class BridgeServer(
         write(
             JSONObject()
                 .put("t", BridgeProtocol.FRAME_STATE)
-                .put("state", state.name)
+                .put("state", state.wire)
                 .put("detail", detail),
         )
     }

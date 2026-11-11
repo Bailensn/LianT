@@ -43,6 +43,12 @@ class BackgroundRuntime(
     @Volatile
     private var lastState = LiantSocket.State.idle
 
+    @Volatile
+    private var lastDetail = ""
+
+    @Volatile
+    private var bridgePort = 0
+
     private val bridge = BridgeServer(
         clientOf = { socket },
         connectionOf = {
@@ -98,9 +104,10 @@ class BackgroundRuntime(
                 status("后台桥接启动失败")
                 return
             }
-            touchBridge(port)
+            bridgePort = port
+            touchBridge()
             heartbeatTask = scheduler.scheduleWithFixedDelay(
-                { touchBridge(port) },
+                { touchBridge() },
                 HEARTBEAT_SECONDS,
                 HEARTBEAT_SECONDS,
                 TimeUnit.SECONDS,
@@ -130,9 +137,16 @@ class BackgroundRuntime(
         }
     }
 
-    private fun touchBridge(port: Int) {
-        if (!running) return
-        BridgeInfo.write(context, port, bridge.currentToken)
+    /** 刷新桥接文件：心跳时间 + 当前连接状态（原生界面靠它显示在线状态）。 */
+    private fun touchBridge() {
+        if (!running || bridgePort <= 0) return
+        BridgeInfo.write(
+            context = context,
+            port = bridgePort,
+            token = bridge.currentToken,
+            state = lastState.wire,
+            detail = lastDetail,
+        )
     }
 
     // -------------------------------------------------------------------------
@@ -146,7 +160,9 @@ class BackgroundRuntime(
             object : LiantSocket.Listener {
                 override fun onState(state: LiantSocket.State, detail: String) {
                     lastState = state
+                    lastDetail = detail
                     bridge.broadcastState(state, detail)
+                    touchBridge()
                     status(statusText(state, detail))
                     if (state == LiantSocket.State.online) {
                         retryTask?.cancel(false)
@@ -198,7 +214,9 @@ class BackgroundRuntime(
             socket = null
             state = null
             lastState = LiantSocket.State.idle
+            lastDetail = ""
             bridge.broadcastState(lastState, "")
+            touchBridge()
             status("未配对")
             return
         }

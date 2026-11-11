@@ -36,6 +36,11 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- 原生设置页（迁移试水）。只在 App 内由 Flutter 设置页的临时入口拉起。 -->
+        <activity
+            android:name=".NativeSettingsActivity"
+            android:exported="false"
+            android:theme="@style/NormalTheme" />
         <!-- 常驻消息服务跑在独立进程 :background 里：
              UI 进程被系统杀掉后，它仍然有自己的 Kotlin WebSocket 连接（不再创建 FlutterEngine）。 -->
         <service

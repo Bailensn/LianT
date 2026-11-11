@@ -15,7 +15,7 @@
 
 ## 1. 现状
 
-- Manager `1.0.0+108`，Service 同版本线；测试包 `manager-v1.0.0-108` 由 CI 自动发 pre-release。
+- Manager `1.0.0+109`，Service 同版本线；测试包 `manager-v1.0.0-109` 由 CI 自动发 pre-release。
 - **正式版以后一个 Release 同时发两端**：tag `v<version>`，含 `LianT-linux-amd64`、
   `LianT-linux-arm64`、`LianT-android-arm64.apk`、`SHA256SUMS.txt`。
   历史遗留的 `v1.0.0`（只有 Service）与 `manager-v1.0.0`（只有 APK）是分开发的，不再沿用。
@@ -37,6 +37,7 @@
 - 性能：去掉实时模糊、MaterialApp 全局重建、会话列表懒构建、tab 隔离重绘；
 - JKS 正式签名 + `Release` workflow。
 - 核心下沉 Kotlin（§4）：连接、认证、桥接、通知全部落地，Dart 只剩 UI 与 `BridgeMessageClient`，待真机验证。
+- 原生 UI 试水：Compose 设置页（只读本机文件，不碰桥接）+ Flutter 设置页临时入口，用于评估是否全迁。
 
 ## 2. 代码结构
 
@@ -269,6 +270,8 @@ Kotlin 侧的常量集中在 `core/bridge/BridgeProtocol.kt`；`test/bridge_test
 11. §4 真机验证：装 v108，确认设置页「消息连接」= 后台进程常驻、通知/免打扰正常、
     杀 UI 进程后仍能收消息，并记一次 `:background` 的 PSS。
 12. §4 第三步：桥接帧的 JVM 往返单测；配对搬到 Kotlin 后再删 `socket*.dart` / `p256.dart`。
+13. UI 试水评估：装 v109，从「设置 → 通用 → 界面试水（Compose）」对比原生设置页与 Flutter 版；
+    决定是否全迁（全迁要先定 Hive 历史数据 / 服务端会话列表，否则会话列表装完是空的）。
 
 ## 6. 约束
 

@@ -4,12 +4,13 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     id("com.android.application")
     id("kotlin-android")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 // 显示版本固定 1.0.0；versionCode 每次发布 +1。
-// 同时同步 pubspec.yaml 的 +build（当前 108）。
-val liantVersionCode = 108
+// 同时同步 pubspec.yaml 的 +build（当前 109）。
+val liantVersionCode = 109
 
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
@@ -51,6 +52,11 @@ android {
                 )
             )
         }
+    }
+
+    buildFeatures {
+        // 原生 UI（迁移试水）：与 Flutter 并存，试水屏在 NativeSettingsActivity。
+        compose = true
     }
 
     signingConfigs {
@@ -103,4 +109,15 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // 只跑 JVM 单测（P-256 与 openssl 向量的互操作），不参与打包。
     testImplementation("junit:junit:4.13.2")
+
+    // 原生 UI 试水（与 Flutter 并存）：版本由 BOM 统一。
+    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
+    implementation(composeBom)
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.activity:activity-compose:1.13.0")
+    debugImplementation("androidx.compose.ui:ui-tooling")
 }
