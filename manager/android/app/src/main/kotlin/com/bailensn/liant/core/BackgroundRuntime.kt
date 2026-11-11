@@ -49,6 +49,9 @@ class BackgroundRuntime(
     @Volatile
     private var bridgePort = 0
 
+    @Volatile
+    private var serviceVersion = ""
+
     private val bridge = BridgeServer(
         clientOf = { socket },
         connectionOf = {
@@ -146,6 +149,7 @@ class BackgroundRuntime(
             token = bridge.currentToken,
             state = lastState.wire,
             detail = lastDetail,
+            serviceVersion = serviceVersion,
         )
     }
 
@@ -175,6 +179,13 @@ class BackgroundRuntime(
                 }
 
                 override fun onEnvelope(envelope: JSONObject) {
+                    if (envelope.optString("type") == "auth.ok") {
+                        val version = envelope.optJSONObject("payload")?.optString("version").orEmpty()
+                        if (version.isNotEmpty()) {
+                            serviceVersion = version
+                            touchBridge()
+                        }
+                    }
                     // 先转给 UI：会话标题、Bot 状态、审计都靠这些事件。
                     bridge.broadcastEvent(envelope)
                     val type = envelope.optString("type")

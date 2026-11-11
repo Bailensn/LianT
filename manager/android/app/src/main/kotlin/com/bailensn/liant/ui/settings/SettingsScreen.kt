@@ -48,11 +48,15 @@ fun SettingsScreen(
     state: SettingsUiState,
     onRefresh: () -> Unit,
     onRevoke: (String) -> Unit,
+    onOpenSecurityLog: () -> Unit,
+    onOpenLanguage: () -> Unit,
+    onOpenUpdate: () -> Unit,
 ) {
     val colors = LocalLColors.current
     val listState = rememberLazyListState()
     val density = LocalDensity.current
     var pendingRevoke by remember { mutableStateOf<DeviceRow?>(null) }
+    var showUnpairNotice by remember { mutableStateOf(false) }
 
     // 与 Flutter 的 LargeTitlePage 一致：前 46dp 滚动用于把标题从 34 折到 20。
     val collapse = remember {
@@ -97,12 +101,23 @@ fun SettingsScreen(
             item { ServiceCard(state, onRefresh) }
             item { DevicesCard(state, onRequestRevoke = { pendingRevoke = it }) }
             item { BotsCard(state) }
-            item { SecurityCard() }
-            item { GeneralCard(state) }
-            item { UpdateCard() }
+            item { SecurityCard(onOpenSecurityLog = onOpenSecurityLog, onUnpair = { showUnpairNotice = true }) }
+            item { GeneralCard(state, onOpenLanguage = onOpenLanguage) }
+            item { UpdateCard(onOpenUpdate = onOpenUpdate) }
             item { AboutCard() }
             item { Spacer(Modifier.height(8.dp)) }
         }
+    }
+
+    if (showUnpairNotice) {
+        AlertDialog(
+            onDismissRequest = { showUnpairNotice = false },
+            title = { Text("解除配对") },
+            text = { Text("原生配对流程还没迁移，这里不能完成解除。请安装同一版本的 Flutter 包（版本名不带 -compose）操作，或清除应用数据。") },
+            confirmButton = {
+                TextButton(onClick = { showUnpairNotice = false }) { Text("知道了") }
+            },
+        )
     }
 
     val device = pendingRevoke
@@ -252,12 +267,16 @@ private fun BotsCard(state: SettingsUiState) {
 }
 
 @Composable
-private fun SecurityCard() {
+private fun SecurityCard(onOpenSecurityLog: () -> Unit, onUnpair: () -> Unit) {
     GroupCard(
         title = "安全",
         footer = "私钥从不离开本机；服务端只保存公钥，撤销设备即删除公钥。",
     ) {
-        SettingsRow(title = "安全日志", subtitle = "最近 20 条登录、配对、吊销记录")
+        SettingsRow(
+            title = "安全日志",
+            subtitle = "最近 20 条登录、配对、吊销记录",
+            onClick = onOpenSecurityLog,
+        )
         Hairline(indent = 68.dp)
         SettingsRow(
             title = "设备密钥",
@@ -268,21 +287,22 @@ private fun SecurityCard() {
             title = "解除配对",
             subtitle = "清除本机身份，需要重新配对才能连接",
             danger = true,
+            onClick = onUnpair,
         )
     }
 }
 
 @Composable
-private fun GeneralCard(state: SettingsUiState) {
+private fun GeneralCard(state: SettingsUiState, onOpenLanguage: () -> Unit) {
     GroupCard(title = "通用") {
-        SettingsRow(title = "语言", subtitle = state.language)
+        SettingsRow(title = "语言", subtitle = state.language, onClick = onOpenLanguage)
     }
 }
 
 @Composable
-private fun UpdateCard() {
+private fun UpdateCard(onOpenUpdate: () -> Unit) {
     GroupCard(title = "更新") {
-        SettingsRow(title = "检查更新", subtitle = "Manager 与 Service")
+        SettingsRow(title = "检查更新", subtitle = "Manager 与 Service", onClick = onOpenUpdate)
     }
 }
 

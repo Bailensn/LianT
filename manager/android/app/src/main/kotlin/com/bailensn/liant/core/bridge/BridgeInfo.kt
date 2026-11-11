@@ -23,6 +23,8 @@ data class BridgeSnapshot(
     val at: Long,
     val state: String,
     val detail: String,
+    /** 服务端在 auth.ok 里报的版本，原生界面「检查更新」用来对比。 */
+    val serviceVersion: String,
 )
 
 object BridgeInfo {
@@ -32,6 +34,7 @@ object BridgeInfo {
         token: String,
         state: String = "",
         detail: String = "",
+        serviceVersion: String = "",
     ): Boolean {
         val payload = JSONObject()
             .put("port", port)
@@ -39,6 +42,7 @@ object BridgeInfo {
             .put("at", System.currentTimeMillis())
             .put("state", state)
             .put("detail", detail)
+            .put("service_version", serviceVersion)
         return writeAtomic(CoreFiles.bridgeFile(context), payload.toString())
     }
 
@@ -64,6 +68,7 @@ object BridgeInfo {
             at = json.optLong("at", 0L),
             state = json.optString("state"),
             detail = json.optString("detail"),
+            serviceVersion = json.optString("service_version"),
         )
     }
 

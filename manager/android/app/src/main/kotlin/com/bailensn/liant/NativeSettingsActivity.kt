@@ -1,11 +1,15 @@
 package com.bailensn.liant
 
 import android.app.Activity
+import android.content.Context
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -30,8 +34,11 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import com.bailensn.liant.core.bridge.BridgeClient
+import com.bailensn.liant.ui.language.LanguageScreen
+import com.bailensn.liant.ui.security.SecurityLogScreen
 import com.bailensn.liant.ui.shell.GlassBottomNav
 import com.bailensn.liant.ui.shell.NativePlaceholderScreen
+import com.bailensn.liant.ui.update.UpdateScreen
 import com.bailensn.liant.ui.settings.SettingsDataLoader
 import com.bailensn.liant.ui.settings.SettingsScreen
 import com.bailensn.liant.ui.settings.SettingsUiState
@@ -143,48 +150,110 @@ class NativeSettingsActivity : ComponentActivity() {
                 }
 
                 var tab by remember { mutableStateOf(2) }
+                var page by remember { mutableStateOf<NativePage?>(null) }
                 val colors = LocalLColors.current
+                val managerVersion = remember {
+                    runCatching {
+                        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                    }.getOrNull().orEmpty()
+                }
+
+                BackHandler(enabled = page != null) { page = null }
+
+                fun selectLanguage(code: String) {
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                                .edit()
+                                .putString("flutter.liant.language", code)
+                                .apply()
+                        }
+                        val label = withContext(Dispatchers.IO) {
+                            SettingsDataLoader.load(context).language
+                        }
+                        state = state.copy(language = label)
+                    }
+                }
+
+                fun openUrl(url: String) {
+                    runCatching {
+                        startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                }
+
                 Box(
                     Modifier
                         .fillMaxSize()
                         .background(colors.bg),
                 ) {
-                    when (tab) {
-                        0 -> NativePlaceholderScreen(title = "会话")
-                        1 -> NativePlaceholderScreen(title = "机器人")
-                        else -> SettingsScreen(
-                            state = state,
+                    when (page) {
+                        NativePage.SecurityLog -> SecurityLogScreen(
+                            entries = state.audit,
+                            loading = state.loading,
+                            onBack = { page = null },
                             onRefresh = { reload() },
-                            onRevoke = { deviceId ->
-                                scope.launch {
-                                    val current = bridge ?: return@launch
-                                    withContext(Dispatchers.IO) {
-                                        runCatching {
-                                            current.request(
-                                                "device.revoke",
-                                                JSONObject().put("device_id", deviceId),
-                                            )
-                                        }
-                                    }
-                                    reload()
-                                }
+                        )
+                        NativePage.Language -> LanguageScreen(
+                            current = state.language,
+                            onBack = { page = null },
+                            onSelect = { code ->
+                                selectLanguage(code)
+                                page = null
                             },
                         )
+                        NativePage.Update -> UpdateScreen(
+                            managerVersion = managerVersion,
+                            serviceVersion = state.serviceVersion,
+                            onBack = { page = null },
+                            onOpenUrl = { openUrl(it) },
+                        )
+                        null -> when (tab) {
+                            0 -> NativePlaceholderScreen(title = "会话")
+                            1 -> NativePlaceholderScreen(title = "机器人")
+                            else -> SettingsScreen(
+                                state = state,
+                                onRefresh = { reload() },
+                                onRevoke = { deviceId ->
+                                    scope.launch {
+                                        val current = bridge ?: return@launch
+                                        withContext(Dispatchers.IO) {
+                                            runCatching {
+                                                current.request(
+                                                    "device.revoke",
+                                                    JSONObject().put("device_id", deviceId),
+                                                )
+                                            }
+                                        }
+                                        reload()
+                                    }
+                                },
+                                onOpenSecurityLog = { page = NativePage.SecurityLog },
+                                onOpenLanguage = { page = NativePage.Language },
+                                onOpenUpdate = { page = NativePage.Update },
+                            )
+                        }
                     }
-                    GlassBottomNav(
-                        index = tab,
-                        onSelect = { tab = it },
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .padding(bottom = 16.dp)
-                            .navigationBarsPadding(),
-                    )
+                    if (page == null) {
+                        GlassBottomNav(
+                            index = tab,
+                            onSelect = { tab = it },
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 16.dp)
+                                .navigationBarsPadding(),
+                        )
+                    }
                 }
             }
         }
     }
+
+    private enum class NativePage { SecurityLog, Language, Update }
 
     private companion object {
         const val TAG = "LianT"

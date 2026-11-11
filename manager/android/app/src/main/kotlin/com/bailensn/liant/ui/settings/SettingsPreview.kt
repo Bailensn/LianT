@@ -61,7 +61,7 @@ private val sampleUnpaired = SettingsUiState(
 @Composable
 private fun SettingsLightPreview() {
     LiantTheme(darkTheme = false) {
-        SettingsScreen(state = sampleConnected, onRefresh = {}, onRevoke = {})
+        SettingsScreen(state = sampleConnected, onRefresh = {}, onRevoke = {}, onOpenSecurityLog = {}, onOpenLanguage = {}, onOpenUpdate = {})
     }
 }
 
@@ -75,7 +75,7 @@ private fun SettingsLightPreview() {
 @Composable
 private fun SettingsDarkPreview() {
     LiantTheme(darkTheme = true) {
-        SettingsScreen(state = sampleConnected, onRefresh = {}, onRevoke = {})
+        SettingsScreen(state = sampleConnected, onRefresh = {}, onRevoke = {}, onOpenSecurityLog = {}, onOpenLanguage = {}, onOpenUpdate = {})
     }
 }
 
@@ -89,6 +89,6 @@ private fun SettingsDarkPreview() {
 @Composable
 private fun SettingsUnpairedPreview() {
     LiantTheme(darkTheme = false) {
-        SettingsScreen(state = sampleUnpaired, onRefresh = {}, onRevoke = {})
+        SettingsScreen(state = sampleUnpaired, onRefresh = {}, onRevoke = {}, onOpenSecurityLog = {}, onOpenLanguage = {}, onOpenUpdate = {})
     }
 }

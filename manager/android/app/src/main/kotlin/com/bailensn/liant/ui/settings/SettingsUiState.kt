@@ -10,6 +10,15 @@ import java.io.IOException
 import java.util.Calendar
 import java.util.Locale
 
+/** 安全日志的一行。 */
+data class AuditRow(
+    val ts: Long,
+    val kind: String,
+    val name: String,
+    val reason: String,
+    val ip: String,
+)
+
 /** 已配对设备的一行（吊销按钮由界面决定要不要画）。 */
 data class DeviceRow(
     val deviceId: String,
@@ -45,6 +54,9 @@ data class SettingsUiState(
     val botCount: Int = 0,
     val botsRunning: Int = 0,
     val caps: List<String> = emptyList(),
+    val audit: List<AuditRow> = emptyList(),
+    /** 服务端在 auth.ok 里报的版本；原生「检查更新」用。 */
+    val serviceVersion: String = "",
 ) {
     /** 桥接心跳在 90 秒内算「后台还在」。 */
     val backgroundAlive: Boolean
@@ -82,6 +94,23 @@ data class SettingsUiState(
                 if (raw.optString("status") == "running") running++
             }
         }
+        val auditJson = snapshot.optJSONArray("audit")
+        val audit = buildList {
+            if (auditJson != null) {
+                for (index in 0 until auditJson.length()) {
+                    val raw = auditJson.optJSONObject(index) ?: continue
+                    add(
+                        AuditRow(
+                            ts = raw.optLong("ts", 0L),
+                            kind = raw.optString("kind"),
+                            name = raw.optString("name"),
+                            reason = raw.optString("reason"),
+                            ip = raw.optString("ip"),
+                        ),
+                    )
+                }
+            }
+        }
         val capsJson = snapshot.optJSONArray("caps")
         val caps = buildList {
             if (capsJson != null) {
@@ -98,6 +127,7 @@ data class SettingsUiState(
             botCount = bots,
             botsRunning = running,
             caps = caps,
+            audit = audit,
         )
     }
 }
@@ -120,6 +150,7 @@ object SettingsDataLoader {
             lastError = readLastError(context),
             versionName = versionName(context),
             language = languageLabel(context),
+            serviceVersion = bridge?.serviceVersion.orEmpty(),
         )
     }
 

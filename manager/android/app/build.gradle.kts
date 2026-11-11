@@ -9,8 +9,8 @@ plugins {
 }
 
 // 显示版本固定 1.0.0；versionCode 每次发布 +1。
-// 同时同步 pubspec.yaml 的 +build（当前 115）。
-val liantVersionCode = 115
+// 同时同步 pubspec.yaml 的 +build（当前 116）。
+val liantVersionCode = 116
 
 // 试水包：-PnativeUi=true 时启动入口换成原生外壳；包名与签名不变，可直接覆盖安装。
 val nativeUi = (project.findProperty("nativeUi") as String?)?.toBoolean() ?: false
