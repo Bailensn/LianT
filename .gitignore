@@ -7,3 +7,11 @@ data/
 
 # 本地临时文件（CI 日志、抓包等）
 /.tmp/
+
+# Flutter 源码只留本地做像素参照（web 预览也是本地构建）
+/flutter/
+
+# 签名与密钥永不入库
+key.properties
+*.jks
+*.keystore

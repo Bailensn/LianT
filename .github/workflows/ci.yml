@@ -87,43 +87,6 @@ jobs:
         working-directory: service
         run: go test -race ./...
 
-  client-check:
-    needs: changes
-    if: needs.changes.outputs.manager == 'true' || needs.changes.outputs.workflow == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Cache Flutter SDK
-        uses: actions/cache@v6
-        with:
-          path: ${{ runner.tool_cache }}/flutter-3.47.9
-          key: flutter-3.47.9-${{ runner.os }}-${{ runner.arch }}
-          restore-keys: |
-            flutter-3.47.9-${{ runner.os }}-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.47.9'
-          channel: stable
-          cache: false
-          cache-path: ${{ runner.tool_cache }}/flutter-3.47.9
-      - name: Cache pub
-        uses: actions/cache@v6
-        with:
-          path: ~/.pub-cache
-          key: pub-${{ runner.os }}-${{ hashFiles('manager/pubspec.lock') }}
-          restore-keys: |
-            pub-${{ runner.os }}-
-
-      - name: Pub get
-        working-directory: manager
-        run: flutter pub get
-      - name: Analyze
-        working-directory: manager
-        run: flutter analyze
-      - name: Test
-        working-directory: manager
-        run: flutter test
-
   service-release:
     needs: [changes, service-check]
     if: github.event_name != 'pull_request' && (needs.changes.outputs.service == 'true' || github.event_name == 'workflow_dispatch')
@@ -168,49 +131,30 @@ jobs:
           fail_on_unmatched_files: true
 
   android:
-    needs: [changes, client-check]
+    needs: [changes]
     if: github.event_name != 'pull_request' && (needs.changes.outputs.manager == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v7
-      - name: Cache Flutter SDK
-        uses: actions/cache@v6
+      - uses: actions/setup-java@v4
         with:
-          path: ${{ runner.tool_cache }}/flutter-3.47.9
-          key: flutter-3.47.9-${{ runner.os }}-${{ runner.arch }}
-          restore-keys: |
-            flutter-3.47.9-${{ runner.os }}-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.47.9'
-          channel: stable
-          cache: false
-          cache-path: ${{ runner.tool_cache }}/flutter-3.47.9
-      - name: Cache pub
-        uses: actions/cache@v6
-        with:
-          path: ~/.pub-cache
-          key: pub-${{ runner.os }}-${{ hashFiles('manager/pubspec.lock') }}
-          restore-keys: |
-            pub-${{ runner.os }}-
+          distribution: temurin
+          java-version: '17'
 
-      - name: Pub get
-        working-directory: manager
-        run: flutter pub get
       - name: Cache Gradle
         uses: actions/cache@v6
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('manager/android/**/*.gradle', 'manager/android/**/*.gradle.kts', 'manager/android/gradle/wrapper/gradle-wrapper.properties', 'manager/pubspec.lock') }}
+          key: gradle-${{ runner.os }}-${{ hashFiles('manager/**/*.gradle.kts', 'manager/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
             gradle-${{ runner.os }}-
 
       - name: Configure release signing
-        working-directory: manager/android
+        working-directory: manager
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -226,46 +170,40 @@ jobs:
           else
             echo "::warning::ANDROID_KEYSTORE_BASE64 未配置，使用 debug 签名（仅测试包）"
           fi
+
       - name: Build APK
         id: apk
         working-directory: manager
         run: |
           set -euo pipefail
-          # 只产出 arm64 APK（aarch64 手机），不用 --split-per-abi，
-          # 所以也不需要再去改 Flutter 内部的 ABI versionCode 偏移。
-          flutter build apk --release --target-platform android-arm64
-          code="$(awk -F'+' '/^version:/{print $2; exit}' pubspec.yaml)"
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+          code="$(awk -F'= ' '/^val liantVersionCode/{print $2; exit}' app/build.gradle.kts)"
           apk="/tmp/LianT-android-arm64-${code}.apk"
-          cp build/app/outputs/flutter-apk/app-release.apk "$apk"
-          # 同一个包名的原生外壳试水包：装上去可以直接和 Flutter 版对比，数据保留。
-          ORG_GRADLE_PROJECT_nativeUi=true flutter build apk --release --target-platform android-arm64
-          compose="/tmp/LianT-android-arm64-${code}-compose.apk"
-          cp build/app/outputs/flutter-apk/app-release.apk "$compose"
-          ls -lh "$apk" "$compose"
+          cp app/build/outputs/apk/release/app-release.apk "$apk"
+          ls -lh "$apk"
           echo "apk=$apk" >> "$GITHUB_OUTPUT"
-          echo "compose=$compose" >> "$GITHUB_OUTPUT"
+          echo "code=${code}" >> "$GITHUB_OUTPUT"
+
       - name: Kotlin 单元测试
-        working-directory: manager/android
-        # P-256 与 openssl 向量的互操作（认证能不能过就靠它）；跑在构建之后，
-        # 这样 local.properties 已经由 flutter build 写好。
-        run: bash gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+        working-directory: manager
+        # P-256 与 openssl 向量的互操作（认证能不能过就靠它）。
+        run: ./gradlew :app:testReleaseUnitTest --no-daemon --stacktrace
+
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-android-arm64
-          path: |
-            ${{ steps.apk.outputs.apk }}
-            ${{ steps.apk.outputs.compose }}
+          path: ${{ steps.apk.outputs.apk }}
           if-no-files-found: error
           retention-days: 14
+
       - name: Publish Manager release
         working-directory: manager
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          full="$(awk '/^version:/{print $2; exit}' pubspec.yaml)"
-          version="${full%%+*}"
-          code="${full##*+}"
+          version="$(awk -F'"' '/^val liantVersionName/{print $2; exit}' app/build.gradle.kts)"
+          code="${{ steps.apk.outputs.code }}"
           tag="manager-v${version}-${code}"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "release $tag already exists"
@@ -273,7 +211,6 @@ jobs:
           fi
           gh release create "$tag" \
             --title "LianT Manager $version ($code) (test)" \
-            --notes "Manager $version，versionCode $code（测试版）" \
+            --notes "Manager $version，versionCode $code（测试版，纯 Kotlin/Compose）" \
             --prerelease \
-            "${{ steps.apk.outputs.apk }}" \
-            "${{ steps.apk.outputs.compose }}"
+            "${{ steps.apk.outputs.apk }}"

@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # 版本号只有一个来源：manager/pubspec.yaml。输入值必须与它一致，
+      # 版本号只有一个来源：manager/app/build.gradle.kts。输入值必须与它一致，
       # 否则发出来的 APK 和 tag 对不上（安装后覆盖不上、用户也说不清装的是哪版）。
       - name: Check version
         id: version
@@ -28,16 +28,10 @@ jobs:
           WANT: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          full="$(awk '/^version:/{print $2; exit}' pubspec.yaml)"
-          pub="${full%%+*}"
-          code="${full##*+}"
-          if [ "$pub" != "$WANT" ]; then
-            echo "manager/pubspec.yaml 是 $pub，输入是 $WANT；先改版本号再发版" >&2
-            exit 1
-          fi
-          gradle_code="$(awk -F'= ' '/val liantVersionCode/{print $2; exit}' android/app/build.gradle.kts)"
-          if [ "$code" != "$gradle_code" ]; then
-            echo "pubspec 的 +$code 与 build.gradle.kts 的 liantVersionCode=$gradle_code 不一致" >&2
+          name="$(awk -F'"' '/^val liantVersionName/{print $2; exit}' app/build.gradle.kts)"
+          code="$(awk -F'= ' '/^val liantVersionCode/{print $2; exit}' app/build.gradle.kts)"
+          if [ "$name" != "$WANT" ]; then
+            echo "manager/app/build.gradle.kts 的版本是 $name，输入是 $WANT；先改版本号再发版" >&2
             exit 1
           fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
@@ -58,17 +52,13 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$ldflags" -o ../dist/LianT-linux-amd64 ./cmd/liant
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$ldflags" -o ../dist/LianT-linux-arm64 ./cmd/liant
 
-      - uses: subosito/flutter-action@v2
+      - uses: actions/setup-java@v4
         with:
-          flutter-version: '3.47.9'
-          channel: stable
-
-      - name: Pub get
-        working-directory: manager
-        run: flutter pub get
+          distribution: temurin
+          java-version: '17'
 
       - name: Configure release signing
-        working-directory: manager/android
+        working-directory: manager
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -88,8 +78,8 @@ jobs:
         working-directory: manager
         run: |
           set -euo pipefail
-          flutter build apk --release --target-platform android-arm64
-          cp build/app/outputs/flutter-apk/app-release.apk \
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk \
              "../dist/LianT-android-arm64.apk"
 
       - name: Checksums
