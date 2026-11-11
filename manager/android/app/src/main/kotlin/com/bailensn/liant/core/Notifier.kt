@@ -11,6 +11,7 @@ import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import com.bailensn.liant.MainActivity
+import com.bailensn.liant.R
 
 /**
  * 后台进程的消息通知。
