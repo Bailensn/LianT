@@ -15,7 +15,7 @@
 
 ## 1. 现状
 
-- Manager `1.0.0+117`，Service 同版本线；`manager/` 已切成纯 Kotlin/Compose 的 Gradle 工程，测试包 `manager-v1.0.0-117` 由 CI 自动发 pre-release。Flutter 源码只在本地 `/flutter/`（gitignore）做像素参照。
+- Manager `1.0.0+118`，Service 同版本线；`manager/` 是纯 Kotlin/Compose 的 Gradle 工程，底栏换成 Backdrop 的 Liquid Glass（取自 AndroidLiquidGlass 示例代码），并接入 miuix 组件库全套模块。Flutter 源码只在本地 `/flutter/`（gitignore）做参照。
 - **正式版以后一个 Release 同时发两端**：tag `v<version>`，含 `LianT-linux-amd64`、
   `LianT-linux-arm64`、`LianT-android-arm64.apk`、`SHA256SUMS.txt`。
   历史遗留的 `v1.0.0`（只有 Service）与 `manager-v1.0.0`（只有 APK）是分开发的，不再沿用。

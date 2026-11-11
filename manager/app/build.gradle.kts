@@ -8,7 +8,7 @@ plugins {
 }
 
 // 显示版本固定 1.0.0；versionCode 每次发布 +1。
-val liantVersionCode = 117
+val liantVersionCode = 118
 val liantVersionName = "1.0.0"
 
 val keystoreProperties = Properties()
@@ -84,6 +84,20 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Liquid Glass（Kyant0/AndroidLiquidGlass）：Backdrop 效果 + 示例底栏
+    implementation("io.github.kyant0:backdrop:2.0.1")
+    implementation("io.github.kyant0:shapes:1.2.1")
+
+    // MIUI/HyperOS 风格组件库（Compose Multiplatform）
+    implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-blur:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-squircle:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-shapes:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-nav:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-shader:0.9.4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
 }

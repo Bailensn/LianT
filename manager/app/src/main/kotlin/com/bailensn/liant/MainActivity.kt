@@ -14,6 +14,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,16 +28,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import com.bailensn.liant.core.bridge.BridgeClient
 import com.bailensn.liant.ui.language.LanguageScreen
 import com.bailensn.liant.ui.security.SecurityLogScreen
-import com.bailensn.liant.ui.shell.GlassBottomNav
+import com.bailensn.liant.ui.liquid.LiquidBottomTab
+import com.bailensn.liant.ui.liquid.LiquidBottomTabs
 import com.bailensn.liant.ui.shell.NativePlaceholderScreen
 import com.bailensn.liant.ui.update.UpdateScreen
 import com.bailensn.liant.ui.settings.SettingsDataLoader
@@ -44,6 +50,8 @@ import com.bailensn.liant.ui.settings.SettingsScreen
 import com.bailensn.liant.ui.settings.SettingsUiState
 import com.bailensn.liant.ui.theme.LiantTheme
 import com.bailensn.liant.ui.theme.LocalLColors
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -183,11 +191,14 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                val backdrop = rememberLayerBackdrop()
+                val navContentColor = if (dark) Color.White else Color.Black
                 Box(
                     Modifier
                         .fillMaxSize()
                         .background(colors.bg),
                 ) {
+                    Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
                     when (page) {
                         NativePage.SecurityLog -> SecurityLogScreen(
                             entries = state.audit,
@@ -235,17 +246,48 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                    }
                     if (page == null) {
-                        GlassBottomNav(
-                            index = tab,
-                            onSelect = { tab = it },
+                        LiquidBottomTabs(
+                            selectedTabIndex = { tab },
+                            onTabSelected = { tab = it },
+                            backdrop = backdrop,
+                            tabsCount = 3,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp)
                                 .padding(bottom = 16.dp)
                                 .navigationBarsPadding(),
-                        )
+                        ) {
+                            LiquidBottomTab(onClick = { tab = 0 }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.ChatBubbleOutline,
+                                    contentDescription = null,
+                                    tint = navContentColor,
+                                    modifier = Modifier.size(21.dp),
+                                )
+                                Text(text = "会话", color = navContentColor, fontSize = 11.sp)
+                            }
+                            LiquidBottomTab(onClick = { tab = 1 }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.SmartToy,
+                                    contentDescription = null,
+                                    tint = navContentColor,
+                                    modifier = Modifier.size(21.dp),
+                                )
+                                Text(text = "机器人", color = navContentColor, fontSize = 11.sp)
+                            }
+                            LiquidBottomTab(onClick = { tab = 2 }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Settings,
+                                    contentDescription = null,
+                                    tint = navContentColor,
+                                    modifier = Modifier.size(21.dp),
+                                )
+                                Text(text = "设置", color = navContentColor, fontSize = 11.sp)
+                            }
+                        }
                     }
                 }
             }
