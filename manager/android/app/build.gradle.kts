@@ -9,8 +9,8 @@ plugins {
 }
 
 // 显示版本固定 1.0.0；versionCode 每次发布 +1。
-// 同时同步 pubspec.yaml 的 +build（当前 113）。
-val liantVersionCode = 113
+// 同时同步 pubspec.yaml 的 +build（当前 114）。
+val liantVersionCode = 114
 
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
@@ -118,6 +118,7 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.activity:activity-compose:1.13.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
