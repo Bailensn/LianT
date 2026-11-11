@@ -215,7 +215,7 @@ JSON 行、TCP 127.0.0.1、版本 `v: 1`：
 **第一步：Kotlin 只做「连接 + 认证」**
 
 - 新增 `LiantSocket.kt` + `P256.kt`，从状态文件读身份，连上并完成 `auth.response`。
-- **不碰**现有 Dart 后台链路；成功与否只写 `liant_crash.log` 或一条调试日志（设置页能看）。
+- **不碰**现有 Dart 后台链路；结果写 logcat（失败另落 `liant_crash.log`，设置页可见）。
 - 依赖：`app/build.gradle.kts` 加 OkHttp。
 - 验证：真机装包后看日志出现 `auth.ok`（logcat 过滤 `LianT`）。这一步最容易翻车——
   DER 编码、SPKI、base64 差一个字节就失败；JVM 单测用 `p256_test.dart` 里 openssl

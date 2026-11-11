@@ -136,8 +136,8 @@ object P256 {
         // 只比基点坐标，不依赖 ECPoint.equals 的实现细节。
         return other.curve.field.fieldSize == 256 &&
             other.order == expected.order &&
-            other.generator.x == expected.generator.x &&
-            other.generator.y == expected.generator.y
+            other.generator.affineX == expected.generator.affineX &&
+            other.generator.affineY == expected.generator.affineY
     }
 
     private fun base32Groups(bytes: ByteArray): String {
