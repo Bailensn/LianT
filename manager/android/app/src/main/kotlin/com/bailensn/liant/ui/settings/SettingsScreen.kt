@@ -138,6 +138,6 @@ private fun backgroundText(state: SettingsUiState): String {
     if (state.loading) return "检查中…"
     val age = state.backgroundAgeMs ?: return "未运行"
     if (age < 0) return "运行中"
-    if (age < 90_000) return "运行中 · 心跳 ${(age / 1000).roundToInt()} 秒前"
+    if (age < 90_000) return "运行中 · 心跳 ${(age / 1000.0).roundToInt()} 秒前"
     return "可能已停止 · 上次心跳 ${age / 60_000} 分钟前"
 }
