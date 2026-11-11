@@ -8,7 +8,7 @@ plugins {
 }
 
 // 显示版本固定 1.0.0；versionCode 每次发布 +1。
-val liantVersionCode = 118
+val liantVersionCode = 119
 val liantVersionName = "1.0.0"
 
 val keystoreProperties = Properties()
@@ -23,7 +23,9 @@ android {
 
     defaultConfig {
         applicationId = "com.bailensn.liant"
-        minSdk = 24
+        // Backdrop 的 Liquid Glass 与 miuix-blur 都依赖 RuntimeShader / 13+ 的图形能力；
+        // 从 118 起只支持 Android 13 及以上。
+        minSdk = 33
         targetSdk = 36
         versionCode = liantVersionCode
         versionName = liantVersionName
@@ -93,6 +95,7 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-blur:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-squircle:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-nav:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-shader:0.9.4")
