@@ -3,6 +3,7 @@ package com.bailensn.liant.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -12,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,7 +26,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bailensn.liant.ui.theme.LColors
 import com.bailensn.liant.ui.theme.LTokens
 import com.bailensn.liant.ui.theme.LocalLColors
 import com.bailensn.liant.ui.theme.SquircleShape
@@ -162,31 +161,62 @@ fun SettingsRow(
     }
 }
 
-/** 大标题头：34sp、字重与字距对齐 Flutter 的 displaySmall。 */
+/**
+ * 大标题头：34sp、字重与字距对齐 Flutter 的 displaySmall。
+ *
+ * 几何与折叠都照 Flutter 的 `_LargeTitleDelegate`：
+ * - 展开时整段 104dp（在状态栏之下），折叠后 58dp；
+ * - 标题贴底、底部留 8dp，左右各 16dp；
+ * - 折叠进度 [collapse] 0→1 时，字号 34→20、字距 -0.8→-0.2，底部出现 0.5dp 分隔线。
+ */
 @Composable
 fun LargeTitleHeader(
     title: String,
-    subtitle: String? = null,
+    collapse: Float = 0f,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = LocalLColors.current
-    Row(
+    val t = collapse.coerceIn(0f, 1f)
+    val height = (104f - 46f * t).dp
+    val fontSize = (34f - 14f * t).sp
+    val letterSpacing = (-0.8f + 0.6f * t).sp
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .height(height)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.BottomStart,
     ) {
-        Column(Modifier.weight(1f)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.displaySmall,
+                fontSize = fontSize,
+                fontWeight = FontWeight.W700,
+                letterSpacing = letterSpacing,
+                lineHeight = (fontSize.value * 1.15f).sp,
                 color = colors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
-            if (subtitle != null) {
-                Spacer(Modifier.height(2.dp))
-                Text(text = subtitle, color = colors.text3, fontSize = 13.sp)
+            if (trailing != null) {
+                Spacer(Modifier.width(12.dp))
+                trailing()
             }
         }
-        trailing?.invoke()
+        if (t > 0f) {
+            Spacer(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(0.5.dp)
+                    .background(colors.sep.copy(alpha = t)),
+            )
+        }
     }
 }

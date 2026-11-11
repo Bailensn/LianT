@@ -133,7 +133,8 @@ private fun liantTypography(dark: Boolean): Typography {
             fontSize = LTokens.largeTitle,
             fontWeight = weight(FontWeight.W700),
             letterSpacing = (-0.8).sp,
-            lineHeight = 38.sp,
+            // Flutter 的大标题 height: 1.15 → 34 * 1.15 ≈ 39。
+            lineHeight = 39.sp,
         ),
         headlineSmall = TextStyle(
             fontSize = 22.sp,

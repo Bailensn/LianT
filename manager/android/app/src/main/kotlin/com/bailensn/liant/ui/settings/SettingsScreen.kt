@@ -4,8 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -27,16 +33,47 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsScreen(state: SettingsUiState, onRefresh: () -> Unit) {
     val colors = LocalLColors.current
+    val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    // 与 Flutter 的 LargeTitlePage 一致：前 46dp 滚动用于把标题从 34 折到 20。
+    val collapse = remember {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0) {
+                1f
+            } else {
+                val range = with(density) { 46.dp.toPx() }
+                (listState.firstVisibleItemScrollOffset / range).coerceIn(0f, 1f)
+            }
+        }
+    }
     Column(
         Modifier
             .fillMaxSize()
             .background(colors.bg)
-            .statusBarsPadding(),
+            .statusBarsPadding()
+            .navigationBarsPadding(),
     ) {
-        LargeTitleHeader(title = "设置")
+        LargeTitleHeader(
+            title = "设置",
+            collapse = collapse.value,
+            trailing = {
+                IconButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = "刷新",
+                        tint = LocalLColors.current.text2,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            },
+        )
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 40.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 40.dp),
         ) {
             item { ServiceCard(state, onRefresh) }
             item { MachineCard() }
