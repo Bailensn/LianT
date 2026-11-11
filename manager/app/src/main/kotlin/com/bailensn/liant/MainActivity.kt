@@ -50,6 +50,9 @@ import com.bailensn.liant.ui.settings.SettingsScreen
 import com.bailensn.liant.ui.settings.SettingsUiState
 import com.bailensn.liant.ui.theme.LiantTheme
 import com.bailensn.liant.ui.theme.LocalLColors
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.darkColorScheme
+import top.yukonga.miuix.kmp.theme.lightColorScheme
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.Dispatchers
@@ -91,8 +94,10 @@ class MainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
         setContent {
-            LiantTheme {
-                val dark = isSystemInDarkTheme()
+            val darkTheme = isSystemInDarkTheme()
+            MiuixTheme(colors = if (darkTheme) darkColorScheme() else lightColorScheme()) {
+            LiantTheme(darkTheme = darkTheme) {
+                val dark = darkTheme
                 val view = LocalView.current
                 SideEffect {
                     val window = (view.context as? Activity)?.window ?: return@SideEffect
@@ -290,6 +295,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+            }
             }
         }
     }
