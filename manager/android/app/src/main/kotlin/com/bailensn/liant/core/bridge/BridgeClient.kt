@@ -169,7 +169,12 @@ class BridgeClient private constructor(
                 Log.i(TAG, "桥接连接失败：${error.message}")
                 return null
             }
-            val client = BridgeClient(socket, listener)
+            val client = try {
+                BridgeClient(socket, listener)
+            } catch (_: IOException) {
+                runCatching { socket.close() }
+                return null
+            }
             client.start()
             client.writeFrame(
                 JSONObject()

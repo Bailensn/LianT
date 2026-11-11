@@ -63,7 +63,7 @@ data class SettingsUiState(
                         DeviceRow(
                             deviceId = id,
                             name = name.ifEmpty { "未命名设备" },
-                            subtitle = "最近活动 ${formatDateTime(raw.optLong("last_seen_at", 0L))} · $id",
+                            subtitle = "最近活动 ${SettingsDataLoader.formatDateTime(raw.optLong("last_seen_at", 0L))} · $id",
                             self = id == deviceId,
                         ),
                     )
