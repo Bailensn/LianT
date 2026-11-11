@@ -132,7 +132,7 @@ jobs:
 
   android:
     needs: [changes]
-    if: github.event_name != 'pull_request' && (needs.changes.outputs.manager == 'true' || github.event_name == 'workflow_dispatch')
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.manager == 'true' || needs.changes.outputs.workflow == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -176,7 +176,7 @@ jobs:
         working-directory: manager
         run: |
           set -euo pipefail
-          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+          bash gradlew :app:assembleRelease --no-daemon --stacktrace
           code="$(awk -F'= ' '/^val liantVersionCode/{print $2; exit}' app/build.gradle.kts)"
           apk="/tmp/LianT-android-arm64-${code}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$apk"
@@ -187,7 +187,7 @@ jobs:
       - name: Kotlin 单元测试
         working-directory: manager
         # P-256 与 openssl 向量的互操作（认证能不能过就靠它）。
-        run: ./gradlew :app:testReleaseUnitTest --no-daemon --stacktrace
+        run: bash gradlew :app:testReleaseUnitTest --no-daemon --stacktrace
 
       - uses: actions/upload-artifact@v7
         with:

@@ -78,7 +78,7 @@ jobs:
         working-directory: manager
         run: |
           set -euo pipefail
-          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+          bash gradlew :app:assembleRelease --no-daemon --stacktrace
           cp app/build/outputs/apk/release/app-release.apk \
              "../dist/LianT-android-arm64.apk"
 
