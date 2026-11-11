@@ -237,8 +237,13 @@ jobs:
           code="$(awk -F'+' '/^version:/{print $2; exit}' pubspec.yaml)"
           apk="/tmp/LianT-android-arm64-${code}.apk"
           cp build/app/outputs/flutter-apk/app-release.apk "$apk"
-          ls -lh "$apk"
+          # 同一个包名的原生外壳试水包：装上去可以直接和 Flutter 版对比，数据保留。
+          ORG_GRADLE_PROJECT_nativeUi=true flutter build apk --release --target-platform android-arm64
+          compose="/tmp/LianT-android-arm64-${code}-compose.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$compose"
+          ls -lh "$apk" "$compose"
           echo "apk=$apk" >> "$GITHUB_OUTPUT"
+          echo "compose=$compose" >> "$GITHUB_OUTPUT"
       - name: Kotlin 单元测试
         working-directory: manager/android
         # P-256 与 openssl 向量的互操作（认证能不能过就靠它）；跑在构建之后，
@@ -247,7 +252,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-android-arm64
-          path: ${{ steps.apk.outputs.apk }}
+          path: |
+            ${{ steps.apk.outputs.apk }}
+            ${{ steps.apk.outputs.compose }}
           if-no-files-found: error
           retention-days: 14
       - name: Publish Manager release
@@ -268,4 +275,5 @@ jobs:
             --title "LianT Manager $version ($code) (test)" \
             --notes "Manager $version，versionCode $code（测试版）" \
             --prerelease \
-            "${{ steps.apk.outputs.apk }}"
+            "${{ steps.apk.outputs.apk }}" \
+            "${{ steps.apk.outputs.compose }}"

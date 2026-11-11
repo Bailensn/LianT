@@ -71,6 +71,10 @@ class NativeSettingsActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 原生入口冷启动时也要把常驻服务拉起来（Flutter 入口由 AppState 负责）。
+        if (MessageService.stateFile(this).exists()) {
+            runCatching { MessageService.start(this) }
+        }
         enableEdgeToEdge()
         setContent {
             LiantTheme {

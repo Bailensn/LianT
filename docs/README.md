@@ -15,7 +15,7 @@
 
 ## 1. 现状
 
-- Manager `1.0.0+114`，Service 同版本线；测试包 `manager-v1.0.0-114` 由 CI 自动发 pre-release。
+- Manager `1.0.0+115`，Service 同版本线；测试包 `manager-v1.0.0-115` 由 CI 自动发 pre-release（两个 APK：Flutter 版与 `-compose` 原生外壳版，同包名可互相覆盖、数据保留）。
 - **正式版以后一个 Release 同时发两端**：tag `v<version>`，含 `LianT-linux-amd64`、
   `LianT-linux-arm64`、`LianT-android-arm64.apk`、`SHA256SUMS.txt`。
   历史遗留的 `v1.0.0`（只有 Service）与 `manager-v1.0.0`（只有 APK）是分开发的，不再沿用。

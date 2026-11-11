@@ -31,14 +31,31 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+        </activity>
+        <!-- 两个启动入口，用 -PnativeUi 切换（同一个包名，可直接覆盖安装、数据保留）：
+             默认 Flutter；试水包启动到原生外壳。 -->
+        <activity-alias
+            android:name=".FlutterLauncher"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:enabled="${flutterLauncher}">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-        </activity>
-        <!-- 原生设置页（迁移试水）。临时用 adb 显式拉起，不挂 launcher：
-             adb shell am start -n com.bailensn.liant/.NativeSettingsActivity
-             UI 全迁后改成正常入口。 -->
+        </activity-alias>
+        <activity-alias
+            android:name=".NativeLauncher"
+            android:targetActivity=".NativeSettingsActivity"
+            android:exported="true"
+            android:enabled="${nativeLauncher}">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <!-- 原生设置页（迁移试水）。也支持 adb 显式拉起：
+             adb shell am start -n com.bailensn.liant/.NativeSettingsActivity -->
         <activity
             android:name=".NativeSettingsActivity"
             android:exported="true"
