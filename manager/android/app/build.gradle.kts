@@ -111,7 +111,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 
     // 原生 UI 试水（与 Flutter 并存）：版本由 BOM 统一。
-    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
