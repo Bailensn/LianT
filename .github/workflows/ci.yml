@@ -17,8 +17,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # 按 commit 分组：GitHub 偶尔会把一次 run 卡在 in_progress（取消也返回 409），
+  # 共用 group 会把后续 push 一起堵死；按 SHA 分组可以让新提交立刻开跑。
+  group: ci-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   changes:

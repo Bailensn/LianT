@@ -31,28 +31,29 @@ Service (Go)
   modernc.org/memory                       BSD-3-Clause
   modernc.org/sqlite                       BSD-3-Clause
 
-Manager (Flutter / Dart)
-  Flutter SDK and Dart SDK                BSD-3-Clause
-  cupertino_icons                          MIT
-  crypto                                   BSD-3-Clause
-  shared_preferences                       BSD-3-Clause
-  web_socket_channel                       BSD-3-Clause
-  web                                      BSD-3-Clause
-  file_picker                              MIT
-  http                                     BSD-3-Clause
-  image_picker                             BSD-3-Clause
-  flutter_lints (development only)         BSD-3-Clause
+Manager (Android / Kotlin)
+  AndroidX / Jetpack Compose              Apache-2.0
+  Material Icons (Extended)                Apache-2.0
+  OkHttp                                   Apache-2.0
+  Backdrop (io.github.kyant0:backdrop)     Apache-2.0
+  Kyant Shapes (io.github.kyant0:shapes)   Apache-2.0
+  miuix (top.yukonga.miuix.kmp)           Apache-2.0
+  Kotlin standard library and runtime      Apache-2.0
+
+  Bottom bar code in manager/app/src/main/kotlin/com/bailensn/liant/ui/liquid/
+  is ported from Kyant0/AndroidLiquidGlass (Apache-2.0).
+
+Note: the Flutter client source is kept only in the local (gitignored) /flutter/
+directory as a visual reference; it is not part of the shipped Manager APK.
 
 Android runtime
-  AndroidX libraries                       Apache-2.0
-  Kotlin standard library and runtime      Apache-2.0
 
 Fonts and icons
   Roboto                                   Apache-2.0
   Material Icons                           Apache-2.0
 
-The exact resolved versions of Go and Dart dependencies are recorded in
-service/go.mod, service/go.sum, manager/pubspec.yaml and manager/pubspec.lock.
+The exact resolved versions of Go and Kotlin/Android dependencies are recorded in
+service/go.mod, service/go.sum and manager/app/build.gradle.kts.
 
 If you redistribute LianT or a modified version, retain this NOTICE and the
 LICENSE file. This NOTICE does not modify, limit, or replace any third-party
