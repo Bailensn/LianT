@@ -4,3 +4,6 @@ data/
 *.log
 .DS_Store
 /skills/
+
+# 本地临时文件（CI 日志、抓包等）
+/.tmp/
