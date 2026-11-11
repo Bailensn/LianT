@@ -187,7 +187,7 @@ jobs:
       - name: Kotlin 单元测试
         working-directory: manager
         # P-256 与 openssl 向量的互操作（认证能不能过就靠它）。
-        run: bash gradlew :app:testReleaseUnitTest --no-daemon --stacktrace
+        run: bash gradlew :app:testDebugUnitTest --no-daemon --stacktrace
 
       - uses: actions/upload-artifact@v7
         with:
