@@ -17,9 +17,14 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
+import com.bailensn.liant.core.CoreFiles
+import com.bailensn.liant.core.CoreLog
+import com.bailensn.liant.core.net.LiantSocket
+import com.bailensn.liant.core.state.StateStore
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
+import org.json.JSONObject
 import java.io.File
 
 /**
@@ -33,6 +38,15 @@ import java.io.File
  */
 class MessageService : Service() {
     private var flutterEngine: FlutterEngine? = null
+
+    /** 第一步迁移的验证探针：纯 Kotlin 的连接 + 认证，暂不接管 Dart 链路。 */
+    @Volatile
+    private var coreSocket: LiantSocket? = null
+    private var coreThread: Thread? = null
+
+    @Volatile
+    private var coreGeneration = 0
+
     private val handler = Handler(Looper.getMainLooper())
     private var statusText = "正在后台接收消息"
     private val repost = object : Runnable {
@@ -48,6 +62,7 @@ class MessageService : Service() {
         // 必须在 startForegroundService 之后尽快调用，Android 只给 10 秒。
         postForeground()
         startBackgroundEngine()
+        startKotlinCore()
         handler.postDelayed(repost, 60_000)
     }
 
@@ -58,6 +73,7 @@ class MessageService : Service() {
         }
         // 系统把进程杀掉后按 START_STICKY 重启：intent 可能为 null，引擎要在 onCreate 恢复。
         if (flutterEngine == null) startBackgroundEngine()
+        if (coreSocket == null) startKotlinCore()
         return START_STICKY
     }
 
@@ -70,12 +86,72 @@ class MessageService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(repost)
+        stopKotlinCore()
         flutterEngine?.destroy()
         flutterEngine = null
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    // -------------------------------------------------------------------------
+    // Kotlin 核心（迁移第一步：只验证连接 + 认证）
+    // -------------------------------------------------------------------------
+
+    /**
+     * 用纯 Kotlin 走一遍「读身份 → 连 WSS → 验服务端自证 → 回 auth.response」。
+     *
+     * 这一步**不接管**现有 Dart 后台链路：两条连接同时存在是预期现象，第二步
+     * 把桥接搬过来后才会只剩一条。结果只写日志（logcat 的 LianT 标签；失败另
+     * 外落 liant_crash.log），不影响任何现有功能。
+     */
+    private fun startKotlinCore() {
+        if (coreThread != null) return
+        val generation = ++coreGeneration
+        val thread = Thread({ runKotlinCore(generation) }, "liant-core")
+        coreThread = thread
+        thread.start()
+    }
+
+    private fun runKotlinCore(generation: Int) {
+        try {
+            val state = StateStore.read(applicationContext)
+            if (state == null) {
+                Log.i(TAG, "Kotlin 核心：未配对（没有状态文件），跳过")
+                return
+            }
+            if (coreGeneration != generation) return
+            val socket = LiantSocket(
+                state.identity,
+                object : LiantSocket.Listener {
+                    override fun onState(state: LiantSocket.State, detail: String) {
+                        Log.i(TAG, "Kotlin 核心状态：${state.name} $detail")
+                        if (state == LiantSocket.State.error) {
+                            CoreLog.record(applicationContext, "Kotlin 核心：$detail")
+                        }
+                    }
+
+                    override fun onEvent(type: String, payload: JSONObject) {
+                        Log.i(TAG, "Kotlin 核心事件：$type")
+                    }
+                },
+            )
+            if (coreGeneration != generation) return
+            coreSocket = socket
+            socket.start()
+        } catch (error: Exception) {
+            // 探针失败不能把 :background 进程带走。
+            Log.w(TAG, "Kotlin 核心启动失败", error)
+            CoreLog.record(applicationContext, "Kotlin 核心启动失败：$error")
+        }
+    }
+
+    private fun stopKotlinCore() {
+        coreGeneration++
+        coreSocket?.stop()
+        coreSocket = null
+        coreThread = null
+    }
 
     // -------------------------------------------------------------------------
     // 后台 Flutter 引擎
@@ -298,16 +374,13 @@ class MessageService : Service() {
          *
          * 存在即代表「已配对」：BootReceiver 靠它决定开机要不要拉起服务。
          */
-        fun stateFile(context: Context): File =
-            File(context.filesDir, "liant_background_state.json")
+        fun stateFile(context: Context): File = CoreFiles.stateFile(context)
 
         /** 后台进程写给 UI 的桥接信息（本地端口 + 令牌）。 */
-        fun bridgeFile(context: Context): File =
-            File(context.filesDir, "liant_bridge.json")
+        fun bridgeFile(context: Context): File = CoreFiles.bridgeFile(context)
 
         /** 未捕获异常落盘的位置（UI 与 :background 进程共用）。 */
-        fun logFile(context: Context): File =
-            File(context.filesDir, "liant_crash.log")
+        fun logFile(context: Context): File = CoreFiles.logFile(context)
 
         /** 用前台服务的方式拉起；Android 12+ 后台可能被拒绝，调用方自己兜住异常。 */
         fun start(context: Context, action: String? = null) {

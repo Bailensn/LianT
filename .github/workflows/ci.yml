@@ -239,6 +239,11 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk "$apk"
           ls -lh "$apk"
           echo "apk=$apk" >> "$GITHUB_OUTPUT"
+      - name: Kotlin 单元测试
+        working-directory: manager/android
+        # P-256 与 openssl 向量的互操作（认证能不能过就靠它）；跑在构建之后，
+        # 这样 local.properties 已经由 flutter build 写好。
+        run: sh gradlew :app:testDebugUnitTest --no-daemon --stacktrace
       - uses: actions/upload-artifact@v7
         with:
           name: LianT-android-arm64

@@ -15,7 +15,7 @@
 
 ## 1. 现状
 
-- Manager `1.0.0+106`，Service 同版本线；测试包 `manager-v1.0.0-106` 由 CI 自动发 pre-release。
+- Manager `1.0.0+107`，Service 同版本线；测试包 `manager-v1.0.0-107` 由 CI 自动发 pre-release。
 - **正式版以后一个 Release 同时发两端**：tag `v<version>`，含 `LianT-linux-amd64`、
   `LianT-linux-arm64`、`LianT-android-arm64.apk`、`SHA256SUMS.txt`。
   历史遗留的 `v1.0.0`（只有 Service）与 `manager-v1.0.0`（只有 APK）是分开发的，不再沿用。
@@ -36,6 +36,7 @@
 - 本地聊天记录 Hive 持久化（不设条数上限），首次启动迁移旧 shared_preferences 数据；
 - 性能：去掉实时模糊、MaterialApp 全局重建、会话列表懒构建、tab 隔离重绘；
 - JKS 正式签名 + `Release` workflow。
+- Kotlin 核心迁移第一步（§4）：OkHttp 连 WSS + JCA 完成认证，与 Dart 后台并存，待真机验证。
 
 ## 2. 代码结构
 
@@ -50,6 +51,11 @@ service/
     format/             NDoc 与 qq-plain 格式适配器
     store/              消息、媒体、保留、设备、审计（SQLite / PostgreSQL）
     node/ crypto/ pairing/  身份密钥、加密、配对
+manager/android/app/src/main/kotlin/com/bailensn/liant/
+  MessageService.kt     常驻服务、通知、桥接信息，以及第一步的 Kotlin 核心探针
+  core/crypto/P256.kt   JCA 版 P-256（签名/验签/指纹，与 Dart、Go 互操作）
+  core/net/LiantSocket.kt  OkHttp WSS、握手、心跳、退避重连
+  core/state/StateStore.kt 读共享状态文件（身份/免打扰/标题/备注）
 manager/lib/
   main.dart             入口 + backgroundMain（后台引擎入口，不能挪）
   core/
@@ -121,7 +127,8 @@ adb reboot                                   # 开机不打开 App 直接发消�
 
 ## 4. 迁移：核心下沉 Kotlin
 
-状态：**未开工**。本节是施工说明，动手前先读完，并按三步走。
+状态：**第一步已落地，待真机验证**（Kotlin 连接 + 认证，与现有 Dart 后台并存）。
+本节的步骤与回退方式仍然有效，第二步开工前先读完。
 
 ### 4.1 为什么
 
@@ -157,12 +164,12 @@ UI 进程（Flutter）                        :background 进程（纯 Kotlin）
 
 | Dart 现状 | 行数 | Kotlin 目标 | 职责 |
 | --- | --- | --- | --- |
-| `core/net/client.dart` `LiantClient` | 441 | `net/LiantSocket.kt` | OkHttp WS、信封收发、`reply_to` 关联、30s 心跳、1→30s 退避重连、4001/4002 不重连 |
-| `core/identity/p256.dart` | 477 | `crypto/P256.kt` | `Signature("SHA256withECDSA")`，32 字节标量 → `ECPrivateKey`，SPKI 解析与验签 |
-| `core/background/bridge_server.dart` | 206 | `bridge/BridgeServer.kt` | accept 一条连接、令牌握手、`req/send/ev/state/res` 帧 |
-| `core/background/runtime_io.dart` | 190 | `BackgroundRuntime.kt` | 读共享状态、免打扰与前台判断、FNV-1a 通知 ID、通知渠道 |
-| `core/identity/identity.dart` | 230 | `State.kt` 的解析部分 | 身份 JSON 已在共享文件里，只做解析与 `device_id` 提取 |
-| `core/background/state_io.dart` | — | `StateStore.kt` | 原子写/读 `liant_background_state.json`（`.tmp` + rename） |
+| `core/net/client.dart` `LiantClient` | 441 | `core/net/LiantSocket.kt`（已实现） | OkHttp WS、信封收发、`reply_to` 关联、30s 心跳、1→30s 退避重连、4001/4002 不重连 |
+| `core/identity/p256.dart` | 477 | `core/crypto/P256.kt`（已实现） | `Signature("SHA256withECDSA")`，32 字节标量 → `ECPrivateKey`，SPKI 解析与验签 |
+| `core/background/bridge_server.dart` | 206 | `core/bridge/BridgeServer.kt` | accept 一条连接、令牌握手、`req/send/ev/state/res` 帧 |
+| `core/background/runtime_io.dart` | 190 | `core/BackgroundRuntime.kt` | 读共享状态、免打扰与前台判断、FNV-1a 通知 ID、通知渠道 |
+| `core/identity/identity.dart` | 230 | `core/state/StateStore.kt`（已实现） | 身份 JSON 已在共享文件里，只做解析与 `device_id` 提取 |
+| `core/background/state_io.dart` | — | `core/state/StateStore.kt`（已实现） | 读 `liant_background_state.json`；原子写（`.tmp` + rename）留给第二步 |
 | 本地消息存储（Hive） | — | 第二阶段再定 | 可留 Dart（省事），或搬 SQLite/DataStore |
 
 字段名以 `manager/lib/core/net/` 下的代码为准，**不要凭记忆写**。
@@ -210,9 +217,12 @@ JSON 行、TCP 127.0.0.1、版本 `v: 1`：
 - 新增 `LiantSocket.kt` + `P256.kt`，从状态文件读身份，连上并完成 `auth.response`。
 - **不碰**现有 Dart 后台链路；成功与否只写 `liant_crash.log` 或一条调试日志（设置页能看）。
 - 依赖：`app/build.gradle.kts` 加 OkHttp。
-- 验证：真机装包后看日志出现 `auth.ok`。这一步最容易翻车——DER 编码、SPKI、base64
-  差一个字节就失败，先用 `p256_test.dart` 里 openssl 生成的向量做 JVM 单测。
-- 回退：删掉新增文件即可，主链路没动过。
+- 验证：真机装包后看日志出现 `auth.ok`（logcat 过滤 `LianT`）。这一步最容易翻车——
+  DER 编码、SPKI、base64 差一个字节就失败；JVM 单测用 `p256_test.dart` 里 openssl
+  生成的同一组向量（`P256Test.kt`，CI 的 `testDebugUnitTest` 会跑）。
+- 现状：`MessageService` 在 `onCreate` 里另起一个线程跑探针，**不影响** Dart 链路；
+  结果写 logcat，失败另落 `liant_crash.log`。两条连接同时存在是这一步的预期现象。
+- 回退：删掉新增文件与 `MessageService` 里的探针调用即可，主链路没动过。
 
 **第二步：桥接搬到 Kotlin，切流量**
 
@@ -263,7 +273,7 @@ JSON 行、TCP 127.0.0.1、版本 `v: 1`：
 9. 常驻通知没有「停用」入口，要不要在设置页给开关需要产品拍板。
 10. `pubspec.lock` 比 `pubspec.yaml` 旧一个版本（lock 里还是 flutter_lints 4），
     找台有 Flutter 的机器跑 `flutter pub get` 后提交。
-11. 开始 §4 的第一步（Kotlin 连接 + 认证）。
+11. §4 第一步真机验证：装 v107 看 `LianT` 日志是否出现 `auth.ok`，记一次 `:background` 的 PSS。
 
 ## 6. 约束
 

@@ -8,8 +8,8 @@ plugins {
 }
 
 // 显示版本固定 1.0.0；versionCode 每次发布 +1。
-// 同时同步 pubspec.yaml 的 +build（当前 106）。
-val liantVersionCode = 106
+// 同时同步 pubspec.yaml 的 +build（当前 107）。
+val liantVersionCode = 107
 
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
@@ -96,4 +96,11 @@ afterEvaluate {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // 迁移第一步：后台 Kotlin 核心直接用 OkHttp 连 WSS（自签证书、重连、心跳）。
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // 只跑 JVM 单测（P-256 与 openssl 向量的互操作），不参与打包。
+    testImplementation("junit:junit:4.13.2")
 }
