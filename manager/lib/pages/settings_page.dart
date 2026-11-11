@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 import '../core/net/client_api.dart';
 import '../core/net/message_client.dart';
-import '../core/background/service.dart';
 import '../core/platform/crash_log.dart';
 import '../core/net/protocol.dart';
 import '../ui/format.dart';
@@ -176,11 +175,6 @@ class SettingsPage extends StatelessWidget {
       GroupCard(
         title: '通用',
         children: <Widget>[
-          _SettingsRow(
-            title: '界面试水（Compose）',
-            subtitle: '原生设置页 · 临时入口，用于对比效果',
-            onTap: openComposeSettings,
-          ),
           _SettingsRow(
             title: '语言',
             subtitle: state.languageSetting == 'system'

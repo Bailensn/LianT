@@ -58,10 +58,6 @@ class MainActivity : FlutterActivity() {
                         requestNotificationPermission()
                         result.success(null)
                     }
-                    "openComposeSettings" -> {
-                        startActivity(Intent(this, NativeSettingsActivity::class.java))
-                        result.success(null)
-                    }
                     "openUrl" -> {
                         val url = call.argument<String>("url")
                         if (url.isNullOrEmpty()) {

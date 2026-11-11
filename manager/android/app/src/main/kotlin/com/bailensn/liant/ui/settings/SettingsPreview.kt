@@ -22,6 +22,25 @@ private val sampleConnected = SettingsUiState(
     backgroundAgeMs = 12_000,
     lastError = null,
     versionName = "1.0.0",
+    language = "简体中文",
+    devices = listOf(
+        DeviceRow(
+            deviceId = "d9f3c2a1-7b4e-4c1a-9e2f-1a2b3c4d5e6f",
+            name = "我的手机",
+            subtitle = "最近活动 11月12日 02:40 · d9f3c2a1-7b4e-4c1a-9e2f-1a2b3c4d5e6f",
+            self = true,
+        ),
+        DeviceRow(
+            deviceId = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+            name = "桌面端",
+            subtitle = "最近活动 11月11日 21:08 · a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+            self = false,
+        ),
+    ),
+    devicesLoaded = true,
+    botCount = 2,
+    botsRunning = 2,
+    caps = listOf("msg.list", "bot.control", "media.recv", "rich_text", "multi_bot"),
 )
 
 private val sampleUnpaired = SettingsUiState(
@@ -42,7 +61,7 @@ private val sampleUnpaired = SettingsUiState(
 @Composable
 private fun SettingsLightPreview() {
     LiantTheme(darkTheme = false) {
-        SettingsScreen(state = sampleConnected, onRefresh = {})
+        SettingsScreen(state = sampleConnected, onRefresh = {}, onRevoke = {})
     }
 }
 
@@ -56,7 +75,7 @@ private fun SettingsLightPreview() {
 @Composable
 private fun SettingsDarkPreview() {
     LiantTheme(darkTheme = true) {
-        SettingsScreen(state = sampleConnected, onRefresh = {})
+        SettingsScreen(state = sampleConnected, onRefresh = {}, onRevoke = {})
     }
 }
 
@@ -70,6 +89,6 @@ private fun SettingsDarkPreview() {
 @Composable
 private fun SettingsUnpairedPreview() {
     LiantTheme(darkTheme = false) {
-        SettingsScreen(state = sampleUnpaired, onRefresh = {})
+        SettingsScreen(state = sampleUnpaired, onRefresh = {}, onRevoke = {})
     }
 }

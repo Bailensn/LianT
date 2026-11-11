@@ -140,7 +140,13 @@ class AppState extends ChangeNotifier {
       onStateChange: (state) {
         if (state == AppLifecycleState.resumed) {
           _setForeground(true);
-          _maybeUpgradeToBridge();
+          // 原生界面（试水页）会占用桥接的唯一连接；回到 Flutter 时要自己接回来。
+          final client = _client;
+          if (client == null || (!client.online && conn != ConnState.connecting)) {
+            unawaited(_connect());
+          } else {
+            _maybeUpgradeToBridge();
+          }
           return;
         }
         _setForeground(false);
