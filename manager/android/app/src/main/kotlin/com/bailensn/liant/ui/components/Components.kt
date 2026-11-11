@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -30,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.bailensn.liant.ui.theme.LColors
 import com.bailensn.liant.ui.theme.LTokens
 import com.bailensn.liant.ui.theme.LocalLColors
+import com.bailensn.liant.ui.theme.SquircleShape
 
 /**
  * 原生侧的通用组件，逐项对应 Flutter 的 `lib/ui/widgets.dart`：
@@ -66,7 +66,7 @@ fun ToneBadge(label: String, tone: BadgeTone = BadgeTone.Muted) {
         fontSize = 12.sp,
         fontWeight = FontWeight.W600,
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(SquircleShape(LTokens.badgeShapeRadius))
             .background(color.copy(alpha = 0.12f))
             .padding(horizontal = 9.dp, vertical = 3.dp),
     )
@@ -97,7 +97,7 @@ fun GroupCard(
         }
         Surface(
             color = colors.elevated,
-            shape = RoundedCornerShape(LTokens.cardShapeRadius),
+            shape = SquircleShape(LTokens.cardShapeRadius),
             modifier = Modifier.fillMaxWidth(),
         ) {
             // 行之间由调用方插 Hairline(dividerIndent)：Compose 没有「枚举子项」，

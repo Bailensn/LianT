@@ -70,12 +70,16 @@ object LTokens {
     val touchTarget = 44.dp
 
     /**
-     * squircle 的视觉补偿：Flutter 用连续曲率圆角，同样数值看起来更「紧」，
-     * 那边统一乘了 1.6。Compose 没有现成的连续曲率，先用放大的普通圆角对齐观感。
+     * squircle 的视觉补偿：连续曲率在同样数值下看起来比普通圆角更「紧」，
+     * Flutter 的 `squircleRadius()` 统一乘了 1.6；这里照抄，保证两边数值一致。
+     * 真正的连续曲率路径见 [SquircleShape]。
      */
     const val SquircleScale = 1.6f
 
     val cardShapeRadius = (cardRadius.value * SquircleScale).dp
+
+    /** 小标签（ToneBadge）在 Flutter 里是 20 的圆角、同样乘 1.6。 */
+    val badgeShapeRadius = (20f * SquircleScale).dp
 }
 
 val LocalLColors = staticCompositionLocalOf { LColors.Light }

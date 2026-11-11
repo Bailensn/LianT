@@ -15,7 +15,7 @@
 
 ## 1. 现状
 
-- Manager `1.0.0+109`，Service 同版本线；测试包 `manager-v1.0.0-109` 由 CI 自动发 pre-release。
+- Manager `1.0.0+110`，Service 同版本线；测试包 `manager-v1.0.0-110` 由 CI 自动发 pre-release。
 - **正式版以后一个 Release 同时发两端**：tag `v<version>`，含 `LianT-linux-amd64`、
   `LianT-linux-arm64`、`LianT-android-arm64.apk`、`SHA256SUMS.txt`。
   历史遗留的 `v1.0.0`（只有 Service）与 `manager-v1.0.0`（只有 APK）是分开发的，不再沿用。
@@ -37,7 +37,8 @@
 - 性能：去掉实时模糊、MaterialApp 全局重建、会话列表懒构建、tab 隔离重绘；
 - JKS 正式签名 + `Release` workflow。
 - 核心下沉 Kotlin（§4）：连接、认证、桥接、通知全部落地，Dart 只剩 UI 与 `BridgeMessageClient`，待真机验证。
-- 原生 UI 试水：Compose 设置页（只读本机文件，不碰桥接）+ Flutter 设置页临时入口，用于评估是否全迁。
+- 原生 UI 试水：Compose 设置页（只读本机文件，不碰桥接）+ Flutter 设置页临时入口；圆角用与 Flutter
+  `ContinuousRectangleBorder` 相同的连续曲率路径（`ui/theme/Squircle.kt`）。
 
 ## 2. 代码结构
 
